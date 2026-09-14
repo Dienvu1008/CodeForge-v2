@@ -1296,13 +1296,18 @@ Budget hierarchy:
 
 ```text
 Session
- ├── Task
- │    ├── TaskRun
- │    └── Recovery
- └── Verification
+ └── Task
+      ├── TaskRun
+      ├── Verification
+      └── Recovery
 ```
 
-Child budget không được vượt parent remaining budget.
+Verification budget là **con của Task** (không phải con trực tiếp của Session), vì mỗi
+verification gắn với một TaskRun cụ thể của task đó. Điều này nhất quán với
+`DOMAIN_CONTRACTS §15` (`Budget.scope: 'verification'` với `parentBudgetId` = task budget) và
+`VERIFICATION_PROTOCOL §14.1`.
+
+Child budget không được vượt parent remaining budget (BU-001).
 
 ---
 
@@ -1316,20 +1321,28 @@ workspaceDiffHash changed
 
 vì whitespace change có thể tạo false progress.
 
-Progress evidence:
+Progress evidence (mỗi tín hiệu ghi rõ phase khả dụng):
 
 ```text
-workspaceChanged
-relevantFilesChanged
-failureSignatureChanged
-verificationChanged
-errorCountChanged
-testSetChanged
-strategyChanged
-artifactChanged
+workspaceChanged        (Phase 1  — workspace revision hash)
+failureSignatureChanged (Phase 1.5 — failure signature)
+verificationChanged     (Phase 1.5 — verification report status/id)
+errorCountChanged       (Phase 1.5 — từ verification checks)
+testSetChanged          (Phase 1.5 — test set trong verification)
+artifactChanged         (Phase 1.5 — artifact hash)
+strategyChanged         (Phase 5  — recovery đổi strategy)
+relevantFilesChanged    (Phase 6  — cần symbol/affected-set từ code intelligence)
 ```
 
 NoProgressPolicy deterministic dựa trên các evidence này.
+
+Phụ thuộc phase (graceful degradation): NoProgressDetector là Phase 5 nhưng một số tín hiệu
+đến từ phase sớm hơn (Verification 1.5) hoặc muộn hơn (`relevantFilesChanged` cần Code
+Intelligence Phase 6). Detector phải hoạt động với **tập tín hiệu khả dụng tại phase hiện
+tại**: nếu một tín hiệu chưa có (ví dụ `relevantFilesChanged` trước Phase 6), nó được coi là
+"unknown" và **không** đóng góp vào quyết định — detector vẫn deterministic trên tập tín hiệu
+còn lại. Việc thiếu tín hiệu Phase 6 **không** làm detector báo "no progress" sai. Xem
+`INVARIANTS.md` → RC-003.
 
 ---
 
@@ -1349,6 +1362,12 @@ budgetState
 
 Không được checkpoint một phần.
 
+Lưu ý ranh giới atomic: phần atomic là **metadata trong SQLite** (gồm revisionId + hash).
+`workspaceRevision.hash` là *claim* về filesystem tại thời điểm capture, không atomic cùng
+SQLite — filesystem không giao dịch. Hash được tính trước transaction (capture-then-commit),
+drift trong lúc capture được phát hiện và đánh dấu append-only; khi load, so hash để phát hiện
+drift rồi reconcile. Chi tiết: `WORKSPACE_SPEC §10.3`, `INVARIANTS.md` CP-002, CP-010..CP-012.
+
 Mục tiêu:
 
 ```text
@@ -1356,7 +1375,7 @@ crash
  ↓
 restart
  ↓
-load checkpoint
+load checkpoint (verify hash: khớp? hay drift?)
  ↓
 reconcile
  ↓

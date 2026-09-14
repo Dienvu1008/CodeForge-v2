@@ -120,10 +120,15 @@ interface GraphEdge {
 }
 
 type EdgeKind =
-  | 'depends_on'                // from phải PASSED trước khi to READY
-  | 'blocks'                    // alias của depends_on (from blocks to)
+  | 'depends_on'                // (from) depends_on (to): to phải PASSED trước khi from READY
+  | 'blocks'                    // (from) blocks (to): from phải PASSED trước khi to READY ≡ (to) depends_on (from). Xem §3.2
   | 'supersedes';               // from thay thế to
 ```
+
+Lưu ý hướng cạnh (tránh nhầm lẫn):
+- `A --depends_on--> B`: **B** phải PASSED trước khi **A** READY (A phụ thuộc B).
+- `A --blocks--> B`: **A** phải PASSED trước khi **B** READY (A chặn B). Validator normalize
+  `A --blocks--> B` thành `B --depends_on--> A`.
 
 ### 2.2 Graph không chứa gì
 
@@ -178,7 +183,10 @@ Alias ngược của `depends_on`:
 A ──blocks──► B    ≡    B ──depends_on──► A
 ```
 
-Dùng cho readability. Validator normalize về `depends_on` internally.
+Nghĩa: **A phải PASSED trước khi B READY** ("A chặn B"). Từ §3.1, `B --depends_on--> A` nghĩa
+là A phải PASSED trước B — nhất quán với trực giác "A blocks B".
+
+Dùng cho readability. Validator normalize `A --blocks--> B` về `B --depends_on--> A` internally.
 
 ### 3.3 supersedes
 
@@ -624,7 +632,7 @@ Planner
  ▼
 Plan {
   tasks: Task[];
-  edges: GraphEdge[];
+  edges: EdgeProposal[];   // { fromTaskId, toTaskId, kind } — KHÔNG có edgeId/addedInVersion
   assumptions: Assumption[];
 }
  │
@@ -646,6 +654,10 @@ GraphCommit
  ▼
 Graph v1
 ```
+
+Ghi chú: Planner chỉ đề xuất quan hệ cạnh (`fromTaskId`, `toTaskId`, `kind`). `edgeId` (ULID)
+và `addedInVersion` do **runtime gán tại GraphCommit**, không phải do planner/LLM sinh. Điều này
+giữ `edgeId` unique và version-anchored một cách deterministic.
 
 ### 8.2 Replanning
 

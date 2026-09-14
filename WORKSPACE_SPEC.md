@@ -623,7 +623,7 @@ interface Checkpoint {
   createdAt: string;
 
   graphVersion: number;
-  workspaceRevision: WorkspaceRevision;
+  workspaceRevision: WorkspaceRevision;   // .hash là CLAIM về filesystem, không atomic với SQLite
   agentChangeSet: ChangeRecord[];
 
   sessionState: SessionState;
@@ -632,14 +632,43 @@ interface Checkpoint {
 
   lastEventId: string;
   schemaVersion: number;
+
+  capturedAt: string;                     // thời điểm computeRevision (trước COMMIT)
 }
 ```
 
-### 10.3 Atomic write
+Checkpoint **không** mang field `status` mutable (giữ immutable). Kết quả verify
+hậu-commit được biểu diễn append-only: nếu drift, runtime append event
+`CHECKPOINT_DIRTY_AT_CAPTURE` trỏ tới `checkpointId`. Recovery loại checkpoint có event này.
 
-- Checkpoint phải được ghi trong **một transaction** (CP-002).
-- Nếu bất kỳ field nào không ghi được → rollback toàn bộ.
-- Không có "partial checkpoint".
+### 10.3 Atomic write (metadata) + filesystem claim
+
+Ranh giới atomic của checkpoint là **metadata trong SQLite**, không phải filesystem.
+
+- Checkpoint **metadata** phải được ghi trong **một** SQLite transaction (CP-002): graphVersion,
+  revisionId, hash, agentChangeSet, sessionState, taskStates, budgetState, lastEventId.
+- Nếu bất kỳ field nào không ghi được → rollback toàn bộ. Không có "partial checkpoint" (CP-009).
+- `workspaceRevision.hash` là **claim** về filesystem tại thời điểm capture, **không** atomic
+  với SQLite (CP-010). Filesystem không giao dịch; hash mất thời gian tính (§6.7); user/tool có
+  thể ghi song song.
+
+#### Capture-then-commit
+
+```
+1. R = computeRevision(reason)            # hash TRƯỚC transaction; ghi lại capturedAt
+2. BEGIN TRANSACTION (SQLite)
+3.   write checkpoint metadata (gồm R.revisionId, R.hash, status = CLEAN, ...)
+4. COMMIT
+5. verify = quickRecheck(protected set)   # so mtime/size (hoặc re-hash nhẹ) với snapshot bước 1
+6. nếu verify != R:
+     - append event CHECKPOINT_DIRTY_AT_CAPTURE (checkpointId)   # append-only, không sửa checkpoint (CP-011)
+     - không dùng làm điểm recovery sạch
+     - schedule re-capture
+```
+
+Không cố "khóa" filesystem trong lúc capture. Thay vào đó phát hiện drift và đánh dấu.
+
+Tham chiếu: `INVARIANTS.md` → **CP-002, CP-009, CP-010, CP-011**.
 
 ### 10.4 Trigger
 
@@ -650,13 +679,25 @@ interface Checkpoint {
 - Khi user yêu cầu (manual).
 - Định kỳ (nếu policy).
 
-### 10.5 Recovery
+### 10.5 Recovery (với drift detection)
 
-- Khi crash, load checkpoint gần nhất.
-- Reconcile workspace với checkpoint.workspaceRevision.
-- Nếu workspace hiện tại khác revision → mark INTERRUPTED, recovery policy quyết định.
+```
+1. Load checkpoint gần nhất KHÔNG có event CHECKPOINT_DIRTY_AT_CAPTURE.
+   - Nếu checkpoint gần nhất bị đánh dấu dirty → bỏ qua, lùi về checkpoint sạch trước đó.
+2. Rp = checkpoint.workspaceRevision.hash    # claim đã lưu
+3. Rc = computeRevision(current)             # trạng thái filesystem hiện tại
+4. So sánh (CP-012):
+   a. Rc == Rp → workspace khớp checkpoint → recovery deterministic, tiếp tục.
+   b. Rc != Rp → DRIFT → đi qua reconciliation (§11.3), KHÔNG giả định consistent.
+5. Reconcile process tree (§11.2).
+6. Reconcile unfinished TaskRun (CP-004): mark TaskRun INTERRUPTED, recovery policy quyết định.
+```
 
-Tham chiếu: `INVARIANTS.md` → **CP-002, CP-003, CP-009**.
+Lưu ý thuật ngữ: `INTERRUPTED` là state của **TaskRun** (SM-TASK-RUN), không phải của
+Session/Task. Drift ở mức workspace không "mark session INTERRUPTED"; nó kích hoạt
+reconciliation và các transition tương ứng (xem §11.3).
+
+Tham chiếu: `INVARIANTS.md` → **CP-002, CP-003, CP-004, CP-009, CP-011, CP-012**.
 
 ---
 
@@ -683,13 +724,20 @@ Tham chiếu: `INVARIANTS.md` → **CP-002, CP-003, CP-009**.
 
 ```
 1. Compute current revision Rc.
-2. Load checkpoint revision Rp.
+2. Rp = checkpoint.workspaceRevision.hash (claim đã lưu tại capture; xem CP-010).
 3. Nếu Rc == Rp → không cần reconcile.
-4. Nếu Rc != Rp:
+4. Nếu Rc != Rp (drift, CP-012):
    a. Diff → danh sách path thay đổi.
    b. Phân loại: trong scratch / ngoài scratch.
    c. Nếu thay đổi ngoài scratch không do agent tạo → EXTERNAL_MUTATION.
-   d. Ghi event, mark session/task là INTERRUPTED.
+   d. Ghi event `WORKSPACE_EXTERNAL_MUTATION`.
+   e. Ánh xạ state (không dùng "INTERRUPTED" cho Session/Task — INTERRUPTED chỉ là
+      state của TaskRun):
+      - TaskRun đang RUNNING (nếu có): finalize thành `INTERRUPTED` (SM-TASK-RUN).
+      - Task đang RUNNING/VERIFYING: phát trigger `EXTERNAL_MUTATION_DETECTED`
+        → Task chuyển `FAILED` với failure class `ENVIRONMENT` (SM-TASK §4.3).
+      - Session: escalate → phát `HUMAN_REQUIRED` → `AWAITING_HUMAN`
+        (external mutation là tình huống cần human quyết định, không tự abort).
 ```
 
 ### 11.4 Cancellation semantics
@@ -751,14 +799,20 @@ Tham chiếu: `INVARIANTS.md` → **WS-003, WS-004, SE-004, SE-005**.
 
 ### 13.1 Freshness rule
 
+`isFresh` chỉ xét **revision binding** — cùng định nghĩa và tên gọi với
+`VERIFICATION_PROTOCOL §5.1(a)` (single source):
+
 ```
-valid(report, currentRevision) =
+isFresh(report, currentRevision) =
   report.targetWorkspaceRevision.hash == currentRevision.hash
   AND report.targetWorkspaceRevision.canonicalFormVersion
       == currentRevision.canonicalFormVersion
 ```
 
-Nếu không valid → evidence stale.
+Nếu không fresh → evidence stale (revision đã đổi).
+
+`isFresh` **không** xét `report.status`. Điều kiện status (PASS/FAIL) thuộc về khả năng dùng
+cho completion — xem `isUsableForCompletion` và Completion Gate ở `VERIFICATION_PROTOCOL §5.1(b), §10`.
 
 ### 13.2 Stale evidence handling
 
@@ -852,9 +906,12 @@ interface WorkspaceManager {
 | VR-007 | §13.1 |
 | VR-008 | §4.3 |
 | VR-011 | §13.1 |
-| CP-002 | §10.3 |
+| CP-002 | §10.3 (metadata atomic) |
 | CP-003 | §10.5 |
-| CP-004 | §11.1 |
+| CP-004 | §11.1, §10.5 |
+| CP-010 | §10.3 capture-then-commit |
+| CP-011 | §10.3 DIRTY_AT_CAPTURE |
+| CP-012 | §10.5 drift detection on load |
 | CP-005 | §11.2 |
 | CP-006 | §11.4 |
 | CP-009 | §10.3 |
@@ -888,7 +945,10 @@ interface WorkspaceManager {
 | `lock-conflict` | Hai session cùng workspace |
 | `revision-compute` | Determinism |
 | `revision-diff` | Detect changes |
-| `checkpoint-atomic` | Rollback on partial |
+| `checkpoint-atomic` | Rollback on partial (metadata) |
+| `checkpoint-dirty-at-capture` | Mutate protected file giữa computeRevision và COMMIT → event CHECKPOINT_DIRTY_AT_CAPTURE |
+| `checkpoint-skip-dirty-on-recovery` | Recovery bỏ qua checkpoint dirty, lùi về checkpoint sạch |
+| `checkpoint-drift-on-load` | Rc != Rp → reconciliation, không giả định consistent |
 | `reconcile-after-crash` | Unfinished run |
 | `cancel-no-rollback` | Stop ≠ rollback |
 | `user-change-conflict` | Overwrite detection |

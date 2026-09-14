@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Runtime Safety Invariants**
 
-Version: 1.0
+Version: 1.1
 Status: Architecture Baseline
 Owner: Runtime / Control Plane
 Scope: v1 (single user, single workspace, sequential, local, Ollama)
@@ -114,7 +114,7 @@ Phase gate:
 | TI-002 | Task description/acceptanceCriteria/constraints là immutable sau commit. | TaskRepository | 1 | CRITICAL |
 | TI-003 | Task dependency không được lưu trong Task. | TaskSchema + GraphValidator | 1 | CRITICAL |
 | TI-004 | Task không được mutate thành task khác; phải dùng SUPERSEDE. | GraphCommit | 1 | CRITICAL |
-| TI-005 | Task chỉ được PASSED khi có verification evidence hợp lệ. | StateMachine + VerificationEngine | 1.5 | CRITICAL |
+| TI-005 | Task chỉ được PASSED khi có verification evidence hợp lệ. Ngoại lệ được kiểm soát duy nhất: HUMAN_OVERRIDE_COMPLETED (HI-003), phải có marker tường minh và không sửa VerificationReport gốc (VR-005, HI-004). | StateMachine + VerificationEngine | 1.5 | CRITICAL |
 | TI-006 | Task terminal state là immutable. | StateMachine | 1 | CRITICAL |
 | TI-007 | Task priority là proposal của LLM, không phải authority. | Scheduler | 1 | HIGH |
 
@@ -243,14 +243,17 @@ Phase gate:
 | ID | Statement | Enforcement | Phase | Severity |
 |---|---|---|---|---|
 | CP-001 | State mutation và event append nằm trong cùng transaction. | EventLog + Repositories | 1 | CRITICAL |
-| CP-002 | Checkpoint phải atomic (graphVersion + workspaceRevision + changeSet + sessionState + budgetState). | CheckpointManager | 1 | CRITICAL |
-| CP-003 | Recovery từ checkpoint phải deterministic. | RecoveryLoader | 1 | CRITICAL |
+| CP-002 | Checkpoint **metadata** (graphVersion + revisionId + hash + changeSet + sessionState + taskStates + budgetState + lastEventId) phải ghi atomic trong **một** SQLite transaction. Đây là ranh giới atomic đúng nghĩa. | CheckpointManager | 1 | CRITICAL |
+| CP-003 | Recovery từ checkpoint phải deterministic (với cùng metadata + cùng filesystem state). | RecoveryLoader | 1 | CRITICAL |
 | CP-004 | Unfinished TaskRun phải được reconcile, không giả định failed. | CrashRecovery | 1 | CRITICAL |
 | CP-005 | Orphan process phải được cleanup sau restart. | ProcessSupervisor | 1 | CRITICAL |
 | CP-006 | Cancellation không được để lại orphan state. | StateMachine + ProcessSupervisor | 1 | CRITICAL |
 | CP-007 | Schema migration phải versioned và có rollback plan. | MigrationEngine | 1 | HIGH |
 | CP-008 | EventLog là append-only. | EventLog | 1 | CRITICAL |
 | CP-009 | Không được load checkpoint partial. | CheckpointManager | 1 | CRITICAL |
+| CP-010 | `workspaceRevision.hash` trong checkpoint là **claim** về filesystem tại thời điểm capture, **không** phải trạng thái atomic với SQLite. Hash phải được tính **trước** khi mở transaction (capture-then-commit). | CheckpointManager | 1 | CRITICAL |
+| CP-011 | Filesystem drift trong lúc capture phải phát hiện được: sau commit, re-verify protected set; nếu đổi → append event `CHECKPOINT_DIRTY_AT_CAPTURE` (không sửa checkpoint, giữ immutable) và không dùng làm điểm recovery sạch. | CheckpointManager | 1 | CRITICAL |
+| CP-012 | Khi load checkpoint, runtime phải so `hash(current)` với `checkpoint.hash`; nếu khác → drift, phải đi qua reconciliation, không giả định consistent. | RecoveryLoader | 1 | CRITICAL |
 
 ### 3.14 Model Gateway (MG)
 
@@ -280,7 +283,7 @@ Phase gate:
 |---|---|---|---|---|
 | RC-001 | Recovery action phải nằm trong allowed set của failure class. | RecoveryPolicy | 5 | CRITICAL |
 | RC-002 | UNKNOWN failure không được retry vô hạn. | RecoveryPolicy | 5 | CRITICAL |
-| RC-003 | No-progress detector phải deterministic. | NoProgressDetector | 5 | CRITICAL |
+| RC-003 | No-progress detector phải deterministic trên **tập tín hiệu khả dụng tại phase hiện tại**. Tín hiệu chưa khả dụng (ví dụ `relevantFilesChanged` trước Phase 6) coi là "unknown", không đóng góp vào quyết định, và không được gây báo "no progress" sai. | NoProgressDetector | 5 | CRITICAL |
 | RC-004 | ROLLBACK chỉ được thực hiện khi policy cho phép. | RecoveryEngine | 5 | CRITICAL |
 | RC-005 | Replanning phải tạo GraphMutation, không overwrite graph. | Replanner | 5 | CRITICAL |
 | RC-006 | Mỗi recovery action phải ghi provenance và lý do. | RecoveryEngine | 5 | HIGH |
@@ -668,17 +671,53 @@ Các invariant dưới đây là nền tảng. Không được vi phạm, không
 
 ---
 
-### 4.18 CP-002 — Checkpoint is atomic
+### 4.18 CP-002 — Checkpoint metadata is atomic (in SQLite)
 
-**Statement.** Checkpoint phải chứa đồng thời: graphVersion, workspaceRevision, changeSet, sessionState, budgetState. Không checkpoint partial.
+**Statement.** Checkpoint **metadata** phải chứa đồng thời và ghi trong **một** SQLite transaction: graphVersion, revisionId + hash, agentChangeSet, sessionState, taskStates, budgetState, lastEventId. Không checkpoint partial.
+
+**Ranh giới atomic.** Điều atomic được là **metadata trong SQLite**. `workspaceRevision.hash`
+là *claim* về filesystem tại thời điểm capture — filesystem không tham gia transaction (xem
+CP-010). Không được tuyên bố "filesystem + SQLite atomic cùng nhau"; điều đó bất khả thi vì
+filesystem không giao dịch và hash mất thời gian để tính (workspace lớn ~ vài giây).
+
+**Quy trình capture (capture-then-commit).**
+```
+1. R = computeRevision(protectedSet)      # tính hash TRƯỚC transaction
+2. BEGIN TRANSACTION
+3.   write checkpoint metadata (gồm R.revisionId, R.hash, ...)
+4. COMMIT
+5. verify = quickRecheck(protectedSet)     # mtime/size hoặc re-hash nhẹ
+6. nếu verify khác R → append event CHECKPOINT_DIRTY_AT_CAPTURE (CP-011), schedule re-capture
+```
 
 **Test.**
 ```
 1. create checkpoint
 2. attempt: load checkpoint thiếu budgetState
-3. expect: rejected
-4. attempt: load checkpoint thiếu workspaceRevision
-5. expect: rejected
+3. expect: rejected (CP-009)
+4. attempt: load checkpoint thiếu revisionId/hash
+5. expect: rejected (CP-009)
+6. mock: mutate protected file GIỮA computeRevision và COMMIT
+7. expect: event CHECKPOINT_DIRTY_AT_CAPTURE appended (checkpoint immutable), không dùng làm recovery sạch (CP-011)
+```
+
+**Phase.** 1. **Severity.** CRITICAL.
+
+---
+
+### 4.18.1 CP-012 — Drift detection on load
+
+**Statement.** Khi load checkpoint để recovery, runtime phải re-compute revision hiện tại `Rc`
+và so với `checkpoint.hash` (`Rp`). Không giả định workspace khớp.
+
+**Test.**
+```
+1. checkpoint C với hash Rp
+2. mutate protected file (mô phỏng crash + user edit)
+3. load C
+4. expect: Rc != Rp → drift detected → reconciliation path (WORKSPACE_SPEC §11)
+5. expect: KHÔNG tự động tiếp tục như thể workspace consistent
+6. trường hợp Rc == Rp → recovery deterministic, tiếp tục
 ```
 
 **Phase.** 1. **Severity.** CRITICAL.
@@ -865,6 +904,7 @@ Lịch sử:
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | (baseline) | Initial 120+ invariants across 20 domains |
+| 1.1 | 2026-09-14 | Thêm CP-010, CP-011, CP-012 (checkpoint atomic boundary + drift detection); làm rõ TI-005 (human override exception), SS-004/SM-005 (cancel từ AWAITING_HUMAN), RC-003 (graceful degradation tín hiệu). Tạo `invariants.yaml` đầy đủ (144 invariant). |
 
 ---
 

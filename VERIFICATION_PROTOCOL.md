@@ -258,6 +258,21 @@ Scope có thể được **promote** (SMOKE → AFFECTED_DIRECT → AFFECTED_CLO
 
 Scope **không** được demote.
 
+#### Phạm vi của quy tắc "no demotion"
+
+"No demotion" áp dụng **trong một chu trình verification của một task tại một revision**: một khi
+scope đã được xác định/promote cho lần verify đó, không được hạ xuống thấp hơn để "lách" completion.
+
+Nó **không** phải quy tắc toàn cục cấm các task khác nhau có required scope khác nhau:
+
+- Mỗi task có `requiredScope` riêng theo §10.2 (task nhỏ có thể SMOKE, task thường AFFECTED_DIRECT).
+- Khi **replanning gộp/tách task**, task mới có identity mới (SUPERSEDE, xem GRAPH_PROTOCOL §6)
+  và `requiredScope` được **tính lại** từ đầu bằng `computeScope` cho task mới. Đây **không** phải
+  demotion của cùng một task — nó là scope của một task khác.
+- Ràng buộc an toàn vẫn giữ: **final graph verification** luôn ≥ AFFECTED_CLOSURE (VR-004), bất kể
+  các task con dùng scope nào. Việc một task con dùng scope thấp không làm giảm scope của final
+  verification.
+
 ### 3.5 Scope computation
 
 ```
@@ -344,16 +359,35 @@ Tham chiếu: `INVARIANTS.md` → **VR-010**.
 
 ### 5.1 Freshness rule
 
+Tách rõ **hai** khái niệm để tránh nhầm lẫn (trước đây `isFresh` và `valid()` định nghĩa
+khác nhau giữa các spec):
+
+**(a) `isFresh` — chỉ về revision binding.** Đây là định nghĩa dùng chung với
+`WORKSPACE_SPEC §13.1` (cùng semantics, cùng tên gọi):
+
 ```
 isFresh(report, currentRevision) =
      report.targetWorkspaceRevision.hash
        == currentRevision.hash
   ∧ report.targetWorkspaceRevision.canonicalFormVersion
        == currentRevision.canonicalFormVersion
+```
+
+Nếu fail → **stale** (revision đã đổi). `isFresh` **không** xét status.
+
+**(b) `isUsableForCompletion` — fresh ∧ có kết luận.** Điều kiện để evidence dùng cho
+completion gate:
+
+```
+isUsableForCompletion(report, currentRevision) =
+     isFresh(report, currentRevision)
   ∧ report.status ∈ { PASS, FAIL }
 ```
 
-Nếu bất kỳ điều kiện nào fail → stale.
+Report `INVALID`/`ERROR` là fresh (nếu revision khớp) nhưng **không** usable để complete.
+
+Quy tắc: dùng `isFresh` cho câu hỏi "evidence còn gắn đúng revision không?"; dùng
+`isUsableForCompletion` (và cụ thể `status == PASS`) trong Completion Gate (§10).
 
 ### 5.2 Freshness check
 

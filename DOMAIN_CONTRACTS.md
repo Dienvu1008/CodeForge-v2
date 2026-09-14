@@ -387,10 +387,15 @@ Authority duy nhất về dependency giữa các Task.
 
 ### 7.2 Schema
 
+> **Canonical source:** `GRAPH_PROTOCOL.md §2.1` là định nghĩa chuẩn của TaskGraph, GraphNode,
+> GraphEdge (owner: GraphStore/Validator/Commit). Schema dưới đây phải khớp GRAPH_PROTOCOL;
+> nếu lệch, GRAPH_PROTOCOL thắng.
+
 ```typescript
 interface TaskGraph {
-  graphId: string;
-  version: number;              // starts at 1
+  graphId: string;              // ULID, stable across versions
+  version: number;              // 1-indexed, monotonic
+  parentVersion?: number;       // version trước đó
   sessionId: string;
 
   nodes: GraphNode[];
@@ -399,17 +404,29 @@ interface TaskGraph {
   createdAt: string;
   createdBy: 'planner' | 'replanner' | 'user';
   mutationId?: string;          // reference to GraphMutation
+  canonicalHash: string;        // hash của graph structure
+
+  schemaVersion: number;
+  canonicalFormVersion: string;
 }
 
 interface GraphNode {
-  taskId: string;
+  taskId: string;               // reference tới Task
+  addedInVersion: number;
 }
 
 interface GraphEdge {
+  edgeId: string;               // ULID
   fromTaskId: string;
   toTaskId: string;
-  kind: 'depends_on' | 'blocks' | 'supersedes';
+  kind: EdgeKind;
+  addedInVersion: number;
 }
+
+type EdgeKind =
+  | 'depends_on'                // from phải PASSED trước khi to READY
+  | 'blocks'                    // alias của depends_on (xem GRAPH_PROTOCOL §3.2 cho hướng)
+  | 'supersedes';               // from thay thế to
 ```
 
 ### 7.3 Local invariants
@@ -434,11 +451,15 @@ Immutable proposal/record của một thay đổi graph.
 
 ### 8.2 Schema
 
+> **Canonical source:** `GRAPH_PROTOCOL.md §4` là định nghĩa chuẩn của GraphMutation và
+> GraphOperation. Schema dưới đây phải khớp GRAPH_PROTOCOL (gồm cả `REWIRE` và các field
+> `cascade`/`rewire`); nếu lệch, GRAPH_PROTOCOL thắng.
+
 ```typescript
 interface GraphMutation {
   mutationId: string;           // ULID
   sessionId: string;
-  baseVersion: number;
+  baseVersion: number;          // version mutation áp dụng lên
 
   operations: GraphOperation[];
 
@@ -449,17 +470,64 @@ interface GraphMutation {
   createdAt: string;
 
   status: 'PROPOSED' | 'VALIDATED' | 'REJECTED' | 'COMMITTED';
-  validationErrors?: string[];
+  validationErrors?: ValidationError[];   // structured, xem GRAPH_PROTOCOL §5.10
   committedVersion?: number;
+  committedAt?: string;
 }
 
 type GraphOperation =
-  | { kind: 'ADD_TASK'; task: Task }
-  | { kind: 'REMOVE_TASK'; taskId: string }
-  | { kind: 'ADD_EDGE'; fromTaskId: string; toTaskId: string; edgeKind: GraphEdge['kind'] }
-  | { kind: 'REMOVE_EDGE'; fromTaskId: string; toTaskId: string }
-  | { kind: 'SUPERSEDE_TASK'; oldTaskId: string; newTask: Task }
-  | { kind: 'CHANGE_DEPENDENCY'; fromTaskId: string; toTaskId: string; newKind: GraphEdge['kind'] };
+  | AddTaskOp
+  | RemoveTaskOp
+  | AddEdgeOp
+  | RemoveEdgeOp
+  | SupersedeTaskOp
+  | ChangeDependencyOp
+  | RewireOp;
+
+interface AddTaskOp {
+  kind: 'ADD_TASK';
+  task: Task;
+}
+
+interface RemoveTaskOp {
+  kind: 'REMOVE_TASK';
+  taskId: string;
+  cascade?: 'reject_if_edges' | 'cascade_edges';
+}
+
+interface AddEdgeOp {
+  kind: 'ADD_EDGE';
+  fromTaskId: string;
+  toTaskId: string;
+  edgeKind: EdgeKind;
+}
+
+interface RemoveEdgeOp {
+  kind: 'REMOVE_EDGE';
+  fromTaskId: string;
+  toTaskId: string;
+}
+
+interface SupersedeTaskOp {
+  kind: 'SUPERSEDE_TASK';
+  oldTaskId: string;
+  newTask: Task;
+  rewire: boolean;              // default true
+}
+
+interface ChangeDependencyOp {
+  kind: 'CHANGE_DEPENDENCY';
+  fromTaskId: string;
+  toTaskId: string;
+  newKind: EdgeKind;
+}
+
+interface RewireOp {
+  kind: 'REWIRE';
+  fromTaskId: string;           // edge cũ
+  toTaskId: string;             // edge mới
+  targetTaskId: string;         // task mà edge trỏ tới
+}
 ```
 
 ### 8.3 Local invariants
@@ -810,7 +878,7 @@ interface Budget {
   scope: 'session' | 'task' | 'task_run' | 'recovery' | 'verification';
   scopeId: string;              // sessionId, taskId, etc.
 
-  parentBudgetId?: string;
+  parentBudgetId?: string;      // xem cây parent bên dưới
 
   limits: BudgetLimits;
   consumed: BudgetConsumption;
@@ -818,7 +886,22 @@ interface Budget {
   createdAt: string;
   updatedAt: string;
 }
+```
 
+Cây parent (mỗi child budget có `parentBudgetId` trỏ tới đúng một parent):
+
+```
+session
+ └── task
+      ├── task_run
+      ├── verification   ← parent là TASK budget (verification gắn với TaskRun của task)
+      └── recovery
+```
+
+Verification budget là **con của Task budget**, không phải con trực tiếp của Session — nhất quán
+với `Coding Agent Architecture Target §35` và `VERIFICATION_PROTOCOL §14.1`.
+
+```typescript
 interface BudgetLimits {
   wallClockMs: number;
   modelTokens: number;
@@ -857,7 +940,7 @@ interface Checkpoint {
   sessionId: string;
 
   graphVersion: number;
-  workspaceRevision: WorkspaceRevision;
+  workspaceRevision: WorkspaceRevision;   // .hash là CLAIM về filesystem, không atomic với SQLite (CP-010)
   agentChangeSet: ChangeRecord[];
 
   sessionState: SessionState;
@@ -866,21 +949,29 @@ interface Checkpoint {
 
   lastEventId: string;
 
+  capturedAt: string;           // thời điểm computeRevision (trước COMMIT)
+
   createdAt: string;
   schemaVersion: number;
 }
 ```
 
+Ghi chú: checkpoint **không** mang field `status` mutable. Kết quả verify hậu-commit được ghi
+**append-only** qua event: nếu phát hiện drift trong lúc capture, runtime append
+`CHECKPOINT_DIRTY_AT_CAPTURE` (trỏ tới `checkpointId`). Recovery loader loại các checkpoint có
+event này. Điều này giữ checkpoint immutable đúng nghĩa (không sửa in-place).
+
 ### 16.2 Local invariants
 
 | ID | Statement |
 |---|---|
-| CP-L1 | Atomic write. |
-| CP-L2 | Chứa đủ 5 thành phần (graph, workspace, changeset, session, budget). |
-| CP-L3 | Immutable sau commit. |
+| CP-L1 | Metadata ghi atomic trong một SQLite transaction. `workspaceRevision.hash` là claim, không atomic với SQLite. |
+| CP-L2 | Chứa đủ các thành phần metadata (graph, revision claim, changeset, session, taskStates, budget, lastEventId). |
+| CP-L3 | Checkpoint immutable sau commit. Trạng thái "dirty" biểu diễn bằng event append-only, không sửa checkpoint. |
 | CP-L4 | Không load checkpoint partial. |
+| CP-L5 | Hash tính trước transaction (capture-then-commit); recovery so hash để phát hiện drift (CP-012). |
 
-Tham chiếu: `INVARIANTS.md` → **CP-002, CP-003, CP-009**.
+Tham chiếu: `INVARIANTS.md` → **CP-002, CP-003, CP-009, CP-010, CP-011, CP-012**.
 
 ---
 
@@ -985,6 +1076,7 @@ BUDGET_CONSUMED
 BUDGET_EXHAUSTED
 
 CHECKPOINT_CREATED
+CHECKPOINT_DIRTY_AT_CAPTURE
 CHECKPOINT_LOADED
 
 WORKSPACE_REVISION_COMPUTED
@@ -1252,15 +1344,23 @@ RUNNING      --ALL_TASKS_TERMINAL-->      COMPLETED
 
 ```
 PENDING  --DEPENDENCIES_SATISFIED-->  READY
+PENDING  --DEP_UNREACHABLE-->         ABORTED
 READY    --SCHEDULED-->               RUNNING
-RUNNING  --EXECUTION_ENDED-->         VERIFYING
+RUNNING  --RUN_ENDED_OK-->            VERIFYING        (TaskRun SUCCEEDED/FAILED)
+RUNNING  --RUN_ENDED_ABNORMAL-->      FAILED           (TaskRun TIMEOUT/INTERRUPTED)
+RUNNING  --EXTERNAL_MUTATION_DETECTED--> FAILED
 VERIFYING --VERIFICATION_PASSED-->    PASSED
 VERIFYING --VERIFICATION_FAILED-->    FAILED
+VERIFYING --EXTERNAL_MUTATION_DETECTED--> FAILED
 FAILED   --FAILURE_ANALYZED-->        FAILURE_ANALYZED
 FAILURE_ANALYZED --RECOVERY_CHOSEN--> RECOVERY
+FAILURE_ANALYZED --HUMAN_REQUIRED-->  AWAITING_HUMAN
 RECOVERY --RECOVERY_ENDED-->          RUNNING
-any      --SUPERSEDE-->               SUPERSEDED
-any      --ABORT-->                   ABORTED
+AWAITING_HUMAN --HUMAN_DECIDED-->     RUNNING / ABORTED
+AWAITING_HUMAN --HUMAN_OVERRIDE_PASSED--> PASSED
+AWAITING_HUMAN --CANCEL_REQUESTED-->  ABORTED
+any (non-terminal) --SUPERSEDE-->     SUPERSEDED
+any (non-terminal) --ABORT-->         ABORTED
 ```
 
 Tham chiếu: `STATE_MACHINE_SPEC.md`.

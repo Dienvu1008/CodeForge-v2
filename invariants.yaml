@@ -1,0 +1,1203 @@
+# invariants.yaml
+# Machine-readable appendix of INVARIANTS.md (single source of truth = INVARIANTS.md).
+# CI dùng file này để: (1) fail nếu invariant CRITICAL ACTIVE thiếu test file;
+# (2) fail nếu test file tồn tại nhưng không pass; (3) fail nếu invariant bị xóa mà
+# không DEPRECATED kèm reason.
+#
+# Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
+# Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
+
+version: 1.1
+invariants:
+
+  # ── Session (SS) ────────────────────────────────────────────────
+  - id: SS-001
+    statement: "Một workspace chỉ có tối đa một active session."
+    enforcement: ["WorkspaceLock"]
+    violation_class: SESSION_LOCKED
+    test: "tests/invariants/session/ss-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SS-002
+    statement: "Session lifecycle chỉ đi theo transition hợp lệ."
+    enforcement: ["SessionStateMachine"]
+    violation_class: INVALID_TRANSITION
+    test: "tests/invariants/session/ss-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SS-003
+    statement: "Session không được COMPLETED nếu còn task non-terminal."
+    enforcement: ["SessionFinalizer"]
+    violation_class: PREMATURE_COMPLETION
+    test: "tests/invariants/session/ss-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SS-004
+    statement: "Cancellation của session phải propagate tới mọi TaskRun đang chạy (từ cả RUNNING và AWAITING_HUMAN)."
+    enforcement: ["SessionCoordinator"]
+    violation_class: ORPHAN_TASKRUN
+    test: "tests/invariants/session/ss-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SS-005
+    statement: "Stale lock phải được validate trước khi recover."
+    enforcement: ["LockRecovery"]
+    violation_class: UNSAFE_LOCK_RECOVERY
+    test: "tests/invariants/session/ss-005.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: SS-006
+    statement: "Session checkpoint phải bao gồm budgetState và graphVersion."
+    enforcement: ["CheckpointManager"]
+    violation_class: INCOMPLETE_CHECKPOINT
+    test: "tests/invariants/session/ss-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SS-007
+    statement: "Session không được tự chuyển AWAITING_HUMAN -> RUNNING khi chưa có human decision ghi nhận."
+    enforcement: ["SessionStateMachine"]
+    violation_class: MISSING_HUMAN_DECISION
+    test: "tests/invariants/session/ss-007.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Goal (GL) ───────────────────────────────────────────────────
+  - id: GL-001
+    statement: "Goal là immutable; mọi thay đổi tạo version mới."
+    enforcement: ["GoalRepository"]
+    violation_class: GOAL_MUTATION
+    test: "tests/invariants/goal/gl-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GL-002
+    statement: "Goal không được LLM mutate trực tiếp."
+    enforcement: ["PolicyEngine"]
+    violation_class: LLM_GOAL_MUTATION
+    test: "tests/invariants/goal/gl-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GL-003
+    statement: "Goal phải có ít nhất một acceptance criterion."
+    enforcement: ["GoalValidator"]
+    violation_class: MISSING_ACCEPTANCE
+    test: "tests/invariants/goal/gl-003.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: GL-004
+    statement: "Goal version tăng đơn điệu, không tái sử dụng version đã dùng."
+    enforcement: ["GoalRepository"]
+    violation_class: VERSION_REUSE
+    test: "tests/invariants/goal/gl-004.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+
+  # ── Task Integrity (TI) ─────────────────────────────────────────
+  - id: TI-001
+    statement: "Task identity là immutable."
+    enforcement: ["TaskRepository", "GraphValidator"]
+    violation_class: TASK_IMMUTABLE_VIOLATION
+    test: "tests/invariants/task/ti-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TI-002
+    statement: "Task description/acceptanceCriteria/constraints là immutable sau commit."
+    enforcement: ["TaskRepository"]
+    violation_class: TASK_CONTENT_MUTATION
+    test: "tests/invariants/task/ti-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TI-003
+    statement: "Task dependency không được lưu trong Task."
+    enforcement: ["TaskSchema", "GraphValidator"]
+    violation_class: DEP_IN_TASK
+    test: "tests/invariants/task/ti-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TI-004
+    statement: "Task không được mutate thành task khác; phải dùng SUPERSEDE."
+    enforcement: ["GraphCommit"]
+    violation_class: TASK_REBINDING
+    test: "tests/invariants/task/ti-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TI-005
+    statement: "Task chỉ được PASSED khi có verification evidence hợp lệ. Ngoại lệ kiểm soát: HUMAN_OVERRIDE_COMPLETED (HI-003), có marker tường minh, không sửa VerificationReport gốc."
+    enforcement: ["StateMachine", "VerificationEngine"]
+    violation_class: UNVERIFIED_COMPLETION
+    test: "tests/invariants/task/ti-005.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TI-006
+    statement: "Task terminal state là immutable."
+    enforcement: ["StateMachine"]
+    violation_class: TERMINAL_MUTATION
+    test: "tests/invariants/task/ti-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TI-007
+    statement: "Task priority là proposal của LLM, không phải authority."
+    enforcement: ["Scheduler"]
+    violation_class: LLM_SCHEDULING_AUTHORITY
+    test: "tests/invariants/task/ti-007.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+
+  # ── Execution (EX) ──────────────────────────────────────────────
+  - id: EX-001
+    statement: "TaskRun là immutable sau finalize."
+    enforcement: ["TaskRunRepository"]
+    violation_class: TASKRUN_MUTATION
+    test: "tests/invariants/execution/ex-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: EX-002
+    statement: "Mỗi TaskExecution có tối đa một TaskRun đang active."
+    enforcement: ["ExecutionCoordinator"]
+    violation_class: MULTIPLE_ACTIVE_RUNS
+    test: "tests/invariants/execution/ex-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: EX-003
+    statement: "TaskExecution chỉ là projection, không phải authority."
+    enforcement: ["DomainContracts"]
+    violation_class: PROJECTION_AS_AUTHORITY
+    test: "tests/invariants/execution/ex-003.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: EX-004
+    statement: "TaskRun phải ghi rõ graphVersion và workspaceRevision khởi tạo."
+    enforcement: ["TaskRunFactory"]
+    violation_class: MISSING_RUN_ANCHOR
+    test: "tests/invariants/execution/ex-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: EX-005
+    statement: "TaskRun không được finalize nếu process tree chưa được reconcile."
+    enforcement: ["ProcessSupervisor"]
+    violation_class: UNRECONCILED_FINALIZE
+    test: "tests/invariants/execution/ex-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: EX-006
+    statement: "Cancellation phải để lại task ở trạng thái non-orphan (CANCELLED/ABORTED hoặc AWAITING_HUMAN); DEP_UNREACHABLE -> ABORTED cũng non-orphan."
+    enforcement: ["StateMachine"]
+    violation_class: ORPHAN_TASK_STATE
+    test: "tests/invariants/execution/ex-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Graph Integrity (GI) ────────────────────────────────────────
+  - id: GI-001
+    statement: "TaskGraph là authority duy nhất về dependency."
+    enforcement: ["GraphStore"]
+    violation_class: DEP_OUTSIDE_GRAPH
+    test: "tests/invariants/graph/gi-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-002
+    statement: "Graph mutation phải được validate trước khi commit."
+    enforcement: ["GraphValidator"]
+    violation_class: UNVALIDATED_COMMIT
+    test: "tests/invariants/graph/gi-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-003
+    statement: "Graph version tăng đơn điệu."
+    enforcement: ["GraphStore"]
+    violation_class: NON_MONOTONIC_VERSION
+    test: "tests/invariants/graph/gi-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-004
+    statement: "Graph không được có cycle."
+    enforcement: ["GraphValidator"]
+    violation_class: CYCLE_DETECTED
+    test: "tests/invariants/graph/gi-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-005
+    statement: "Mọi edge phải tham chiếu task tồn tại trong graph."
+    enforcement: ["GraphValidator"]
+    violation_class: MISSING_REFERENCE
+    test: "tests/invariants/graph/gi-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-006
+    statement: "REMOVE_TASK phải cascade hoặc reject các edge liên quan."
+    enforcement: ["GraphValidator"]
+    violation_class: CASCADE_VIOLATION
+    test: "tests/invariants/graph/gi-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-007
+    statement: "SUPERSEDE_TASK phải tạo task mới; task cũ chuyển SUPERSEDED."
+    enforcement: ["GraphCommit"]
+    violation_class: INVALID_SUPERSEDE
+    test: "tests/invariants/graph/gi-007.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-008
+    statement: "GraphCommit phải atomic (state + event + version)."
+    enforcement: ["GraphCommit"]
+    violation_class: PARTIAL_COMMIT
+    test: "tests/invariants/graph/gi-008.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-009
+    statement: "LLM không được mutate graph trực tiếp."
+    enforcement: ["PolicyEngine"]
+    violation_class: LLM_GRAPH_MUTATION
+    test: "tests/invariants/graph/gi-009.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: GI-010
+    statement: "Graph mutation phải có provenance (ai/nguồn nào đề xuất)."
+    enforcement: ["GraphCommit"]
+    violation_class: MISSING_PROVENANCE
+    test: "tests/invariants/graph/gi-010.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+
+  # ── State Machine (SM) ──────────────────────────────────────────
+  - id: SM-001
+    statement: "Transition phải là deterministic function của (state, event, policy)."
+    enforcement: ["StateMachine"]
+    violation_class: NON_DETERMINISTIC_TRANSITION
+    test: "tests/invariants/state-machine/sm-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SM-002
+    statement: "Không có RUNNING -> PASSED nếu chưa có verification hợp lệ."
+    enforcement: ["StateMachine"]
+    violation_class: UNVERIFIED_PASS
+    test: "tests/invariants/state-machine/sm-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SM-003
+    statement: "Terminal state không được transition ra ngoài."
+    enforcement: ["StateMachine"]
+    violation_class: TERMINAL_TRANSITION
+    test: "tests/invariants/state-machine/sm-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SM-004
+    statement: "Mọi transition phải ghi vào EventLog cùng transaction với state."
+    enforcement: ["EventLog"]
+    violation_class: STATE_EVENT_SPLIT
+    test: "tests/invariants/state-machine/sm-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SM-005
+    statement: "AWAITING_HUMAN chỉ thoát khi có human decision đã ghi nhận (ngoại lệ: CANCEL_REQUESTED -> CANCELLING/ABORTED)."
+    enforcement: ["StateMachine"]
+    violation_class: MISSING_HUMAN_DECISION
+    test: "tests/invariants/state-machine/sm-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SM-006
+    statement: "Không có transition nào phụ thuộc trực tiếp vào LLM output thô."
+    enforcement: ["PolicyEngine"]
+    violation_class: LLM_TRANSITION_AUTHORITY
+    test: "tests/invariants/state-machine/sm-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Scheduler (SC) ──────────────────────────────────────────────
+  - id: SC-001
+    statement: "Scheduler là deterministic function của (graph, task states, deps, policy, budget, session state)."
+    enforcement: ["Scheduler"]
+    violation_class: NON_DETERMINISTIC_SCHEDULE
+    test: "tests/invariants/scheduler/sc-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SC-002
+    statement: "Chỉ task ở trạng thái READY được schedule."
+    enforcement: ["Scheduler"]
+    violation_class: SCHEDULE_NON_READY
+    test: "tests/invariants/scheduler/sc-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SC-003
+    statement: "Task chỉ READY khi mọi dependency ở PASSED."
+    enforcement: ["Scheduler"]
+    violation_class: PREMATURE_READY
+    test: "tests/invariants/scheduler/sc-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SC-004
+    statement: "Task vượt budget không được schedule."
+    enforcement: ["BudgetEngine", "Scheduler"]
+    violation_class: OVER_BUDGET_SCHEDULE
+    test: "tests/invariants/scheduler/sc-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SC-005
+    statement: "LLM không có scheduling authority."
+    enforcement: ["PolicyEngine"]
+    violation_class: LLM_SCHEDULING_AUTHORITY
+    test: "tests/invariants/scheduler/sc-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SC-006
+    statement: "Cùng input phải cho cùng scheduling decision."
+    enforcement: ["Scheduler"]
+    violation_class: NON_REPRODUCIBLE_SCHEDULE
+    test: "tests/invariants/scheduler/sc-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Tool Gateway (TG) ───────────────────────────────────────────
+  - id: TG-001
+    statement: "Không có tool execution nào ngoài ToolGateway."
+    enforcement: ["ToolGateway"]
+    violation_class: TOOL_BYPASS
+    test: "tests/invariants/tool-gateway/tg-001.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-002
+    statement: "ToolCall state transition phải theo đúng lifecycle."
+    enforcement: ["ToolCallStateMachine"]
+    violation_class: INVALID_TOOLCALL_TRANSITION
+    test: "tests/invariants/tool-gateway/tg-002.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-003
+    statement: "Approval phải bind với (toolCallId, argumentsHash, toolPolicyVersion)."
+    enforcement: ["ApprovalEngine"]
+    violation_class: UNBOUND_APPROVAL
+    test: "tests/invariants/tool-gateway/tg-003.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-004
+    statement: "Approval không thể bị giả mạo qua model output."
+    enforcement: ["ApprovalEngine"]
+    violation_class: FORGED_APPROVAL
+    test: "tests/invariants/tool-gateway/tg-004.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-005
+    statement: "ToolCall bị DENIED không bao giờ execute."
+    enforcement: ["ToolGateway"]
+    violation_class: DENIED_EXECUTION
+    test: "tests/invariants/tool-gateway/tg-005.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-006
+    statement: "ToolCall phải có idempotency key."
+    enforcement: ["ToolGateway"]
+    violation_class: MISSING_IDEMPOTENCY_KEY
+    test: "tests/invariants/tool-gateway/tg-006.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: TG-007
+    statement: "Risk class phải enforce theo policy; DESTRUCTIVE/PRIVILEGED không auto-approve."
+    enforcement: ["ToolPolicy"]
+    violation_class: UNSAFE_AUTO_APPROVE
+    test: "tests/invariants/tool-gateway/tg-007.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-008
+    statement: "ToolCall phải ghi provenance (model, context, reason)."
+    enforcement: ["ToolGateway"]
+    violation_class: MISSING_PROVENANCE
+    test: "tests/invariants/tool-gateway/tg-008.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: TG-009
+    statement: "Arguments của ToolCall phải qua schema validation trước execute."
+    enforcement: ["ToolSchema"]
+    violation_class: UNVALIDATED_ARGS
+    test: "tests/invariants/tool-gateway/tg-009.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-010
+    statement: "ToolCall timeout phải dẫn đến state TIMEOUT, không treo RUNNING."
+    enforcement: ["ProcessSupervisor"]
+    violation_class: HUNG_TOOLCALL
+    test: "tests/invariants/tool-gateway/tg-010.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Verification (VR) ───────────────────────────────────────────
+  - id: VR-001
+    statement: "Verification phải bind với một WorkspaceRevision cụ thể."
+    enforcement: ["VerificationEngine"]
+    violation_class: UNBOUND_VERIFICATION
+    test: "tests/invariants/verification/vr-001.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-002
+    statement: "Stale evidence không được dùng để complete task."
+    enforcement: ["CompletionGate"]
+    violation_class: STALE_EVIDENCE
+    test: "tests/invariants/verification/vr-002.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-003
+    statement: "Verification mutation phải nằm trong declared scratch zone."
+    enforcement: ["WorkspaceManager"]
+    violation_class: SCRATCH_VIOLATION
+    test: "tests/invariants/verification/vr-003.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-004
+    statement: "Final graph verification phải dùng tối thiểu AFFECTED_CLOSURE scope."
+    enforcement: ["VerificationPolicy"]
+    violation_class: SCOPE_INSUFFICIENT
+    test: "tests/invariants/verification/vr-004.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-005
+    statement: "Human override không được rewrite VerificationReport."
+    enforcement: ["VerificationEngine"]
+    violation_class: REPORT_REWRITE
+    test: "tests/invariants/verification/vr-005.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-006
+    statement: "VerificationReport là append-only."
+    enforcement: ["VerificationStore"]
+    violation_class: REPORT_MUTATION
+    test: "tests/invariants/verification/vr-006.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-007
+    statement: "Verification phải chạy trên workspaceRevision hiện tại tại thời điểm verify."
+    enforcement: ["VerificationEngine"]
+    violation_class: REVISION_MISMATCH
+    test: "tests/invariants/verification/vr-007.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-008
+    statement: "Nếu verification mutate source ngoài scratch -> INVALID."
+    enforcement: ["WorkspaceManager"]
+    violation_class: SCRATCH_VIOLATION
+    test: "tests/invariants/verification/vr-008.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: VR-009
+    statement: "Verification phải ghi tool versions + timestamps + scope."
+    enforcement: ["VerificationReport"]
+    violation_class: MISSING_METADATA
+    test: "tests/invariants/verification/vr-009.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: VR-010
+    statement: "Verification scope computation phải deterministic."
+    enforcement: ["VerificationPolicy"]
+    violation_class: NON_DETERMINISTIC_SCOPE
+    test: "tests/invariants/verification/vr-010.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: VR-011
+    statement: "PASS(A) != PASS(B) khi revision A != revision B."
+    enforcement: ["CompletionGate"]
+    violation_class: CROSS_REVISION_EVIDENCE
+    test: "tests/invariants/verification/vr-011.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Workspace (WS) ──────────────────────────────────────────────
+  - id: WS-001
+    statement: "WorkspaceRevision hash phải canonical và cross-platform reproducible."
+    enforcement: ["WorkspaceHasher"]
+    violation_class: NON_CANONICAL_HASH
+    test: "tests/invariants/workspace/ws-001.spec.ts"
+    phase: 0
+    severity: CRITICAL
+    status: ACTIVE
+  - id: WS-002
+    statement: "WorkspaceRevision không được có false-negative hash."
+    enforcement: ["WorkspaceHasher"]
+    violation_class: HASH_FALSE_NEGATIVE
+    test: "tests/invariants/workspace/ws-002.spec.ts"
+    phase: 0
+    severity: CRITICAL
+    status: ACTIVE
+  - id: WS-003
+    statement: "Path traversal bị chặn."
+    enforcement: ["WorkspaceManager"]
+    violation_class: PATH_ESCAPE
+    test: "tests/invariants/workspace/ws-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: WS-004
+    statement: "Symlink escape ra ngoài root bị chặn."
+    enforcement: ["WorkspaceManager"]
+    violation_class: SYMLINK_ESCAPE
+    test: "tests/invariants/workspace/ws-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: WS-005
+    statement: "Agent không được mutate ngoài policy."
+    enforcement: ["WorkspaceManager"]
+    violation_class: UNAUTHORIZED_MUTATION
+    test: "tests/invariants/workspace/ws-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: WS-006
+    statement: "User-existing changes phải được preserve."
+    enforcement: ["WorkspaceManager"]
+    violation_class: USER_CHANGE_OVERWRITE
+    test: "tests/invariants/workspace/ws-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: WS-007
+    statement: "Scratch zone phải được declare tường minh."
+    enforcement: ["WorkspaceManager"]
+    violation_class: UNDECLARED_SCRATCH
+    test: "tests/invariants/workspace/ws-007.spec.ts"
+    phase: 0
+    severity: HIGH
+    status: ACTIVE
+  - id: WS-008
+    statement: "Workspace mutation phải được track (agent-owned vs user-existing)."
+    enforcement: ["WorkspaceManager"]
+    violation_class: UNTRACKED_MUTATION
+    test: "tests/invariants/workspace/ws-008.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: WS-009
+    statement: "Workspace revision hash không phụ thuộc Git."
+    enforcement: ["WorkspaceHasher"]
+    violation_class: GIT_DEPENDENT_HASH
+    test: "tests/invariants/workspace/ws-009.spec.ts"
+    phase: 0
+    severity: HIGH
+    status: ACTIVE
+  - id: WS-010
+    statement: "Workspace lock không bị stale sau crash mà không recover."
+    enforcement: ["LockRecovery"]
+    violation_class: UNRECOVERED_STALE_LOCK
+    test: "tests/invariants/workspace/ws-010.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Budget (BU) ─────────────────────────────────────────────────
+  - id: BU-001
+    statement: "Child budget không vượt parent remaining budget."
+    enforcement: ["BudgetEngine"]
+    violation_class: BUDGET_OVERFLOW
+    test: "tests/invariants/budget/bu-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: BU-002
+    statement: "Recovery là bounded."
+    enforcement: ["RecoveryPolicy"]
+    violation_class: UNBOUNDED_RECOVERY
+    test: "tests/invariants/budget/bu-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: BU-003
+    statement: "Budget decrement phải atomic với action được thực thi."
+    enforcement: ["BudgetEngine"]
+    violation_class: NON_ATOMIC_BUDGET
+    test: "tests/invariants/budget/bu-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: BU-004
+    statement: "Session budget >= tổng task budgets đã allocate."
+    enforcement: ["BudgetEngine"]
+    violation_class: OVERALLOCATION
+    test: "tests/invariants/budget/bu-004.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: BU-005
+    statement: "Budget exhausted phải dừng task, không được silent continue."
+    enforcement: ["BudgetEngine"]
+    violation_class: SILENT_OVERRUN
+    test: "tests/invariants/budget/bu-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: BU-006
+    statement: "Budget không được LLM set hoặc tăng trực tiếp."
+    enforcement: ["PolicyEngine"]
+    violation_class: LLM_BUDGET_AUTHORITY
+    test: "tests/invariants/budget/bu-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Security (SE) ───────────────────────────────────────────────
+  - id: SE-001
+    statement: "Untrusted workspace content không được trở thành runtime authority."
+    enforcement: ["PolicyEngine", "PromptBoundary"]
+    violation_class: UNTRUSTED_AS_AUTHORITY
+    test: "tests/invariants/security/se-001.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-002
+    statement: "Prompt injection không được bypass Policy."
+    enforcement: ["PolicyEngine"]
+    violation_class: POLICY_BYPASS
+    test: "tests/invariants/security/se-002.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-003
+    statement: "LLM không được bypass deterministic policy."
+    enforcement: ["PolicyEngine"]
+    violation_class: POLICY_BYPASS
+    test: "tests/invariants/security/se-003.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-004
+    statement: "Environment variables phải theo allowlist."
+    enforcement: ["EnvironmentGuard"]
+    violation_class: ENV_LEAK
+    test: "tests/invariants/security/se-004.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: SE-005
+    statement: "Secrets phải được redact trong log/artifact/provenance."
+    enforcement: ["Redactor"]
+    violation_class: SECRET_LEAK
+    test: "tests/invariants/security/se-005.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-006
+    statement: "Network access phải theo policy."
+    enforcement: ["NetworkPolicy"]
+    violation_class: UNAUTHORIZED_NETWORK
+    test: "tests/invariants/security/se-006.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: SE-007
+    statement: "Process phải có timeout."
+    enforcement: ["ProcessSupervisor"]
+    violation_class: NO_TIMEOUT
+    test: "tests/invariants/security/se-007.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-008
+    statement: "Process tree phải bị bound và cleanup."
+    enforcement: ["ProcessSupervisor"]
+    violation_class: PROCESS_LEAK
+    test: "tests/invariants/security/se-008.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-009
+    statement: "Privileged operations không được auto-execute."
+    enforcement: ["ToolPolicy"]
+    violation_class: AUTO_PRIVILEGED
+    test: "tests/invariants/security/se-009.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-010
+    statement: "Model output là untrusted input."
+    enforcement: ["ModelGateway"]
+    violation_class: TRUSTED_MODEL_OUTPUT
+    test: "tests/invariants/security/se-010.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Crash / Persistence (CP) ────────────────────────────────────
+  - id: CP-001
+    statement: "State mutation và event append nằm trong cùng transaction."
+    enforcement: ["EventLog", "Repositories"]
+    violation_class: STATE_EVENT_SPLIT
+    test: "tests/invariants/crash/cp-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-002
+    statement: "Checkpoint metadata (graphVersion + revisionId + hash + changeSet + sessionState + taskStates + budgetState + lastEventId) phải ghi atomic trong một SQLite transaction."
+    enforcement: ["CheckpointManager"]
+    violation_class: PARTIAL_CHECKPOINT
+    test: "tests/invariants/crash/cp-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-003
+    statement: "Recovery từ checkpoint phải deterministic (với cùng metadata + cùng filesystem state)."
+    enforcement: ["RecoveryLoader"]
+    violation_class: NON_DETERMINISTIC_RECOVERY
+    test: "tests/invariants/crash/cp-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-004
+    statement: "Unfinished TaskRun phải được reconcile, không giả định failed."
+    enforcement: ["CrashRecovery"]
+    violation_class: ASSUMED_FAILURE
+    test: "tests/invariants/crash/cp-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-005
+    statement: "Orphan process phải được cleanup sau restart."
+    enforcement: ["ProcessSupervisor"]
+    violation_class: ORPHAN_PROCESS
+    test: "tests/invariants/crash/cp-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-006
+    statement: "Cancellation không được để lại orphan state."
+    enforcement: ["StateMachine", "ProcessSupervisor"]
+    violation_class: ORPHAN_STATE
+    test: "tests/invariants/crash/cp-006.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-007
+    statement: "Schema migration phải versioned và có rollback plan."
+    enforcement: ["MigrationEngine"]
+    violation_class: UNSAFE_MIGRATION
+    test: "tests/invariants/crash/cp-007.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: CP-008
+    statement: "EventLog là append-only."
+    enforcement: ["EventLog"]
+    violation_class: EVENTLOG_MUTATION
+    test: "tests/invariants/crash/cp-008.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-009
+    statement: "Không được load checkpoint partial."
+    enforcement: ["CheckpointManager"]
+    violation_class: PARTIAL_CHECKPOINT_LOAD
+    test: "tests/invariants/crash/cp-009.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-010
+    statement: "workspaceRevision.hash trong checkpoint là claim về filesystem tại thời điểm capture, không atomic với SQLite. Hash tính trước khi mở transaction (capture-then-commit)."
+    enforcement: ["CheckpointManager"]
+    violation_class: FS_DB_ATOMIC_CLAIM
+    test: "tests/invariants/crash/cp-010.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-011
+    statement: "Filesystem drift trong lúc capture phải phát hiện được: sau commit re-verify protected set; nếu đổi -> append event CHECKPOINT_DIRTY_AT_CAPTURE (checkpoint immutable) và không dùng làm điểm recovery sạch."
+    enforcement: ["CheckpointManager"]
+    violation_class: UNDETECTED_CAPTURE_DRIFT
+    test: "tests/invariants/crash/cp-011.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CP-012
+    statement: "Khi load checkpoint, runtime phải so hash(current) với checkpoint.hash; nếu khác -> drift, phải reconcile, không giả định consistent."
+    enforcement: ["RecoveryLoader"]
+    violation_class: UNDETECTED_LOAD_DRIFT
+    test: "tests/invariants/crash/cp-012.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Model Gateway (MG) ──────────────────────────────────────────
+  - id: MG-001
+    statement: "Mọi LLM call phải qua ModelGateway."
+    enforcement: ["ModelGateway"]
+    violation_class: DIRECT_MODEL_CALL
+    test: "tests/invariants/model-gateway/mg-001.spec.ts"
+    phase: 2
+    severity: CRITICAL
+    status: ACTIVE
+  - id: MG-002
+    statement: "Structured output phải qua schema + semantic validation."
+    enforcement: ["OutputValidator"]
+    violation_class: UNVALIDATED_OUTPUT
+    test: "tests/invariants/model-gateway/mg-002.spec.ts"
+    phase: 2
+    severity: CRITICAL
+    status: ACTIVE
+  - id: MG-003
+    statement: "Invalid output phải retry bounded, rồi escalate."
+    enforcement: ["ModelGateway"]
+    violation_class: UNBOUNDED_MODEL_RETRY
+    test: "tests/invariants/model-gateway/mg-003.spec.ts"
+    phase: 2
+    severity: CRITICAL
+    status: ACTIVE
+  - id: MG-004
+    statement: "Model identity/version phải ghi vào provenance."
+    enforcement: ["ProvenanceTracker"]
+    violation_class: MISSING_MODEL_PROVENANCE
+    test: "tests/invariants/model-gateway/mg-004.spec.ts"
+    phase: 2
+    severity: HIGH
+    status: ACTIVE
+  - id: MG-005
+    statement: "Model timeout/unavailable phải được phân loại đúng."
+    enforcement: ["ModelGateway"]
+    violation_class: MISCLASSIFIED_MODEL_ERROR
+    test: "tests/invariants/model-gateway/mg-005.spec.ts"
+    phase: 2
+    severity: HIGH
+    status: ACTIVE
+  - id: MG-006
+    statement: "Model output không được coi là authority."
+    enforcement: ["PolicyEngine"]
+    violation_class: MODEL_AS_AUTHORITY
+    test: "tests/invariants/model-gateway/mg-006.spec.ts"
+    phase: 2
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Context (CX) ────────────────────────────────────────────────
+  - id: CX-001
+    statement: "ContextSnapshot phải versioned."
+    enforcement: ["ContextBuilder"]
+    violation_class: UNVERSIONED_SNAPSHOT
+    test: "tests/invariants/context/cx-001.spec.ts"
+    phase: 2
+    severity: HIGH
+    status: ACTIVE
+  - id: CX-002
+    statement: "Mọi context item phải có provenance (source, revision, reason)."
+    enforcement: ["ProvenanceTracker"]
+    violation_class: MISSING_CONTEXT_PROVENANCE
+    test: "tests/invariants/context/cx-002.spec.ts"
+    phase: 2
+    severity: HIGH
+    status: ACTIVE
+  - id: CX-003
+    statement: "Untrusted content phải được đánh dấu trong snapshot."
+    enforcement: ["PromptBoundary"]
+    violation_class: UNMARKED_UNTRUSTED
+    test: "tests/invariants/context/cx-003.spec.ts"
+    phase: 2
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CX-004
+    statement: "Token budget phải được respect."
+    enforcement: ["TokenBudgeter"]
+    violation_class: BUDGET_OVERFLOW
+    test: "tests/invariants/context/cx-004.spec.ts"
+    phase: 2
+    severity: HIGH
+    status: ACTIVE
+  - id: CX-005
+    statement: "Context không được trở thành runtime authority."
+    enforcement: ["PolicyEngine"]
+    violation_class: CONTEXT_AS_AUTHORITY
+    test: "tests/invariants/context/cx-005.spec.ts"
+    phase: 2
+    severity: CRITICAL
+    status: ACTIVE
+  - id: CX-006
+    statement: "ContextSnapshot phải ghi rõ workspaceRevision nguồn."
+    enforcement: ["ContextBuilder"]
+    violation_class: MISSING_SNAPSHOT_REVISION
+    test: "tests/invariants/context/cx-006.spec.ts"
+    phase: 2
+    severity: HIGH
+    status: ACTIVE
+
+  # ── Recovery (RC) ───────────────────────────────────────────────
+  - id: RC-001
+    statement: "Recovery action phải nằm trong allowed set của failure class."
+    enforcement: ["RecoveryPolicy"]
+    violation_class: DISALLOWED_RECOVERY
+    test: "tests/invariants/recovery/rc-001.spec.ts"
+    phase: 5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: RC-002
+    statement: "UNKNOWN failure không được retry vô hạn."
+    enforcement: ["RecoveryPolicy"]
+    violation_class: UNBOUNDED_RETRY
+    test: "tests/invariants/recovery/rc-002.spec.ts"
+    phase: 5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: RC-003
+    statement: "No-progress detector phải deterministic trên tập tín hiệu khả dụng tại phase hiện tại; tín hiệu chưa khả dụng coi là unknown, không gây báo no-progress sai."
+    enforcement: ["NoProgressDetector"]
+    violation_class: NON_DETERMINISTIC_NOPROGRESS
+    test: "tests/invariants/recovery/rc-003.spec.ts"
+    phase: 5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: RC-004
+    statement: "ROLLBACK chỉ được thực hiện khi policy cho phép."
+    enforcement: ["RecoveryEngine"]
+    violation_class: UNAUTHORIZED_ROLLBACK
+    test: "tests/invariants/recovery/rc-004.spec.ts"
+    phase: 5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: RC-005
+    statement: "Replanning phải tạo GraphMutation, không overwrite graph."
+    enforcement: ["Replanner"]
+    violation_class: GRAPH_OVERWRITE
+    test: "tests/invariants/recovery/rc-005.spec.ts"
+    phase: 5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: RC-006
+    statement: "Mỗi recovery action phải ghi provenance và lý do."
+    enforcement: ["RecoveryEngine"]
+    violation_class: MISSING_PROVENANCE
+    test: "tests/invariants/recovery/rc-006.spec.ts"
+    phase: 5
+    severity: HIGH
+    status: ACTIVE
+  - id: RC-007
+    statement: "ESCALATE phải chuyển session sang AWAITING_HUMAN."
+    enforcement: ["RecoveryEngine"]
+    violation_class: MISSING_ESCALATION
+    test: "tests/invariants/recovery/rc-007.spec.ts"
+    phase: 5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: RC-008
+    statement: "Recovery không được vi phạm budget của parent."
+    enforcement: ["RecoveryPolicy"]
+    violation_class: BUDGET_OVERFLOW
+    test: "tests/invariants/recovery/rc-008.spec.ts"
+    phase: 5
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Human Interaction (HI) ──────────────────────────────────────
+  - id: HI-001
+    statement: "Approval phải bind với (toolCallId, argumentsHash, policyVersion)."
+    enforcement: ["ApprovalEngine"]
+    violation_class: UNBOUND_APPROVAL
+    test: "tests/invariants/human/hi-001.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: HI-002
+    statement: "Approval không thể bị forge qua model output."
+    enforcement: ["ApprovalEngine"]
+    violation_class: FORGED_APPROVAL
+    test: "tests/invariants/human/hi-002.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: HI-003
+    statement: "HUMAN_OVERRIDE_COMPLETED phải được đánh dấu tường minh."
+    enforcement: ["CompletionGate"]
+    violation_class: HIDDEN_OVERRIDE
+    test: "tests/invariants/human/hi-003.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: HI-004
+    statement: "HUMAN_OVERRIDE_COMPLETED không được sửa VerificationReport."
+    enforcement: ["VerificationStore"]
+    violation_class: REPORT_REWRITE
+    test: "tests/invariants/human/hi-004.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: HI-005
+    statement: "Clarification không được corrupt state."
+    enforcement: ["SessionStateMachine"]
+    violation_class: STATE_CORRUPTION
+    test: "tests/invariants/human/hi-005.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: HI-006
+    statement: "Escalation phải được ghi EventLog kèm reason."
+    enforcement: ["EventLog"]
+    violation_class: MISSING_ESCALATION_LOG
+    test: "tests/invariants/human/hi-006.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+
+  # ── Provenance (PR) ─────────────────────────────────────────────
+  - id: PR-001
+    statement: "Mọi artifact phải có provenance."
+    enforcement: ["ArtifactStore"]
+    violation_class: MISSING_PROVENANCE
+    test: "tests/invariants/provenance/pr-001.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: PR-002
+    statement: "Mọi model output phải trace được về context đã dùng."
+    enforcement: ["ProvenanceTracker"]
+    violation_class: UNTRACEABLE_OUTPUT
+    test: "tests/invariants/provenance/pr-002.spec.ts"
+    phase: 2
+    severity: HIGH
+    status: ACTIVE
+  - id: PR-003
+    statement: "Provenance là append-only."
+    enforcement: ["ProvenanceStore"]
+    violation_class: PROVENANCE_MUTATION
+    test: "tests/invariants/provenance/pr-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: PR-004
+    statement: "Provenance không được chứa secret chưa redact."
+    enforcement: ["Redactor"]
+    violation_class: SECRET_LEAK
+    test: "tests/invariants/provenance/pr-004.spec.ts"
+    phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Observability (OB) ──────────────────────────────────────────
+  - id: OB-001
+    statement: "Mọi state transition phải phát event."
+    enforcement: ["EventLog"]
+    violation_class: MISSING_EVENT
+    test: "tests/invariants/observability/ob-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: OB-002
+    statement: "Mọi tool call phải phát event với đủ metadata."
+    enforcement: ["ToolGateway"]
+    violation_class: MISSING_TOOL_EVENT
+    test: "tests/invariants/observability/ob-002.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: OB-003
+    statement: "Mọi verification phải phát event với revision + scope + status."
+    enforcement: ["VerificationEngine"]
+    violation_class: MISSING_VERIFICATION_EVENT
+    test: "tests/invariants/observability/ob-003.spec.ts"
+    phase: 1.5
+    severity: HIGH
+    status: ACTIVE
+  - id: OB-004
+    statement: "EventLog phải queryable theo session, task, revision."
+    enforcement: ["EventLog"]
+    violation_class: UNQUERYABLE_EVENTLOG
+    test: "tests/invariants/observability/ob-004.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE
+
+  # ── Dependency Direction (DC) ───────────────────────────────────
+  - id: DC-001
+    statement: "Domain không phụ thuộc infrastructure."
+    enforcement: ["dependency-cruiser"]
+    violation_class: DEP_DIRECTION_VIOLATION
+    test: "tests/invariants/dependency-direction/dc-001.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: DC-002
+    statement: "LLM và filesystem là adapter, không phải domain authority."
+    enforcement: ["Module boundary"]
+    violation_class: DEP_DIRECTION_VIOLATION
+    test: "tests/invariants/dependency-direction/dc-002.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: DC-003
+    statement: "agent-core không import models, tools, infrastructure."
+    enforcement: ["dependency-cruiser"]
+    violation_class: DEP_DIRECTION_VIOLATION
+    test: "tests/invariants/dependency-direction/dc-003.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: DC-004
+    statement: "verification không import models."
+    enforcement: ["dependency-cruiser"]
+    violation_class: DEP_DIRECTION_VIOLATION
+    test: "tests/invariants/dependency-direction/dc-004.spec.ts"
+    phase: 1
+    severity: CRITICAL
+    status: ACTIVE
+  - id: DC-005
+    statement: "recovery không import models trực tiếp (chỉ qua interface)."
+    enforcement: ["dependency-cruiser"]
+    violation_class: DEP_DIRECTION_VIOLATION
+    test: "tests/invariants/dependency-direction/dc-005.spec.ts"
+    phase: 1
+    severity: HIGH
+    status: ACTIVE

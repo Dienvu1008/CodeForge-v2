@@ -140,16 +140,16 @@ INITIALIZING
    │ SESSION_READY
    ▼
 RUNNING ◄──────────────┐
-   │                   │
-   │ HUMAN_REQUIRED    │ HUMAN_DECIDED
-   ▼                   │
-AWAITING_HUMAN ────────┘
-   │
-   │ CANCEL_REQUESTED
-   ▼
-RUNNING
-   │
-   │ CANCEL_REQUESTED
+   │  │                │
+   │  │ HUMAN_REQUIRED  │ HUMAN_DECIDED
+   │  ▼                │
+   │ AWAITING_HUMAN ───┘
+   │  │
+   │  │ CANCEL_REQUESTED
+   │  ▼
+   │ CANCELLING ◄───────┐
+   │                    │
+   │ CANCEL_REQUESTED ──┘
    ▼
 CANCELLING
    │
@@ -164,6 +164,9 @@ RUNNING
 COMPLETED
 ```
 
+Ghi chú: `CANCEL_REQUESTED` hợp lệ từ **cả** `RUNNING` và `AWAITING_HUMAN`.
+Không có đường nào phải quay lại `RUNNING` để cancel.
+
 ### 3.3 Transition Table
 
 | From | Event | Guard | To | Effect |
@@ -174,6 +177,7 @@ COMPLETED
 | RUNNING | HUMAN_REQUIRED | escalation approved | AWAITING_HUMAN | emit HUMAN_APPROVAL_REQUESTED |
 | AWAITING_HUMAN | HUMAN_DECIDED | decision recorded | RUNNING | emit HUMAN_APPROVAL_* |
 | RUNNING | CANCEL_REQUESTED | user or policy | CANCELLING | propagate cancel to TaskRuns |
+| AWAITING_HUMAN | CANCEL_REQUESTED | user or policy | CANCELLING | propagate cancel to TaskRuns |
 | CANCELLING | CANCEL_COMPLETED | all TaskRuns reconciled | ABORTED | release lock, checkpoint |
 | RUNNING | ALL_TASKS_TERMINAL | all tasks in terminal state | COMPLETED | release lock, final checkpoint |
 | RUNNING | SESSION_FAILED | fatal error | ABORTED | release lock, checkpoint |
@@ -199,8 +203,9 @@ COMPLETED
 | SS-L6 | RUNNING → COMPLETED chỉ khi mọi task terminal. |
 | SS-L7 | Không có transition nào bỏ qua INITIALIZING. |
 | SS-L8 | ABORTED và COMPLETED là terminal. |
-| SS-L9 | AWAITING_HUMAN chỉ thoát khi có human decision. |
+| SS-L9 | AWAITING_HUMAN chỉ thoát sang RUNNING khi có human decision; ngoại lệ duy nhất là CANCEL_REQUESTED → CANCELLING. |
 | SS-L10 | CANCELLING không được chuyển sang COMPLETED. |
+| SS-L11 | CANCEL_REQUESTED hợp lệ từ cả RUNNING và AWAITING_HUMAN; không có state non-terminal nào bị kẹt khi cancel. |
 
 Tham chiếu: `INVARIANTS.md` → **SS-002, SS-003, SS-004, SS-007**.
 
@@ -245,7 +250,8 @@ READY
    │ SCHEDULED
    ▼
 RUNNING
-   │ EXECUTION_ENDED
+   │
+   │ RUN_ENDED_OK      (TaskRun SUCCEEDED/FAILED)
    ▼
 VERIFYING
    ├── VERIFICATION_PASSED ──► PASSED (terminal)
@@ -261,9 +267,18 @@ VERIFYING
                                  ▼
                               RUNNING (loop)
 
-any ── SUPERSEDE ──► SUPERSEDED (terminal)
-any ── ABORT ──────► ABORTED (terminal)
-any ── HUMAN_REQUIRED ──► AWAITING_HUMAN
+RUNNING ── RUN_ENDED_ABNORMAL ──► FAILED   (TaskRun TIMEOUT/INTERRUPTED)
+RUNNING ── EXTERNAL_MUTATION_DETECTED ──► FAILED
+VERIFYING ── EXTERNAL_MUTATION_DETECTED ──► FAILED
+
+PENDING ── DEP_UNREACHABLE ──► ABORTED (terminal, blocked)
+
+AWAITING_HUMAN ── HUMAN_OVERRIDE_PASSED ──► PASSED (terminal, marked)
+
+any (non-terminal) ── SUPERSEDE ──► SUPERSEDED (terminal)
+any (non-terminal) ── ABORT ──────► ABORTED (terminal)
+any (non-terminal) ── HUMAN_REQUIRED ──► AWAITING_HUMAN
+AWAITING_HUMAN ── CANCEL_REQUESTED ──► ABORTED (terminal)
 ```
 
 ### 4.3 Transition Table
@@ -271,17 +286,24 @@ any ── HUMAN_REQUIRED ──► AWAITING_HUMAN
 | From | Event | Guard | To | Effect |
 |---|---|---|---|---|
 | PENDING | DEPS_SATISFIED | all deps PASSED | READY | — |
+| PENDING | DEP_UNREACHABLE | ∃ predecessor terminal-non-PASSED ∧ no path to PASSED | ABORTED | emit TASK_BLOCKED, reconcile |
 | READY | SCHEDULED | scheduler picked ∧ budget ok | RUNNING | start TaskRun |
-| RUNNING | EXECUTION_ENDED | TaskRun terminal | VERIFYING | run verification |
+| RUNNING | RUN_ENDED_OK | TaskRun ∈ {SUCCEEDED, FAILED} | VERIFYING | run verification |
+| RUNNING | RUN_ENDED_ABNORMAL | TaskRun ∈ {TIMEOUT, INTERRUPTED} | FAILED | emit FAILURE_DETECTED (class TIMEOUT/ENVIRONMENT) |
+| RUNNING | EXTERNAL_MUTATION_DETECTED | non-scratch mutation not agent-owned | FAILED | emit FAILURE_DETECTED (class ENVIRONMENT) |
+| VERIFYING | EXTERNAL_MUTATION_DETECTED | revision drift during verify | FAILED | emit FAILURE_DETECTED (class ENVIRONMENT) |
 | VERIFYING | VERIFICATION_PASSED | report valid ∧ fresh | PASSED | emit TASK_STATE_CHANGED |
 | VERIFYING | VERIFICATION_FAILED | report valid ∧ fresh | FAILED | emit FAILURE_DETECTED |
 | FAILED | FAILURE_ANALYZED | Failure record committed | FAILURE_ANALYZED | — |
 | FAILURE_ANALYZED | RECOVERY_CHOSEN | RecoveryAction committed | RECOVERY | execute recovery |
 | RECOVERY | RECOVERY_ENDED | action terminal | RUNNING | start new TaskRun |
-| any | SUPERSEDE | new task valid | SUPERSEDED | update graph |
-| any | ABORT | policy | ABORTED | cleanup |
+| any (non-terminal) | SUPERSEDE | new task valid ∧ no RUNNING TaskRun | SUPERSEDED | update graph |
+| any (non-terminal) | ABORT | policy | ABORTED | cleanup |
 | RUNNING | HUMAN_REQUIRED | escalation | AWAITING_HUMAN | emit HUMAN_APPROVAL_REQUESTED |
+| FAILURE_ANALYZED | HUMAN_REQUIRED | escalation | AWAITING_HUMAN | emit HUMAN_APPROVAL_REQUESTED |
 | AWAITING_HUMAN | HUMAN_DECIDED | decision recorded | RUNNING / ABORTED | — |
+| AWAITING_HUMAN | HUMAN_OVERRIDE_PASSED | override committed ∧ HUMAN_OVERRIDE_COMPLETED linked | PASSED | emit HUMAN_OVERRIDE_COMPLETED |
+| AWAITING_HUMAN | CANCEL_REQUESTED | session cancelling | ABORTED | reconcile |
 | RUNNING | CANCEL_REQUESTED | session cancelling | ABORTED | reconcile |
 | VERIFYING | CANCEL_REQUESTED | session cancelling | ABORTED | reconcile |
 
@@ -290,26 +312,33 @@ any ── HUMAN_REQUIRED ──► AWAITING_HUMAN
 | Guard | Điều kiện |
 |---|---|
 | `all deps PASSED` | mọi predecessor trong graph có state = PASSED |
+| `dep unreachable` | ∃ predecessor ở terminal-non-PASSED (ABORTED, hoặc SUPERSEDED không rewire) ∧ không còn path nào để mọi predecessor đạt PASSED. Deterministic function trên graph. |
 | `scheduler picked` | Scheduler quyết định task này là next |
 | `budget ok` | parent remaining budget > 0 |
-| `TaskRun terminal` | run.state ∈ {SUCCEEDED, FAILED, TIMEOUT, CANCELLED, INTERRUPTED} |
+| `TaskRun ∈ {SUCCEEDED, FAILED}` | run kết thúc bình thường, verification có nghĩa |
+| `TaskRun ∈ {TIMEOUT, INTERRUPTED}` | run kết thúc bất thường, bỏ qua verify, vào failure analysis |
+| `TaskRun CANCELLED` | xử lý bởi CANCEL_REQUESTED, không qua VERIFYING |
 | `report valid` | VerificationReport.status ∈ {PASS, FAIL} ∧ targetWorkspaceRevision khớp |
 | `fresh` | revision hiện tại == report.targetWorkspaceRevision |
-| `new task valid` | Task schema valid ∧ graph validator pass |
+| `override committed` | HumanOverride record đã commit ∧ marker HUMAN_OVERRIDE_COMPLETED linked tới VerificationReport gốc (report không bị sửa) |
+| `new task valid` | Task schema valid ∧ graph validator pass ∧ không có TaskRun RUNNING |
 
 ### 4.5 Local invariants
 
 | ID | Statement |
 |---|---|
 | SM-L1 | RUNNING → PASSED **không** được phép trực tiếp; phải qua VERIFYING. |
-| SM-L2 | VERIFYING → PASSED chỉ khi có report hợp lệ. |
+| SM-L2 | VERIFYING → PASSED chỉ khi có report hợp lệ. Đường vào PASSED không qua verification **duy nhất** là AWAITING_HUMAN → PASSED qua HUMAN_OVERRIDE_PASSED, và đường này không sửa report gốc. |
 | SM-L3 | Terminal state không có outgoing transition. |
 | SM-L4 | Mọi transition phải emit event. |
-| SM-L5 | AWAITING_HUMAN không tự động thoát. |
+| SM-L5 | AWAITING_HUMAN không tự động thoát; chỉ thoát qua HUMAN_DECIDED, HUMAN_OVERRIDE_PASSED, hoặc CANCEL_REQUESTED. |
 | SM-L6 | RECOVERY → RUNNING chỉ khi action terminal. |
 | SM-L7 | Task trong SUPERSEDED không được schedule. |
+| SM-L8 | Task PENDING với predecessor terminal-non-PASSED và không còn path đạt PASSED phải chuyển ABORTED (không kẹt vô hạn ở PENDING). |
+| SM-L9 | TaskRun kết thúc TIMEOUT/INTERRUPTED không đi qua VERIFYING; đi thẳng FAILED. |
+| SM-L10 | HUMAN_OVERRIDE_PASSED bắt buộc có marker HUMAN_OVERRIDE_COMPLETED; VerificationReport gốc immutable (VR-005, HI-004). |
 
-Tham chiếu: `INVARIANTS.md` → **SM-001, SM-002, SM-003, SM-005, TI-005, TI-006**.
+Tham chiếu: `INVARIANTS.md` → **SM-001, SM-002, SM-003, SM-005, TI-005, TI-006, EX-006, VR-005, HI-003, HI-004**.
 
 ### 4.6 Terminal states
 
@@ -324,9 +353,14 @@ Tham chiếu: `INVARIANTS.md` → **SM-001, SM-002, SM-003, SM-005, TI-005, TI-0
 | RUNNING → PASSED | reject (`INVALID_TRANSITION`) |
 | PENDING → RUNNING | reject (bỏ qua READY) |
 | PASSED → anything | reject (terminal) |
+| ABORTED → anything | reject (terminal) |
+| SUPERSEDED → anything | reject (terminal) |
 | AWAITING_HUMAN → VERIFYING | reject |
+| AWAITING_HUMAN → PASSED (không có override record) | reject (`GUARD_FAILED`) |
 | FAILED → PASSED | reject |
 | VERIFYING → RUNNING | reject (phải qua PASSED/FAILED) |
+| PENDING → ABORTED khi dep vẫn còn path đạt PASSED | reject (`GUARD_FAILED`) |
+| SUPERSEDE khi có TaskRun RUNNING | reject (`GUARD_FAILED`) — phải cancel run trước |
 
 ---
 
@@ -697,8 +731,21 @@ Tham chiếu: `INVARIANTS.md` → **SS-001, SS-005, WS-010**.
 ### 13.2 Task ↔ TaskRun
 
 - Task RUNNING ↔ đúng 1 TaskRun RUNNING.
-- Task VERIFYING khi TaskRun terminal.
+- Task chỉ chuyển khỏi RUNNING khi TaskRun đạt terminal; kết cục TaskRun ánh xạ tới event của Task:
+
+| TaskRun terminal | Task event | Task đích |
+|---|---|---|
+| SUCCEEDED | RUN_ENDED_OK | VERIFYING |
+| FAILED | RUN_ENDED_OK | VERIFYING |
+| TIMEOUT | RUN_ENDED_ABNORMAL | FAILED |
+| INTERRUPTED | RUN_ENDED_ABNORMAL | FAILED |
+| CANCELLED | CANCEL_REQUESTED | ABORTED |
+
 - Task RECOVERY khi RecoveryAction RUNNING.
+
+Lưu ý: TaskRun `FAILED` (process fail) vẫn đi VERIFYING vì verification là authority quyết định
+PASS/FAIL của task, không phải exit code của một run đơn lẻ. Chỉ kết cục **bất thường**
+(TIMEOUT/INTERRUPTED) mới bỏ qua verify.
 
 ### 13.3 Task ↔ Verification
 
@@ -830,6 +877,23 @@ Ví dụ:
 - `TOOL_CALL_APPROVED`
 - `VERIFICATION_ENDED`
 
+### 17.1.1 Transition triggers (SM-TASK)
+
+Các **event trigger** dưới đây khởi động transition của SM-TASK. Chúng khác với event
+được ghi vào EventLog (thường là `TASK_STATE_CHANGED` kèm `trigger`):
+
+| Trigger | Ý nghĩa | Nguồn phát |
+|---|---|---|
+| `DEPS_SATISFIED` | mọi predecessor PASSED | Scheduler (deterministic) |
+| `DEP_UNREACHABLE` | predecessor terminal-non-PASSED, không còn path đạt PASSED | GraphEvaluator (deterministic) |
+| `RUN_ENDED_OK` | TaskRun SUCCEEDED/FAILED | ExecutionCoordinator |
+| `RUN_ENDED_ABNORMAL` | TaskRun TIMEOUT/INTERRUPTED | ExecutionCoordinator |
+| `EXTERNAL_MUTATION_DETECTED` | drift non-scratch không do agent | WorkspaceManager reconcile |
+| `HUMAN_OVERRIDE_PASSED` | human override hoàn tất completion | CompletionGate |
+
+Trigger `EXECUTION_ENDED` (v1.0 cũ) được **thay thế** bằng cặp `RUN_ENDED_OK` /
+`RUN_ENDED_ABNORMAL` để phân biệt kết cục bình thường và bất thường của TaskRun.
+
 ### 17.2 Event payload
 
 Mọi event payload phải chứa:
@@ -909,6 +973,7 @@ Nếu 0 row → version conflict → retry.
 |---|---|
 | `session-happy-path` | CREATED → RUNNING → COMPLETED |
 | `session-cancel` | RUNNING → CANCELLING → ABORTED |
+| `session-cancel-from-awaiting-human` | AWAITING_HUMAN → CANCELLING → ABORTED |
 | `session-human-escalation` | RUNNING → AWAITING_HUMAN → RUNNING |
 | `session-invalid-transition` | CREATED → COMPLETED reject |
 | `session-complete-with-pending-task` | reject |
@@ -924,8 +989,17 @@ Nếu 0 row → version conflict → retry.
 | `task-invalid-pending-to-running` | reject |
 | `task-terminal-immutable` | PASSED → anything reject |
 | `task-supersede` | any → SUPERSEDED |
+| `task-supersede-running-reject` | SUPERSEDE khi có TaskRun RUNNING → reject |
 | `task-stale-verification` | VERIFYING → PASSED reject |
 | `task-awaiting-human` | RUNNING → AWAITING_HUMAN → RUNNING |
+| `task-dep-unreachable-abort` | PENDING → ABORTED khi predecessor ABORTED |
+| `task-dep-still-reachable-no-abort` | PENDING giữ nguyên khi dep còn path đạt PASSED |
+| `task-run-timeout-to-failed` | RUNNING → FAILED (không qua VERIFYING) |
+| `task-run-interrupted-to-failed` | RUNNING → FAILED (không qua VERIFYING) |
+| `task-external-mutation-to-failed` | RUNNING/VERIFYING → FAILED |
+| `task-human-override-passed` | AWAITING_HUMAN → PASSED với marker |
+| `task-human-override-no-record-reject` | AWAITING_HUMAN → PASSED không record → reject |
+| `task-cancel-from-awaiting-human` | AWAITING_HUMAN → ABORTED |
 
 ### 20.3 TaskRun
 
@@ -1009,6 +1083,9 @@ Nếu 0 row → version conflict → retry.
 | MaliciousReplanner mutate immutable task | SM-GRAPH | reject |
 | MaliciousSession jump to COMPLETED | SM-SESSION | reject |
 | PromptInjection: "mark task PASSED" | SM-TASK | reject (no verification) |
+| MaliciousActor forge HUMAN_OVERRIDE_PASSED (no override record) | SM-TASK | reject (`GUARD_FAILED`) |
+| MaliciousActor: override rewrite VerificationReport | SM-TASK | reject (report immutable, VR-005) |
+| MaliciousPlanner: keep PENDING task alive khi dep ABORTED | SM-TASK | DEP_UNREACHABLE → ABORTED (không kẹt) |
 | Concurrent double transition | all | optimistic lock fail |
 
 ---
@@ -1019,7 +1096,7 @@ Nếu 0 row → version conflict → retry.
 |---|---|---|
 | SS-002 | SM-SESSION | transition table |
 | SS-003 | SM-SESSION | guard `all tasks terminal` |
-| SS-004 | SM-SESSION | effect `propagate cancel` |
+| SS-004 | SM-SESSION | effect `propagate cancel` (từ cả RUNNING và AWAITING_HUMAN) |
 | SS-007 | SM-SESSION | guard `decision recorded` |
 | SM-001 | all | pure transition |
 | SM-002 | SM-TASK | no RUNNING → PASSED |
@@ -1031,7 +1108,10 @@ Nếu 0 row → version conflict → retry.
 | TI-006 | SM-TASK | terminal immutability |
 | EX-001 | SM-TASK-RUN | finalize once |
 | EX-005 | SM-TASK-RUN | effect `reconcile` |
-| EX-006 | SM-TASK | CANCEL → ABORTED |
+| EX-006 | SM-TASK | CANCEL → ABORTED (từ RUNNING, VERIFYING, AWAITING_HUMAN); DEP_UNREACHABLE → ABORTED không để lại orphan |
+| VR-005 | SM-TASK | HUMAN_OVERRIDE_PASSED không sửa report gốc |
+| HI-003 | SM-TASK | guard `override committed` (marker tường minh) |
+| HI-004 | SM-TASK | report immutable khi override |
 | GI-002 | SM-GRAPH | validator before commit |
 | GI-003 | SM-GRAPH | version monotonic |
 | GI-008 | SM-GRAPH | atomic commit |
