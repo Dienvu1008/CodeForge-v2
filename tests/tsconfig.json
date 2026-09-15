@@ -1,0 +1,24 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "noEmit": false,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "invariants/**/*.ts",
+    "workspace/**/*.ts",
+    "cross-platform/**/*.ts",
+    "adversarial/**/*.ts",
+    "state-machine/**/*.ts",
+    "graph/**/*.ts",
+    "contracts/**/*.ts",
+    "_harness/**/*.ts"
+  ],
+  "references": [
+    { "path": "../packages/agent-core" },
+    { "path": "../packages/infrastructure" },
+    { "path": "../packages/testing" }
+  ]
+}

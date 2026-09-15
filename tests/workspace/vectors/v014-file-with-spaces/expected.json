@@ -1,0 +1,9 @@
+{
+  "vectorId": "v014-file-with-spaces",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "77bff8b9a116da19aa515a37cfa88dcc7d93cda7de4152e7a6ebfe7022b83482",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "filename containing spaces"
+}

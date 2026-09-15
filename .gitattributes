@@ -1,0 +1,8 @@
+# PLATFORM_SUPPORT.md §8.3 — do not force-normalize line endings globally.
+# Source defaults to LF; Windows-specific scripts keep CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Workspace hash test vectors MUST be byte-exact — never let Git touch them.
+tests/workspace/vectors/** -text

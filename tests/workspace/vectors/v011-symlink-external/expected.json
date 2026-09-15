@@ -1,0 +1,9 @@
+{
+  "vectorId": "v011-symlink-external",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "7489beb578ca4fe559af28f20ec81e1ee4185104c58b81edb3fd06bef5c62c19",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "symlink pointing outside root — skipped with warning"
+}

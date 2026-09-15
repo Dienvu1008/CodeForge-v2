@@ -1,0 +1,9 @@
+{
+  "vectorId": "v002-single-file",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "a3b59d8569126fa794210e2b8504f2ca585c195b38dc5a457fd152323eb311e5",
+  "expectedFileCount": 1,
+  "expectedBytes": 5,
+  "notes": "single ASCII file"
+}

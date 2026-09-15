@@ -1,0 +1,9 @@
+{
+  "vectorId": "v003-multiple-files",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "33724c13029160cc57537e95b3dc503f302fad06d64692017b9967f1a336728e",
+  "expectedFileCount": 3,
+  "expectedBytes": 17,
+  "notes": "multiple files at root"
+}

@@ -1,0 +1,9 @@
+{
+  "vectorId": "v013-empty-directory",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "4c5fa71e09ffa754bc2a6f1df2310cd32dca88453d0376c9c6ff18da93b30fb2",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "empty directory is included in the hash"
+}

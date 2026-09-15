@@ -1,0 +1,9 @@
+{
+  "vectorId": "v012-scratch-zone",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "fdcfb8f7b55c0e331b1a77bbdfb44484ed904856b8df871dcfc22a935f6088d1",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "node_modules excluded via scratch prefix"
+}

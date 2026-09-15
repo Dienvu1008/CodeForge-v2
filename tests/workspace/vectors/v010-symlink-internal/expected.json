@@ -1,0 +1,9 @@
+{
+  "vectorId": "v010-symlink-internal",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "427ce1f391213df2a7bb495ad2dacc8d2958394450916d2a8a7f026fa7314185",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "symlink pointing inside root — recorded, not followed"
+}

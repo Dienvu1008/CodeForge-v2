@@ -1,0 +1,9 @@
+{
+  "vectorId": "v020-special-chars",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "38f39b6623504be16caf652036808094abcf916d95fae5e61e0279204b3abc6a",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "filename with tab (escaped in canonical line); linux only (Windows forbids)"
+}

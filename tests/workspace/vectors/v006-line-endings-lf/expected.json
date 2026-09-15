@@ -1,0 +1,9 @@
+{
+  "vectorId": "v006-line-endings-lf",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "e2966569bbffedb23a418f2e94f00f26b004733a2562688f6a5273d61b5c6344",
+  "expectedFileCount": 1,
+  "expectedBytes": 5,
+  "notes": "file with LF line endings (must differ from v005)"
+}

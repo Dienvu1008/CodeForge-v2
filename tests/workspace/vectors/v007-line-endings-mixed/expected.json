@@ -1,0 +1,9 @@
+{
+  "vectorId": "v007-line-endings-mixed",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "25fa70b3259f2be7c33704ad9cbf097e83944333de5f872bc5cefa7f92daf016",
+  "expectedFileCount": 1,
+  "expectedBytes": 9,
+  "notes": "file with mixed CRLF and LF"
+}

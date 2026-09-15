@@ -1,0 +1,9 @@
+{
+  "vectorId": "v004-nested-dirs",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "3f616e9dd513243541067a142177ba925e6504365568b74407d1e9b925831071",
+  "expectedFileCount": 3,
+  "expectedBytes": 39,
+  "notes": "nested directories with files"
+}

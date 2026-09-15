@@ -1,0 +1,9 @@
+{
+  "vectorId": "v008-unicode-nfc",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "0b151de48db0db3f9de535fdec758f090b2c9d7b837573c341f5939de1dcc00c",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "NFC filename (café.txt composed) — same hash as v009"
+}

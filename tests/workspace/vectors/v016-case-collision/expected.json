@@ -1,0 +1,9 @@
+{
+  "vectorId": "v016-case-collision",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "5f3490c98f25a9f04c9062aa1afce2833a9b9a2ec06356805b6e743b97311824",
+  "expectedFileCount": 2,
+  "expectedBytes": 10,
+  "notes": "Foo.ts + foo.ts — only creatable on case-sensitive FS (linux)"
+}

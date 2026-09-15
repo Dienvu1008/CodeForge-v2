@@ -1,0 +1,9 @@
+{
+  "vectorId": "v018-many-files",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "fe42d294a187dc2f67096202be59ec831aab50b8bd05ebd344488766ccd6e6f4",
+  "expectedFileCount": 500,
+  "expectedBytes": 4390,
+  "notes": "500 small files"
+}

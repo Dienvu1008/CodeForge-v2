@@ -1,0 +1,9 @@
+{
+  "vectorId": "v019-permissions",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "b5e3e42184de962036bdc04e4d98106c9584c2060d6f14f406f3588fdfc0363e",
+  "expectedFileCount": 1,
+  "expectedBytes": 18,
+  "notes": "executable bit — must NOT change hash (v1 excludes mode); linux only"
+}

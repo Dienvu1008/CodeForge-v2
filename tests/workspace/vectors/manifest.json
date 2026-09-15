@@ -1,0 +1,279 @@
+{
+  "canonicalFormVersion": "v1",
+  "generatedOn": "win32",
+  "vectors": [
+    {
+      "id": "v001-empty",
+      "notes": "empty workspace (no entries)",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expectedFileCount": 0,
+      "expectedBytes": 0
+    },
+    {
+      "id": "v002-single-file",
+      "notes": "single ASCII file",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "a3b59d8569126fa794210e2b8504f2ca585c195b38dc5a457fd152323eb311e5",
+      "expectedFileCount": 1,
+      "expectedBytes": 5
+    },
+    {
+      "id": "v003-multiple-files",
+      "notes": "multiple files at root",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "33724c13029160cc57537e95b3dc503f302fad06d64692017b9967f1a336728e",
+      "expectedFileCount": 3,
+      "expectedBytes": 17
+    },
+    {
+      "id": "v004-nested-dirs",
+      "notes": "nested directories with files",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "3f616e9dd513243541067a142177ba925e6504365568b74407d1e9b925831071",
+      "expectedFileCount": 3,
+      "expectedBytes": 39
+    },
+    {
+      "id": "v005-line-endings-crlf",
+      "notes": "file with CRLF line endings",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "ad296d7945a6b0f317525ea1637dd7449bcaff7c062a5ef0589678b936153a02",
+      "expectedFileCount": 1,
+      "expectedBytes": 6
+    },
+    {
+      "id": "v006-line-endings-lf",
+      "notes": "file with LF line endings (must differ from v005)",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "e2966569bbffedb23a418f2e94f00f26b004733a2562688f6a5273d61b5c6344",
+      "expectedFileCount": 1,
+      "expectedBytes": 5
+    },
+    {
+      "id": "v007-line-endings-mixed",
+      "notes": "file with mixed CRLF and LF",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "25fa70b3259f2be7c33704ad9cbf097e83944333de5f872bc5cefa7f92daf016",
+      "expectedFileCount": 1,
+      "expectedBytes": 9
+    },
+    {
+      "id": "v008-unicode-nfc",
+      "notes": "NFC filename (café.txt composed) — same hash as v009",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "0b151de48db0db3f9de535fdec758f090b2c9d7b837573c341f5939de1dcc00c",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v009-unicode-nfd",
+      "notes": "NFD filename (café.txt decomposed) — same hash as v008 after NFC",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "0b151de48db0db3f9de535fdec758f090b2c9d7b837573c341f5939de1dcc00c",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v010-symlink-internal",
+      "notes": "symlink pointing inside root — recorded, not followed",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": true,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "427ce1f391213df2a7bb495ad2dacc8d2958394450916d2a8a7f026fa7314185",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v011-symlink-external",
+      "notes": "symlink pointing outside root — skipped with warning",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": true,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "7489beb578ca4fe559af28f20ec81e1ee4185104c58b81edb3fd06bef5c62c19",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v012-scratch-zone",
+      "notes": "node_modules excluded via scratch prefix",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [
+        "node_modules"
+      ],
+      "generated": true,
+      "expectedHash": "fdcfb8f7b55c0e331b1a77bbdfb44484ed904856b8df871dcfc22a935f6088d1",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v013-empty-directory",
+      "notes": "empty directory is included in the hash",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "4c5fa71e09ffa754bc2a6f1df2310cd32dca88453d0376c9c6ff18da93b30fb2",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v014-file-with-spaces",
+      "notes": "filename containing spaces",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "77bff8b9a116da19aa515a37cfa88dcc7d93cda7de4152e7a6ebfe7022b83482",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v015-file-with-unicode-name",
+      "notes": "unicode (CJK) filename",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "26ceaea9eedfe90be20809e3499c6d972fc711679766a109b054309686d42760",
+      "expectedFileCount": 1,
+      "expectedBytes": 1
+    },
+    {
+      "id": "v016-case-collision",
+      "notes": "Foo.ts + foo.ts — only creatable on case-sensitive FS (linux)",
+      "platforms": [
+        "linux"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": false,
+      "reason": "not applicable on win32"
+    },
+    {
+      "id": "v017-large-file",
+      "notes": "2 MB file — streaming hash, no OOM",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "723773bc15ddb62454b60049475c436e740588e0bf39af88cd78f9562d57873c",
+      "expectedFileCount": 1,
+      "expectedBytes": 2097152
+    },
+    {
+      "id": "v018-many-files",
+      "notes": "500 small files",
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": true,
+      "expectedHash": "fe42d294a187dc2f67096202be59ec831aab50b8bd05ebd344488766ccd6e6f4",
+      "expectedFileCount": 500,
+      "expectedBytes": 4390
+    },
+    {
+      "id": "v019-permissions",
+      "notes": "executable bit — must NOT change hash (v1 excludes mode); linux only",
+      "platforms": [
+        "linux"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": false,
+      "reason": "not applicable on win32"
+    },
+    {
+      "id": "v020-special-chars",
+      "notes": "filename with tab (escaped in canonical line); linux only (Windows forbids)",
+      "platforms": [
+        "linux"
+      ],
+      "requiresSymlink": false,
+      "scratchPrefixes": [],
+      "generated": false,
+      "reason": "not applicable on win32"
+    }
+  ]
+}

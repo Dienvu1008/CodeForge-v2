@@ -1,0 +1,26 @@
+name: workspace-vectors
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# CI2: canonical hash cross-platform vectors must produce identical hashes on ubuntu + windows.
+jobs:
+  vectors:
+    name: vectors (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:workspace-vectors
+      - run: npm run test:cross-platform

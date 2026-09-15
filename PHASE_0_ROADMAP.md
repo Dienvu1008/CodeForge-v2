@@ -103,15 +103,15 @@ Mục tiêu: **hash cross-platform ổn định + path canonicalization ổn + c
 | Ref | Deliverable | Bắt buộc |
 |---|---|---|
 | A0 | ✅ **DONE** — L1 đã sửa (PHASE_0_ACCEPTANCE v1.1, 2 OS). L2 xác nhận (113 CRITICAL ≥ 100). | ✅ |
-| Setup | Monorepo skeleton + tsconfig + vitest + eslint + dep-cruiser | ✅ |
-| C1 | Canonical hash reference impl | ✅ |
-| C3 | Path canonicalizer reference impl | ✅ |
-| C2 | WorkspaceRevision reference impl (bind C1) | ✅ |
+| Setup | ✅ **DONE** — Monorepo (npm workspaces), tsconfig strict ESM + project refs, Vitest, ESLint flat, dependency-cruiser, CI workflows. typecheck/test/lint/depcruise đều xanh. | ✅ |
+| C1 | ✅ **DONE** — `packages/infrastructure/src/workspace-hash` (walk + canonical-line + blake3/sha256). 17 test pass (empty/single/nested, CRLF≠LF, NFC=NFD, scratch exclude, empty-dir, no-false-negative, symlink). Full 20 binary vectors = A3 (kế tiếp). | ✅ |
+| C3 | ✅ **DONE** — `packages/infrastructure/src/path` (canonicalize lexical + realpath + case-sensitivity). 29 test (PC-1..PC-10) pass. | ✅ |
+| C2 | ✅ **DONE** — domain type `WorkspaceRevision` + `isFresh` (agent-core), factory `computeWorkspaceRevision` (infrastructure, bind C1), ULID primitive (injectable time/random). 20 test (WR-1..WR-10 + ULID) pass. | ✅ |
 | C9 | FakeModel | ✅ |
-| A3 | `workspace_vectors/manifest.json` + 20 binary vectors | ✅ |
+| A3 | ✅ **DONE + cross-platform PROVEN** — 20 vector + builder + generator; `manifest.json` + **20/20 `expected.json`** (17 Windows + 3 linux-only v016/v019/v020 sinh trong WSL2 Ubuntu-24.04). **Hash khớp byte-cho-byte Windows↔Linux** cho toàn bộ vector chung (verify thực tế trong WSL: 96 test pass, ws-001 "matches committed expected.json" pass trên ext4 case-sensitive). Phát hiện + sửa 1 bug thực (symlink absolute target không reproducible → relative). | ✅ |
 | T2 | Hash/revision tests (CH-1..CH-20) | ✅ |
 | T3 | Cross-platform run (Windows + WSL2) | ✅ |
-| T-WS | Invariant tests Phase 0 CRITICAL: WS-001, WS-002, WS-007, WS-009 | ✅ |
+| T-WS | ✅ **DONE** — `tests/invariants/workspace/ws-001,002,007,009.spec.ts` (16 test), header `@invariant`, path khớp `invariants.yaml`. Tất cả pass. | ✅ |
 | CI1, CI2 | `invariants.yml` + `workspace-vectors.yml` trên 2 OS | ✅ |
 
 **Định nghĩa hoàn thành:** CI xanh trên windows-latest + ubuntu-latest; 20 vector cho cùng hash

@@ -1,0 +1,11 @@
+{
+  "name": "@codeforge/tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@codeforge/agent-core": "*",
+    "@codeforge/infrastructure": "*",
+    "@codeforge/testing": "*"
+  }
+}

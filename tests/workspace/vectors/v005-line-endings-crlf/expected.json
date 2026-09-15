@@ -1,0 +1,9 @@
+{
+  "vectorId": "v005-line-endings-crlf",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "ad296d7945a6b0f317525ea1637dd7449bcaff7c062a5ef0589678b936153a02",
+  "expectedFileCount": 1,
+  "expectedBytes": 6,
+  "notes": "file with CRLF line endings"
+}

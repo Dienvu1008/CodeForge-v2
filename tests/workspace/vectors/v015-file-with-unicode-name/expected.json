@@ -1,0 +1,9 @@
+{
+  "vectorId": "v015-file-with-unicode-name",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "26ceaea9eedfe90be20809e3499c6d972fc711679766a109b054309686d42760",
+  "expectedFileCount": 1,
+  "expectedBytes": 1,
+  "notes": "unicode (CJK) filename"
+}

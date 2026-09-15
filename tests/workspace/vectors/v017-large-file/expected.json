@@ -1,0 +1,9 @@
+{
+  "vectorId": "v017-large-file",
+  "canonicalFormVersion": "v1",
+  "hashAlgorithm": "blake3",
+  "expectedHash": "723773bc15ddb62454b60049475c436e740588e0bf39af88cd78f9562d57873c",
+  "expectedFileCount": 1,
+  "expectedBytes": 2097152,
+  "notes": "2 MB file — streaming hash, no OOM"
+}
