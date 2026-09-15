@@ -1,7 +1,7 @@
 # Phase 0 Sign-off
 
 Date: 2026-09-14
-Commit: (to be filled with the sign-off commit SHA after these artifacts are committed; pre-signoff baseline: 0684b1f)
+Commit: f12a852
 Branch: main
 
 Format per PHASE_0_ACCEPTANCE §9.2.
@@ -16,7 +16,7 @@ Format per PHASE_0_ACCEPTANCE §9.2.
 - [x] Graph — `TaskGraph`, 7-op `GraphOperation` union, 7-stage validator, `CycleDetector` interface
 - [x] Adversarial — 7 variants + 7 scenarios (interface + payloads; live blocking is Phase 1.5)
 - [x] FakeModel — deterministic `ModelGateway` double, no real LLM, no network
-- [x] CI — green on 2 OS (ubuntu-latest + windows-latest); 5 workflows
+- [x] CI — all 5 workflows GREEN on GitHub Actions (ubuntu-latest + windows-latest) at commit f12a852
 - [x] Dependency direction — DC-001..DC-005 enforced via dependency-cruiser (0 violations)
 
 ## Test results
@@ -41,17 +41,19 @@ without a runtime. No CRITICAL invariant is *skipped*; the runtime-enforced ones
 
 ## Cross-platform
 
-- Linux (WSL2, Ubuntu 24.04): PASS — hashes verified byte-identical to Windows
-- Windows: PASS
+- Linux (ubuntu-latest on GitHub Actions + WSL2 Ubuntu 24.04 local): PASS — hashes byte-identical to Windows
+- Windows (windows-latest on GitHub Actions + Windows 11 local): PASS
 - macOS: DEFERRED (v2) — per PLATFORM_SUPPORT.md
 
-## CI workflows
+Verified on real CI runners (not only local), commit f12a852.
 
-- `ci.yml` — typecheck + full test suite on ubuntu-latest + windows-latest
-- `workspace-vectors.yml` — canonical hash vectors on both OS
-- `dependency-direction.yml` (CI5) — lint + depcruise (ubuntu)
-- `adversarial.yml` (CI3) — adversarial harness (ubuntu)
-- `contracts.yml` (CI4) — contract/type-conformance (ubuntu)
+## CI workflows — all GREEN on GitHub Actions (commit f12a852)
+
+- `ci.yml` — typecheck + full test suite on ubuntu-latest + windows-latest ✅
+- `workspace-vectors.yml` — canonical hash vectors on both OS ✅ (cross-platform proven on real runners)
+- `dependency-direction.yml` (CI5) — lint + depcruise (ubuntu) ✅
+- `adversarial.yml` (CI3) — adversarial harness (ubuntu) ✅
+- `contracts.yml` (CI4) — contract/type-conformance (ubuntu) ✅
 
 ## Anti-criteria (PHASE_0_ACCEPTANCE §8) — confirmed NOT violated
 
