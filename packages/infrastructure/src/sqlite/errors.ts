@@ -33,13 +33,18 @@ export class DbError extends Error {
  * broader `.code` family (e.g. "SQLITE_CONSTRAINT_UNIQUE"). We match by prefix
  * so subtype codes fold into their family.
  */
-export function mapSqliteError(err: unknown): DbError {
+/**
+ * Map a native better-sqlite3 error to a domain DbError. Non-driver errors (e.g. a
+ * RepoError thrown from inside a transaction callback) are RETURNED UNCHANGED so the
+ * adapter's transaction wrapper never masks a caller's domain error as DB_UNKNOWN.
+ */
+export function mapSqliteError(err: unknown): unknown {
   if (err instanceof DbError) {
     return err;
   }
   const code = extractCode(err);
   const message = err instanceof Error ? err.message : String(err);
-  if (code) {
+  if (code && code.startsWith('SQLITE_')) {
     if (code.startsWith('SQLITE_BUSY') || code.startsWith('SQLITE_LOCKED')) {
       return new DbError('DB_BUSY', message, err);
     }
@@ -55,8 +60,11 @@ export function mapSqliteError(err: unknown): DbError {
     if (code.startsWith('SQLITE_READONLY')) {
       return new DbError('DB_READONLY', message, err);
     }
+    return new DbError('DB_UNKNOWN', message, err);
   }
-  return new DbError('DB_UNKNOWN', message, err);
+  // Not a SQLite driver error (no SQLITE_* code) — pass through untouched so domain
+  // errors (RepoError, etc.) thrown inside transaction() survive.
+  return err;
 }
 
 function extractCode(err: unknown): string | undefined {
