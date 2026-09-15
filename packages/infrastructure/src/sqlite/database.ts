@@ -121,6 +121,15 @@ export class SqliteDatabaseAdapter implements DatabaseAdapter {
     return this.runExecute(sql, params);
   }
 
+  exec(sql: string): void {
+    const db = this.requireDb();
+    try {
+      db.exec(sql);
+    } catch (err) {
+      throw mapSqliteError(err);
+    }
+  }
+
   backup(destPath: string): void {
     const db = this.requireDb();
     const dir = dirname(destPath);

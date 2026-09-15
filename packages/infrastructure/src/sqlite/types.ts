@@ -75,6 +75,14 @@ export interface DatabaseAdapter {
   /** Run a non-SELECT statement. Parameterized only. */
   execute(sql: string, params?: readonly SqlParam[]): ExecuteResult;
 
+  /**
+   * Execute a raw multi-statement SQL script (DDL). NO parameters — for
+   * adapter/migration-owned schema scripts ONLY, never model-supplied data.
+   * Kept separate from execute() so SE-008 (parameterized data queries) stays
+   * unambiguous.
+   */
+  exec(sql: string): void;
+
   backup(destPath: string): void;
   restore(srcPath: string): void;
 
