@@ -102,3 +102,80 @@ describe('FakeModel — FM-8 no real LLM / no randomness', () => {
     expect(r1.raw).toBe('{"purpose":"analyze_failure"}');
   });
 });
+
+// ---- P1-F1 extensions ----
+
+describe('FakeModel — P1-F1 response functions (pure, deterministic)', () => {
+  it('setResponse accepts a function of the request', async () => {
+    const m = new FakeModel();
+    m.setResponse(/thing/, (r) => `{"purpose":"${r.purpose}","echo":"${r.taskPrompt}"}`);
+    const out = await m.generate(req({ taskPrompt: 'do the thing' }));
+    expect(out.raw).toBe('{"purpose":"plan","echo":"do the thing"}');
+  });
+
+  it('setSequence accepts functions and fixed strings mixed', async () => {
+    const m = new FakeModel();
+    m.setSequence(['first', (r) => `second:${r.purpose}`]);
+    expect((await m.generate(req())).raw).toBe('first');
+    expect((await m.generate(req({ purpose: 'critique' }))).raw).toBe('second:critique');
+  });
+});
+
+describe('FakeModel — P1-F1 logical delay (no wall-clock)', () => {
+  it('records the configured delay on each call without sleeping', async () => {
+    const m = new FakeModel();
+    m.setDelay(500);
+    const before = Date.now();
+    await m.generate(req());
+    await m.generate(req());
+    const elapsed = Date.now() - before;
+    // It did NOT actually sleep 1000ms — delays are logical metadata.
+    expect(elapsed).toBeLessThan(500);
+    expect(m.history.map((h) => h.delayMs)).toEqual([500, 500]);
+    expect(m.totalDelayMs).toBe(1000);
+  });
+
+  it('setDelaySequence applies per-call latencies then falls back to setDelay', async () => {
+    const m = new FakeModel();
+    m.setDelay(10).setDelaySequence([100, 200]);
+    await m.generate(req());
+    await m.generate(req());
+    await m.generate(req()); // sequence exhausted -> default 10
+    expect(m.history.map((h) => h.delayMs)).toEqual([100, 200, 10]);
+    expect(m.totalDelayMs).toBe(310);
+  });
+
+  it('rejects a negative delay', () => {
+    const m = new FakeModel();
+    expect(() => m.setDelay(-1)).toThrow(RangeError);
+    expect(() => m.setDelaySequence([0, -5])).toThrow(RangeError);
+  });
+});
+
+describe('FakeModel — P1-F1 rich history for UX', () => {
+  it('records the response returned for each successful call', async () => {
+    const m = new FakeModel();
+    m.setSequence(['{"a":1}']);
+    await m.generate(req());
+    expect(m.history[0]?.response).toBe('{"a":1}');
+    expect(m.history[0]?.errorCode).toBeUndefined();
+  });
+
+  it('records the error code on a failing call (and still logs the call)', async () => {
+    const m = new FakeModel();
+    m.setError(new ModelError('MODEL_CONTEXT_OVERFLOW', 'too big'));
+    await expect(m.generate(req())).rejects.toMatchObject({ code: 'MODEL_CONTEXT_OVERFLOW' });
+    expect(m.callCount).toBe(1);
+    expect(m.history[0]?.errorCode).toBe('MODEL_CONTEXT_OVERFLOW');
+    expect(m.history[0]?.response).toBeUndefined();
+  });
+
+  it('reset() clears delays and history', async () => {
+    const m = new FakeModel();
+    m.setDelay(50);
+    await m.generate(req());
+    m.reset();
+    expect(m.totalDelayMs).toBe(0);
+    expect(m.callCount).toBe(0);
+  });
+});

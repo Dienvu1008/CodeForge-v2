@@ -10,14 +10,30 @@ import type {
   ModelError,
 } from '@codeforge/agent-core';
 
+/**
+ * A recorded model interaction. Rich enough to drive UX rendering and timeout
+ * assertions without any wall-clock dependence: `at` is a logical call index and
+ * `delayMs` is the *configured* latency this call would have taken (the FakeModel
+ * never actually sleeps — it reports the number so a deterministic runtime timeout
+ * test can reason about it).
+ */
 export interface ModelCall {
   readonly request: ModelRequest;
   readonly at: number; // logical call index (NOT wall-clock) — deterministic
+  /** The raw output returned for this call (undefined if the call threw). */
+  readonly response?: string;
+  /** The error thrown for this call, if any. */
+  readonly errorCode?: string;
+  /** Configured latency for this call in ms (logical; not actually awaited). */
+  readonly delayMs: number;
 }
+
+/** A response may be a fixed string or a pure function of the request. */
+export type ResponseValue = string | ((request: ModelRequest) => string);
 
 interface ResponseRule {
   readonly pattern: RegExp;
-  readonly response: string;
+  readonly response: ResponseValue;
 }
 
 const FAKE_IDENTITY: ModelIdentity = {
@@ -37,19 +53,22 @@ export class FakeModel implements ModelGateway {
   public readonly identity: ModelIdentity = FAKE_IDENTITY;
 
   private rules: ResponseRule[] = [];
-  private sequence: string[] = [];
+  private sequence: ResponseValue[] = [];
   private sequenceIndex = 0;
   private pendingError: ModelError | null = null;
+  private defaultDelayMs = 0;
+  private delaySequence: number[] = [];
+  private delayIndex = 0;
   private readonly _history: ModelCall[] = [];
 
-  /** Map a prompt pattern to a fixed raw response. */
-  setResponse(promptPattern: RegExp, response: string): this {
+  /** Map a prompt pattern to a fixed raw response, or a pure function of the request. */
+  setResponse(promptPattern: RegExp, response: ResponseValue): this {
     this.rules.push({ pattern: promptPattern, response });
     return this;
   }
 
-  /** Queue a fixed sequence of raw responses, consumed in order. */
-  setSequence(responses: readonly string[]): this {
+  /** Queue a fixed sequence of raw responses (or response functions), consumed in order. */
+  setSequence(responses: readonly ResponseValue[]): this {
     this.sequence = [...responses];
     this.sequenceIndex = 0;
     return this;
@@ -59,6 +78,37 @@ export class FakeModel implements ModelGateway {
   setError(error: ModelError): this {
     this.pendingError = error;
     return this;
+  }
+
+  /**
+   * Configure a logical latency (ms) attached to every call's history entry.
+   * DETERMINISTIC: the FakeModel does NOT sleep — it records the number so a
+   * runtime timeout test can assert "this call would exceed the budget" without
+   * touching the wall clock (FM-8 / no wall-clock).
+   */
+  setDelay(ms: number): this {
+    if (!Number.isFinite(ms) || ms < 0) {
+      throw new RangeError(`delay must be a non-negative number, got ${ms}`);
+    }
+    this.defaultDelayMs = ms;
+    return this;
+  }
+
+  /** Queue per-call logical latencies, consumed in order (falls back to setDelay). */
+  setDelaySequence(delays: readonly number[]): this {
+    for (const d of delays) {
+      if (!Number.isFinite(d) || d < 0) {
+        throw new RangeError(`delay must be a non-negative number, got ${d}`);
+      }
+    }
+    this.delaySequence = [...delays];
+    this.delayIndex = 0;
+    return this;
+  }
+
+  /** Sum of logical latencies recorded across all calls so far. */
+  get totalDelayMs(): number {
+    return this._history.reduce((sum, c) => sum + c.delayMs, 0);
   }
 
   get callCount(): number {
@@ -79,32 +129,51 @@ export class FakeModel implements ModelGateway {
     this.sequence = [];
     this.sequenceIndex = 0;
     this.pendingError = null;
+    this.defaultDelayMs = 0;
+    this.delaySequence = [];
+    this.delayIndex = 0;
     this._history.length = 0;
   }
 
   async generate(request: ModelRequest): Promise<ModelResponse> {
-    this._history.push({ request, at: this._history.length });
+    const at = this._history.length;
+    const delayMs = this.nextDelay();
 
     if (this.pendingError) {
       const err = this.pendingError;
       this.pendingError = null;
+      this._history.push({ request, at, delayMs, errorCode: err.code });
       throw err;
     }
 
-    if (this.sequenceIndex < this.sequence.length) {
-      const raw = this.sequence[this.sequenceIndex] ?? '';
-      this.sequenceIndex += 1;
-      return this.wrap(raw, request);
-    }
+    const raw = this.resolveRaw(request);
+    this._history.push({ request, at, delayMs, response: raw });
+    return this.wrap(raw, request);
+  }
 
+  /** Resolve the raw output for a request without recording history (pure). */
+  private resolveRaw(request: ModelRequest): string {
+    if (this.sequenceIndex < this.sequence.length) {
+      const entry = this.sequence[this.sequenceIndex] ?? '';
+      this.sequenceIndex += 1;
+      return typeof entry === 'function' ? entry(request) : entry;
+    }
     for (const rule of this.rules) {
       if (rule.pattern.test(request.taskPrompt) || rule.pattern.test(request.systemPrompt)) {
-        return this.wrap(rule.response, request);
+        return typeof rule.response === 'function' ? rule.response(request) : rule.response;
       }
     }
-
     // Deterministic default: echo the purpose. Never random.
-    return this.wrap(`{"purpose":"${request.purpose}"}`, request);
+    return `{"purpose":"${request.purpose}"}`;
+  }
+
+  private nextDelay(): number {
+    if (this.delayIndex < this.delaySequence.length) {
+      const d = this.delaySequence[this.delayIndex] ?? 0;
+      this.delayIndex += 1;
+      return d;
+    }
+    return this.defaultDelayMs;
   }
 
   private wrap(raw: string, request: ModelRequest): ModelResponse {
