@@ -7,3 +7,5 @@ export * from './graph-service.js';
 // Validator + cycle detection (P1-G2) — GRAPH_PROTOCOL §5, GI-002/004/005/006/007.
 export * from './cycle-detector.js';
 export * from './validator.js';
+// Commit orchestration (P1-G3) — GRAPH_PROTOCOL §7, GI-002/007/008.
+export * from './graph-commit-service.js';
