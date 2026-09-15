@@ -5,6 +5,7 @@
 import type { Session } from '../domain/session.js';
 import type { Goal } from '../domain/goal.js';
 import type { Budget, BudgetConsumption } from '../domain/budget.js';
+import type { Checkpoint } from '../domain/checkpoint.js';
 import type { Task } from '../domain/task.js';
 import type { TaskExecution } from '../domain/task.js';
 import type { TaskRun } from '../domain/task.js';
@@ -41,6 +42,14 @@ export interface TaskRepository {
 export interface TaskExecutionRepository {
   upsert(execution: TaskExecution): Promise<void>;
   getByTask(taskId: string): Promise<TaskExecution | null>;
+}
+
+// §16 — Checkpoint is immutable + written atomically (CP-002). `create` persists all
+// metadata in ONE transaction. `getLatest` returns the newest checkpoint for a session.
+export interface CheckpointRepository {
+  create(checkpoint: Checkpoint): Promise<void>;
+  getById(checkpointId: string): Promise<Checkpoint | null>;
+  getLatest(sessionId: string): Promise<Checkpoint | null>;
 }
 
 // §15 — Budget hierarchy. `consume` decrements atomically (BU-003) and rejects an
