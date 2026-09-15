@@ -20,4 +20,6 @@ export * from './model/index.js';
 
 // Phase 1:
 //   - session/  (P1-S1: SessionStateMachine + SessionService + WorkspaceLock contract)
+//   - goal/     (P1-S2: GoalService — GL-001..GL-004)
 export * from './session/index.js';
+export * from './goal/index.js';

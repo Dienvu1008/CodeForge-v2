@@ -7,3 +7,4 @@ export { SqliteTaskRunRepository } from './task-run-repository.js';
 export { SqliteVerificationRepository } from './verification-repository.js';
 export { SqliteTaskGraphRepository } from './task-graph-repository.js';
 export { SqliteWorkspaceLockService } from './workspace-lock-repository.js';
+export { SqliteGoalRepository } from './goal-repository.js';

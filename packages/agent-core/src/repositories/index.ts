@@ -3,6 +3,7 @@
 // Immutable entities have NO update() (RI-7). Every repo has getById() (RI-8).
 // These are CONTRACTS only; concrete SQLite adapters live in infrastructure (Phase 1).
 import type { Session } from '../domain/session.js';
+import type { Goal } from '../domain/goal.js';
 import type { Task } from '../domain/task.js';
 import type { TaskRun } from '../domain/task.js';
 import type { VerificationReport } from '../domain/verification.js';
@@ -15,6 +16,15 @@ export interface SessionRepository {
   getById(sessionId: string): Promise<Session | null>;
   getActiveByWorkspace(workspaceId: string): Promise<Session | null>;
   update(session: Session): Promise<void>; // Session is a mutable-state aggregate
+}
+
+// §3 — Goal is immutable + versioned (GL-001). No update(); a change creates a NEW
+// version via supersede. `getById` returns the latest version; `getVersion` a specific one.
+export interface GoalRepository {
+  create(goal: Goal): Promise<void>;
+  getById(goalId: string): Promise<Goal | null>; // latest version
+  getVersion(goalId: string, version: number): Promise<Goal | null>;
+  supersede(goalId: string, newGoal: Goal): Promise<void>;
 }
 
 // §23.2 — Task is immutable: no update(), only supersede.
