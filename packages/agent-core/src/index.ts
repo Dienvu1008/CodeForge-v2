@@ -21,5 +21,7 @@ export * from './model/index.js';
 // Phase 1:
 //   - session/  (P1-S1: SessionStateMachine + SessionService + WorkspaceLock contract)
 //   - goal/     (P1-S2: GoalService — GL-001..GL-004)
+//   - task/     (P1-T1: TaskService — TI-001..TI-004)
 export * from './session/index.js';
 export * from './goal/index.js';
+export * from './task/index.js';
