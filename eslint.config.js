@@ -9,6 +9,16 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Allow intentionally-unused args/vars prefixed with `_` (interface-impl stubs,
+    // required-but-unused params). Standard convention.
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  {
     // CommonJS tooling configs (dependency-cruiser, etc.).
     files: ['**/*.cjs'],
     languageOptions: {
