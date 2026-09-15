@@ -4,6 +4,7 @@
 // These are CONTRACTS only; concrete SQLite adapters live in infrastructure (Phase 1).
 import type { Session } from '../domain/session.js';
 import type { Goal } from '../domain/goal.js';
+import type { Budget, BudgetConsumption } from '../domain/budget.js';
 import type { Task } from '../domain/task.js';
 import type { TaskExecution } from '../domain/task.js';
 import type { TaskRun } from '../domain/task.js';
@@ -40,6 +41,19 @@ export interface TaskRepository {
 export interface TaskExecutionRepository {
   upsert(execution: TaskExecution): Promise<void>;
   getByTask(taskId: string): Promise<TaskExecution | null>;
+}
+
+// §15 — Budget hierarchy. `consume` decrements atomically (BU-003) and rejects an
+// overrun (BU-005). `create` may be gated by the parent's remaining budget (BU-001).
+export interface BudgetRepository {
+  create(budget: Budget): Promise<void>;
+  getById(budgetId: string): Promise<Budget | null>;
+  getChildren(parentBudgetId: string): Promise<readonly Budget[]>;
+  /**
+   * Atomically add `delta` to the budget's consumed vector iff it does not overrun any
+   * dimension. Returns the updated budget. Throws (BUDGET_EXHAUSTED) if it would overrun.
+   */
+  consume(budgetId: string, delta: Partial<BudgetConsumption>): Promise<Budget>;
 }
 
 // §23.3

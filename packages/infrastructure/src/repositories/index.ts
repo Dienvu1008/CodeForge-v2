@@ -10,3 +10,4 @@ export { SqliteWorkspaceLockService } from './workspace-lock-repository.js';
 export { SqliteGoalRepository } from './goal-repository.js';
 export { SqliteTaskExecutionRepository } from './task-execution-repository.js';
 export { SqliteGraphCommitter } from './graph-committer.js';
+export { SqliteBudgetRepository } from './budget-repository.js';
