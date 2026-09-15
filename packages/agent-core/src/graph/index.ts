@@ -4,3 +4,6 @@ export * from './types.js';
 export * from './canonical.js';
 // Graph service (P1-G1) — versioned build + canonical hash.
 export * from './graph-service.js';
+// Validator + cycle detection (P1-G2) — GRAPH_PROTOCOL §5, GI-002/004/005/006/007.
+export * from './cycle-detector.js';
+export * from './validator.js';
