@@ -11,5 +11,10 @@ export * from './workspace-hash/index.js';
 export * from './workspace-revision/index.js';
 
 // Phase 1:
-//   - sqlite/  (P1-F2: DatabaseAdapter — INFRASTRUCTURE_SPEC §3)
+//   - sqlite/       (P1-F2: DatabaseAdapter — INFRASTRUCTURE_SPEC §3)
+//   - sqlite/migrations/ (P1-F3: schema v1 + migration engine — MIGRATION_SPEC)
+//   - redaction/    (SECURITY_MODEL §7 — secret redaction)
+//   - event-log/    (P1-F4: SqliteEventLog — DOMAIN_CONTRACTS §18)
 export * from './sqlite/index.js';
+export * from './redaction/index.js';
+export * from './event-log/index.js';
