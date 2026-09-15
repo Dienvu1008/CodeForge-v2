@@ -22,6 +22,8 @@ export * from './model/index.js';
 //   - session/  (P1-S1: SessionStateMachine + SessionService + WorkspaceLock contract)
 //   - goal/     (P1-S2: GoalService — GL-001..GL-004)
 //   - task/     (P1-T1: TaskService — TI-001..TI-004)
+//   - execution/ (P1-T2: ExecutionCoordinator — EX-002/EX-003 projection)
 export * from './session/index.js';
 export * from './goal/index.js';
 export * from './task/index.js';
+export * from './execution/index.js';

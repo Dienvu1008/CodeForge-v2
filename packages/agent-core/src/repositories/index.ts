@@ -5,6 +5,7 @@
 import type { Session } from '../domain/session.js';
 import type { Goal } from '../domain/goal.js';
 import type { Task } from '../domain/task.js';
+import type { TaskExecution } from '../domain/task.js';
 import type { TaskRun } from '../domain/task.js';
 import type { VerificationReport } from '../domain/verification.js';
 import type { DomainEvent } from '../domain/event.js';
@@ -32,6 +33,13 @@ export interface TaskRepository {
   create(task: Task): Promise<void>;
   getById(taskId: string): Promise<Task | null>;
   supersede(oldTaskId: string, newTask: Task): Promise<void>;
+}
+
+// §5 — TaskExecution is a MUTABLE projection (EX-003: not authority). It is derived
+// from Task + TaskRun; upsert() replaces the projected row. `getByTask` reads it.
+export interface TaskExecutionRepository {
+  upsert(execution: TaskExecution): Promise<void>;
+  getByTask(taskId: string): Promise<TaskExecution | null>;
 }
 
 // §23.3
