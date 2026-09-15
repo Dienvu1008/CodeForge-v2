@@ -85,6 +85,16 @@ export class SqliteTaskRunRepository implements TaskRunRepository {
     return rows[0] ? rowToRun(rows[0]) : null;
   }
 
+  async findRunning(sessionId: string): Promise<readonly TaskRun[]> {
+    // Deterministic order for reproducible recovery (CP-003).
+    return this.db
+      .query<TaskRunRow>(
+        "SELECT * FROM task_runs WHERE session_id = ? AND state = 'RUNNING' ORDER BY task_run_id",
+        [sessionId],
+      )
+      .map(rowToRun);
+  }
+
   async finalize(runId: string, patch: TaskRunPatch): Promise<void> {
     this.db.transaction((tx) => {
       const rows = tx.query<{ state: string }>('SELECT state FROM task_runs WHERE task_run_id = ?', [

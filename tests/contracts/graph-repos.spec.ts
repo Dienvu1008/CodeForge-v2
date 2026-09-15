@@ -150,6 +150,7 @@ describe('repository conformance (T7 / RI-1..RI-8)', () => {
       create: async () => undefined,
       getById: async () => null,
       finalize: async () => undefined,
+      findRunning: async () => [],
     });
     expect('update' in taskRepo).toBe(false);
     expect('update' in runRepo).toBe(false);

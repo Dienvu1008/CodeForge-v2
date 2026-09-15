@@ -26,6 +26,7 @@ export * from './model/index.js';
 //   - scheduler/ (P1-SC1: deterministic Scheduler — SC-001..006)
 //   - budget/    (P1-B1: BudgetEngine — BU-001/002/003/005/006)
 //   - checkpoint/ (P1-C1: CheckpointService — CP-002/009/010/011/012)
+//   - recovery/  (P1-CR1: CrashRecoveryService — CP-004/005/006)
 export * from './session/index.js';
 export * from './goal/index.js';
 export * from './task/index.js';
@@ -33,3 +34,4 @@ export * from './execution/index.js';
 export * from './scheduler/index.js';
 export * from './budget/index.js';
 export * from './checkpoint/index.js';
+export * from './recovery/index.js';

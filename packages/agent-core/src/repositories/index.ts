@@ -84,6 +84,8 @@ export interface TaskRunRepository {
   create(run: TaskRun): Promise<void>;
   getById(runId: string): Promise<TaskRun | null>;
   finalize(runId: string, patch: TaskRunPatch): Promise<void>;
+  /** Runs still in RUNNING for a session — the unfinished set at crash recovery (CP-004). */
+  findRunning(sessionId: string): Promise<readonly TaskRun[]>;
 }
 
 // §23.5
