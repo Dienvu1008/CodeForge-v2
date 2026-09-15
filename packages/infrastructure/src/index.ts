@@ -16,7 +16,9 @@ export * from './workspace-revision/index.js';
 //   - redaction/    (SECURITY_MODEL §7 — secret redaction)
 //   - event-log/    (P1-F4: SqliteEventLog — DOMAIN_CONTRACTS §18)
 //   - repositories/ (P1-F5: SQLite repository impls — DOMAIN_CONTRACTS §23)
+//   - graph-hash/   (P1-G1: Blake3GraphHasher — GRAPH_PROTOCOL §2.3)
 export * from './sqlite/index.js';
 export * from './redaction/index.js';
 export * from './event-log/index.js';
 export * from './repositories/index.js';
+export * from './graph-hash/index.js';
