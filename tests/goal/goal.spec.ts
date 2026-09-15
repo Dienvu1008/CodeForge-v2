@@ -108,6 +108,7 @@ describe('GoalService.create — validation', () => {
   });
 
   it('rejects a first goal that is not version 1', async () => {
+    await expect(service.create(goal({ version: 2 }))).rejects.toBeInstanceOf(GoalError);
     await expect(service.create(goal({ version: 2 }))).rejects.toMatchObject({
       code: 'INVALID_VERSION',
     });
