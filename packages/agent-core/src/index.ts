@@ -17,3 +17,7 @@ export * from './state-machine/index.js';
 export * from './graph/index.js';
 export * from './repositories/index.js';
 export * from './model/index.js';
+
+// Phase 1:
+//   - session/  (P1-S1: SessionStateMachine + SessionService + WorkspaceLock contract)
+export * from './session/index.js';
