@@ -735,8 +735,8 @@ Phase 0 re-open nếu:
 [x] invariants.schema.json
 [x] PHASE_0_ACCEPTANCE.md
 [x] PHASE_0_ROADMAP.md
-[ ] scenarios.yaml           (chưa tạo — Full Phase 0)
-[ ] phase_0_checklist.yaml   (chưa tạo — Full Phase 0)
+[x] scenarios.yaml           (Full Phase 0 — A4)
+[x] phase_0_checklist.yaml   (Full Phase 0 — A5)
 ```
 
 ### 10.2 Code structure

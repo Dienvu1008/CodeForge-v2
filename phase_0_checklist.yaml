@@ -1,0 +1,73 @@
+# phase_0_checklist.yaml (A5) — CI-executable Phase 0 acceptance checklist.
+# PHASE_0_ACCEPTANCE §10. Paths are relative to the workspace root (no docs/ dir in v1).
+#
+# `check` describes how CI verifies the item. `status` is the current known state
+# (done | pending). CI should assert every `done` item stays true.
+
+version: 1.1
+platform:
+  supported: [windows, linux-wsl2]
+  ci_runners: [windows-latest, ubuntu-latest]
+  macos: deferred-v2
+
+files:
+  docs:
+    - { path: INVARIANTS.md, status: done }
+    - { path: WORKSPACE_SPEC.md, status: done }
+    - { path: DOMAIN_CONTRACTS.md, status: done }
+    - { path: STATE_MACHINE_SPEC.md, status: done }
+    - { path: GRAPH_PROTOCOL.md, status: done }
+    - { path: VERIFICATION_PROTOCOL.md, status: done }
+    - { path: SECURITY_MODEL.md, status: done }
+    - { path: MIGRATION_SPEC.md, status: done }
+    - { path: EVALUATION_MODEL.md, status: done }
+    - { path: CONTEXT_SPEC.md, status: done }
+    - { path: INFRASTRUCTURE_SPEC.md, status: done }
+    - { path: PLATFORM_SUPPORT.md, status: done }
+    - { path: ARCHITECTURE_DIAGRAMS.md, status: done }
+    - { path: PHASE_0_ACCEPTANCE.md, status: done }
+    - { path: PHASE_0_ROADMAP.md, status: done }
+  machine_readable:
+    - { path: invariants.yaml, status: done, check: "js-yaml parse + schema" }
+    - { path: invariants.schema.json, status: done }
+    - { path: scenarios.yaml, status: done }
+    - { path: phase_0_checklist.yaml, status: done }
+
+code:
+  - { path: packages/agent-core/src/domain, status: done, ref: C4 }
+  - { path: packages/agent-core/src/state-machine, status: done, ref: C5 }
+  - { path: packages/agent-core/src/graph, status: done, ref: C6 }
+  - { path: packages/agent-core/src/repositories, status: done, ref: C7 }
+  - { path: packages/agent-core/src/model, status: done, ref: "ModelGateway contract" }
+  - { path: packages/infrastructure/src/workspace-hash, status: done, ref: C1 }
+  - { path: packages/infrastructure/src/workspace-revision, status: done, ref: C2 }
+  - { path: packages/infrastructure/src/path, status: done, ref: C3 }
+  - { path: packages/testing/src/fake-model, status: done, ref: C9 }
+  - { path: packages/testing/src/adversarial, status: done, ref: C8 }
+  - { path: packages/testing/src/harness, status: done, ref: C10 }
+
+tests:
+  - { path: tests/invariants/workspace, status: done, ref: T-WS }
+  - { path: tests/workspace/vectors, status: done, ref: A3, note: "20 vectors + expected.json + manifest.json" }
+  - { path: tests/cross-platform, status: done, ref: T3 }
+  - { path: tests/adversarial, status: done, ref: C8 }
+  - { path: tests/contracts, status: done, ref: "T7 (ulid, fake-model, conformance)" }
+  - { path: tests/_harness, status: done, ref: C10 }
+
+ci:
+  - { path: .github/workflows/ci.yml, status: done, runners: [ubuntu-latest, windows-latest] }
+  - { path: .github/workflows/workspace-vectors.yml, status: done, runners: [ubuntu-latest, windows-latest] }
+  - { path: .github/workflows/dependency-direction.yml, status: done, ref: CI5, runners: [ubuntu-latest] }
+  - { path: .github/workflows/adversarial.yml, status: done, ref: CI3, runners: [ubuntu-latest] }
+  - { path: .github/workflows/contracts.yml, status: done, ref: CI4, runners: [ubuntu-latest] }
+
+metrics:
+  invariants_total: 144
+  invariants_critical: 113           # MA-6: >= 100
+  invariants_critical_min: 100
+  workspace_vectors: 20
+  adversarial_variants: 7            # >= 7
+  adversarial_scenarios: 7           # >= 5
+  cross_platform_runners: 2          # ubuntu + windows (macOS deferred v2)
+  cross_platform_proven: true        # hashes verified identical Windows<->Linux
+  ci_green_on_github: true

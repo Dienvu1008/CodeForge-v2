@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@codeforge/agent-core": "*",
-    "@codeforge/infrastructure": "*"
+    "@codeforge/infrastructure": "*",
+    "js-yaml": "^4.1.0"
   }
 }
