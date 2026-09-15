@@ -2,15 +2,16 @@
 
 **Ollama Coding Agent — Executable Architecture Contract Acceptance Criteria**
 
-Version: 1.0
+Version: 1.1
 Status: Architecture Baseline
 Owner: Runtime / Architecture
 Scope: Phase 0 (Executable Architecture Contract)
+Platform: Windows 11 + Ubuntu (WSL2) — 2 OS. macOS ngoài phạm vi v1 (xem `PLATFORM_SUPPORT.md`).
 Related specs:
 `INVARIANTS.md`, `WORKSPACE_SPEC_v1.0.md`, `DOMAIN_CONTRACTS.md`,
 `STATE_MACHINE_SPEC.md`, `GRAPH_PROTOCOL.md`, `VERIFICATION_PROTOCOL.md`,
 `SECURITY_MODEL.md`, `MIGRATION_SPEC.md`, `EVALUATION_MODEL.md`,
-`CONTEXT_SPEC_v1.0.md`, `INFRASTRUCTURE_SPEC.md`
+`CONTEXT_SPEC_v1.0.md`, `INFRASTRUCTURE_SPEC.md`, `PLATFORM_SUPPORT.md`
 
 ---
 
@@ -37,6 +38,9 @@ File này định nghĩa:
 
 Tham chiếu: `INVARIANTS.md` → toàn bộ.
 
+**Changelog**
+- v1.1 (2026-09-14): Đồng bộ platform với `PLATFORM_SUPPORT.md` — CI/cross-platform từ 3 OS xuống **2 OS** (windows-latest + ubuntu-latest); macOS (XP-2, IT-4, CI-2) đánh dấu **DEFERRED v2**. Xác nhận baseline registry **144 invariant (113 CRITICAL)** thoả MA-6. Cập nhật file-structure checklist khớp bố trí thật (root, không `docs/`).
+
 ---
 
 ## 1. Phase 0 Goals
@@ -46,9 +50,9 @@ Tham chiếu: `INVARIANTS.md` → toàn bộ.
 1. **Freeze architecture contracts** — 11 spec docs hoàn chỉnh.
 2. **Biến invariant thành test** — `invariants.yaml` + test harness.
 3. **Reference implementation cho WorkspaceRevision** — canonical hash chạy được.
-4. **Cross-platform test vectors** — Windows/Linux/macOS cho cùng hash.
+4. **Cross-platform test vectors** — Windows + Ubuntu (WSL2) cho cùng hash.
 5. **AdversarialModel harness** — có thể inject model độc hại.
-6. **CI pipeline** — tự động chạy toàn bộ trên 3 OS.
+6. **CI pipeline** — tự động chạy toàn bộ trên 2 OS (windows-latest + ubuntu-latest).
 7. **Domain types skeleton** — TypeScript types cho toàn bộ entity.
 8. **Repository interface skeleton** — interface cho tất cả repository.
 
@@ -114,7 +118,7 @@ Phase 0 **không** cần LLM. Phase 0 test **runtime**, không test **intelligen
 |---|---|---|
 | T1 | `tests/invariants/` | Toàn bộ invariant CRITICAL Phase 0 |
 | T2 | `tests/workspace/` | Canonical hash + revision |
-| T3 | `tests/cross-platform/` | Windows/Linux/macOS vectors |
+| T3 | `tests/cross-platform/` | Windows + Ubuntu (WSL2) vectors |
 | T4 | `tests/adversarial/` | AdversarialModel harness |
 | T5 | `tests/state-machine/` | Transition table (skeleton) |
 | T6 | `tests/graph/` | Validator (skeleton) |
@@ -124,8 +128,8 @@ Phase 0 **không** cần LLM. Phase 0 test **runtime**, không test **intelligen
 
 | # | Workflow | OS |
 |---|---|---|
-| CI1 | `invariants.yml` | ubuntu, macos, windows |
-| CI2 | `workspace-vectors.yml` | ubuntu, macos, windows |
+| CI1 | `invariants.yml` | ubuntu, windows |
+| CI2 | `workspace-vectors.yml` | ubuntu, windows |
 | CI3 | `adversarial.yml` | ubuntu |
 | CI4 | `contracts.yml` | ubuntu |
 | CI5 | `dependency-direction.yml` | ubuntu |
@@ -186,10 +190,10 @@ Phase 0 **không** cần LLM. Phase 0 test **runtime**, không test **intelligen
 
 | # | Criterion | OS |
 |---|---|---|
-| XP-1 | Toàn bộ vector CH-1..CH-20 pass trên Linux | ubuntu |
-| XP-2 | Toàn bộ vector CH-1..CH-20 pass trên macOS | macos |
+| XP-1 | Toàn bộ vector CH-1..CH-20 pass trên Linux (đại diện WSL2) | ubuntu |
+| XP-2 | ~~Toàn bộ vector CH-1..CH-20 pass trên macOS~~ **DEFERRED v2** (không có hardware, xem `PLATFORM_SUPPORT.md §2.2`) | — |
 | XP-3 | Toàn bộ vector CH-1..CH-20 pass trên Windows | windows |
-| XP-4 | Cùng logical content → cùng hash trên cả 3 OS | all |
+| XP-4 | Cùng logical content → cùng hash trên cả 2 OS (ubuntu + windows) | all |
 | XP-5 | Path canonicalization consistent | all |
 | XP-6 | Case sensitivity detect correctly | all |
 
@@ -318,8 +322,8 @@ Phase 0 **không** cần LLM. Phase 0 test **runtime**, không test **intelligen
 |---|---|---|
 | IT-1 | Mọi invariant Phase 0 có test file | script |
 | IT-2 | Test file không rỗng | script |
-| IT-3 | Test pass trên Linux | CI |
-| IT-4 | Test pass trên macOS | CI |
+| IT-3 | Test pass trên Linux (đại diện WSL2) | CI |
+| IT-4 | ~~Test pass trên macOS~~ **DEFERRED v2** | — |
 | IT-5 | Test pass trên Windows | CI |
 | IT-6 | Không có test flaky | repeat 10x |
 | IT-7 | Test chạy < 1s mỗi cái | perf |
@@ -341,7 +345,7 @@ Phase 0 **không** cần LLM. Phase 0 test **runtime**, không test **intelligen
 | # | Criterion | Test |
 |---|---|---|
 | CI-1 | Toàn bộ test chạy trên ubuntu | CI green |
-| CI-2 | Toàn bộ test chạy trên macos | CI green |
+| CI-2 | ~~Toàn bộ test chạy trên macos~~ **DEFERRED v2** | — |
 | CI-3 | Toàn bộ test chạy trên windows | CI green |
 | CI-4 | CI chạy < 10 phút | timing |
 | CI-5 | Không có warning từ dependency-cruiser | CI |
@@ -465,13 +469,15 @@ Phase 0 chỉ cần crash injector interface. Implementation đầy đủ ở Ph
 
 | Runner | OS | Filesystem | Purpose |
 |---|---|---|---|
-| `ubuntu-latest` | Linux | ext4 | Primary |
-| `macos-latest` | macOS | APFS | Case-insensitive |
-| `windows-latest` | Windows | NTFS | Path separator, CRLF |
+| `ubuntu-latest` | Linux | ext4 | Primary (đại diện WSL2 ext4) |
+| `windows-latest` | Windows | NTFS | Path separator, CRLF, case-insensitive |
+
+macOS (`macos-latest`/APFS) **ngoài phạm vi v1** — deferred v2 (`PLATFORM_SUPPORT.md §2.2`).
+Coverage case-insensitive vẫn có nhờ Windows/NTFS.
 
 ### 5.2 Requirements
 
-- Cùng logical workspace → cùng hash trên 3 OS.
+- Cùng logical workspace → cùng hash trên 2 OS (ubuntu + windows).
 - Path canonicalization consistent.
 - Symlink handling consistent.
 - Case sensitivity detect đúng.
@@ -479,13 +485,13 @@ Phase 0 chỉ cần crash injector interface. Implementation đầy đủ ở Ph
 
 ### 5.3 Known differences
 
-| Aspect | Linux | macOS | Windows |
-|---|---|---|---|
-| Case | Sensitive | Insensitive | Insensitive |
-| Separator | `/` | `/` | `\` |
-| Symlink | Full | Full | Limited (needs dev mode) |
-| Long path | Unlimited | Unlimited | Limited (unless enabled) |
-| Null byte | Reject | Reject | Reject |
+| Aspect | Linux (WSL2) | Windows |
+|---|---|---|
+| Case | Sensitive | Insensitive |
+| Separator | `/` | `\` |
+| Symlink | Full | Limited (needs dev mode) |
+| Long path | Unlimited | Limited (unless enabled) |
+| Null byte | Reject | Reject |
 
 ### 5.4 Handling
 
@@ -557,15 +563,15 @@ Phase 0 được coi là **hoàn thành** khi **tất cả** điều sau đúng:
 
 ### 7.2 Machine-readable
 
-- [ ] `invariants.yaml` parse được.
-- [ ] Pass schema validation.
-- [ ] ≥ 100 invariant CRITICAL.
-- [ ] Mỗi domain có ≥ 1 invariant.
+- [x] `invariants.yaml` parse được.
+- [x] Pass schema validation.
+- [x] ≥ 100 invariant CRITICAL. (Thực tế: **113 CRITICAL** / 144 total.)
+- [x] Mỗi domain có ≥ 1 invariant. (20/20 domain.)
 
 ### 7.3 Canonical hash
 
 - [ ] 20 test vector CH-1..CH-20 pass.
-- [ ] Pass trên Linux, macOS, Windows.
+- [ ] Pass trên Linux (WSL2) + Windows.
 - [ ] Cùng logical content → cùng hash.
 - [ ] Không false negative.
 
@@ -603,7 +609,7 @@ Phase 0 được coi là **hoàn thành** khi **tất cả** điều sau đúng:
 
 ### 7.9 CI
 
-- [ ] CI green trên 3 OS.
+- [ ] CI green trên 2 OS (ubuntu + windows).
 - [ ] CI < 10 phút.
 - [ ] Không TypeScript error.
 - [ ] Không ESLint error.
@@ -673,16 +679,16 @@ Checklist:
 - [x] CI
 - [x] Dependency direction
 
-Test results:
-- Invariants: 120 / 120 pass
+Test results (điền số thực khi sign-off; baseline registry: 144 invariant = 113 CRITICAL + 31 HIGH):
+- Invariants (CRITICAL Phase 0..1.5 khả thi): <passed> / <total> pass
 - Workspace vectors: 20 / 20 pass
 - Adversarial: 7 / 7 variants pass
 - Contracts: 20 / 20 pass
 
 Cross-platform:
-- Linux: PASS
-- macOS: PASS
+- Linux (WSL2): PASS
 - Windows: PASS
+- macOS: DEFERRED (v2)
 
 Signed by:
 - Developer: <name>
@@ -707,23 +713,30 @@ Phase 0 re-open nếu:
 
 ### 10.1 File structure
 
+> Ghi chú: v1 đặt các tài liệu ở **root workspace** (không có thư mục `docs/`). Đường dẫn dưới
+> đây là tương đối so với root. Tên `WORKSPACE_SPEC_v1.0.md`/`CONTEXT_SPEC_v1.0.md` hiện lưu là
+> `WORKSPACE_SPEC.md`/`CONTEXT_SPEC.md`.
+
 ```
-[ ] docs/INVARIANTS.md
-[ ] docs/WORKSPACE_SPEC_v1.0.md
-[ ] docs/DOMAIN_CONTRACTS.md
-[ ] docs/STATE_MACHINE_SPEC.md
-[ ] docs/GRAPH_PROTOCOL.md
-[ ] docs/VERIFICATION_PROTOCOL.md
-[ ] docs/SECURITY_MODEL.md
-[ ] docs/MIGRATION_SPEC.md
-[ ] docs/EVALUATION_MODEL.md
-[ ] docs/CONTEXT_SPEC_v1.0.md
-[ ] docs/INFRASTRUCTURE_SPEC.md
-[ ] docs/invariants.yaml
-[ ] docs/invariants.schema.json
-[ ] docs/scenarios.yaml
-[ ] docs/phase_0_checklist.yaml
-[ ] docs/PHASE_0_ACCEPTANCE.md
+[x] INVARIANTS.md
+[x] WORKSPACE_SPEC.md
+[x] DOMAIN_CONTRACTS.md
+[x] STATE_MACHINE_SPEC.md
+[x] GRAPH_PROTOCOL.md
+[x] VERIFICATION_PROTOCOL.md
+[x] SECURITY_MODEL.md
+[x] MIGRATION_SPEC.md
+[x] EVALUATION_MODEL.md
+[x] CONTEXT_SPEC.md
+[x] INFRASTRUCTURE_SPEC.md
+[x] PLATFORM_SUPPORT.md
+[x] ARCHITECTURE_DIAGRAMS.md
+[x] invariants.yaml
+[x] invariants.schema.json
+[x] PHASE_0_ACCEPTANCE.md
+[x] PHASE_0_ROADMAP.md
+[ ] scenarios.yaml           (chưa tạo — Full Phase 0)
+[ ] phase_0_checklist.yaml   (chưa tạo — Full Phase 0)
 ```
 
 ### 10.2 Code structure
@@ -772,7 +785,7 @@ Phase 0 re-open nếu:
 [ ] Workspace vectors = 20
 [ ] Adversarial variants ≥ 7
 [ ] Adversarial scenarios ≥ 5
-[ ] Cross-platform runners = 3
+[ ] Cross-platform runners = 2 (ubuntu + windows; macOS deferred v2)
 [ ] CI duration < 10 min
 [ ] Coverage ≥ 80% reference impl
 ```
@@ -792,7 +805,7 @@ Phase 0 re-open nếu:
 ### 11.2 Điều kiện để bắt đầu Phase 1
 
 - Phase 0 sign-off hoàn tất.
-- CI green trên 3 OS.
+- CI green trên 2 OS (ubuntu + windows).
 - Không có invariant CRITICAL fail.
 - Không có anti-criterion vi phạm.
 
@@ -916,7 +929,7 @@ Nếu sau này implementation không có enforcement point đó → biết ngay.
 
 Canonical hash là ví dụ rõ nhất.
 
-Nếu không test trên 3 OS từ Phase 0 → đến Phase 4 mới phát hiện Windows hash khác Linux → phải viết lại toàn bộ verification logic → **thảm họa**.
+Nếu không test trên cả 2 OS (Windows + WSL2) từ Phase 0 → đến Phase 4 mới phát hiện Windows hash khác Linux → phải viết lại toàn bộ verification logic → **thảm họa**.
 
 ### 2.4. Chốt adversarial surface
 
@@ -1049,7 +1062,7 @@ Tại sao test 20 vectors lại quan trọng?
 **Kịch bản có test cross-platform ở Phase 0:**
 
 1. Phase 0 viết 20 vectors.
-2. CI chạy trên 3 OS. Windows fail.
+2. CI chạy trên 2 OS (Windows + Ubuntu). Windows fail.
 3. Biết ngay: line ending handling sai.
 4. Sửa spec.
 5. Phase 1 implement đúng ngay từ đầu.
