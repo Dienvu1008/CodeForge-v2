@@ -28,3 +28,12 @@ export {
   type ToolExecutor,
   type ExecutorResult,
 } from './tool-gateway.js';
+
+export {
+  ApprovalEngine,
+  ApprovalEngineError,
+  type ApprovalEngineDeps,
+  type ApprovalRequest,
+  type OverrideRequest,
+  type HumanOverrideRepository,
+} from './approval-engine.js';

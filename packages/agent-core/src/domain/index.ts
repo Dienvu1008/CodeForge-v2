@@ -14,3 +14,5 @@ export * from './change-record.js';
 export * from './checkpoint.js';
 export * from './artifact.js';
 export * from './event.js';
+// Phase 1.5:
+export * from './human-override.js';
