@@ -39,6 +39,7 @@ describe('StructuredOutputValidator — SE-010: model output is untrusted input'
     const result = validateModelOutput('not json at all');
     expect(result.ok).toBe(false);
     if (!result.ok) {
+      expect(result.error).toBeInstanceOf(ModelOutputError);
       expect(result.error.code).toBe('PARSE_FAILED');
       expect(result.error.retryable).toBe(true);
     }
