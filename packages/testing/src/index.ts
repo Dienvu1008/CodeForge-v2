@@ -11,3 +11,7 @@ export * from './workspace-vectors/index.js';
 export * from './fake-model/index.js';
 export * from './adversarial/index.js';
 export * from './harness/index.js';
+
+// Phase 1.5:
+//   - process/ (P1.5-PS1: FakeProcessSupervisor)
+export * from './process/index.js';

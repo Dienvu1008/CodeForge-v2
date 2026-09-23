@@ -1,4 +1,5 @@
-// P1-F3 Schema v1 + Migration acceptance — MIGRATION_SPEC §4-§5, §17.1.
+// P1-F3 + P1.5-DB2 Schema migrations acceptance -- MIGRATION_SPEC §4-§5, §17.1.
+// Updated for migration v2 (Phase 1.5 tables: approvals, failures, recovery_actions).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   SqliteDatabaseAdapter,
@@ -7,6 +8,7 @@ import {
   readSchemaHistory,
   MIGRATIONS,
   migration0001,
+  migration0002,
 } from '@codeforge/infrastructure';
 
 let db: SqliteDatabaseAdapter;
@@ -52,9 +54,12 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
     expect(db.getSchemaVersion()).toBe(0);
     const result = runMigrations(db, createMigrationRegistry(), { now });
     expect(result.fromVersion).toBe(0);
-    expect(result.toVersion).toBe(1);
-    expect(result.applied).toEqual(['0001_create_initial_schema']);
-    expect(db.getSchemaVersion()).toBe(1);
+    expect(result.toVersion).toBe(2);
+    expect(result.applied).toEqual([
+      '0001_create_initial_schema',
+      '0002_phase15_approvals_failures_recovery',
+    ]);
+    expect(db.getSchemaVersion()).toBe(2);
   });
 
   it('creates every Phase 1 table', () => {
@@ -69,7 +74,7 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
   it('records the migration in schema_versions', () => {
     runMigrations(db, createMigrationRegistry(), { now, runtimeVersion: '0.1.0' });
     const history = readSchemaHistory(db);
-    expect(history).toHaveLength(1);
+    expect(history).toHaveLength(2);
     expect(history[0]).toMatchObject({
       schemaVersion: 1,
       migrationId: '0001_create_initial_schema',
@@ -78,6 +83,12 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
       forwardOnly: false,
       rollbackTo: 0,
     });
+    expect(history[1]).toMatchObject({
+      schemaVersion: 2,
+      migrationId: '0002_phase15_approvals_failures_recovery',
+      forwardOnly: false,
+      rollbackTo: 1,
+    });
   });
 });
 
@@ -85,11 +96,11 @@ describe('runMigrations — idempotent (MIGRATION_SPEC §1.3)', () => {
   it('is a no-op when already at target', () => {
     runMigrations(db, createMigrationRegistry(), { now });
     const second = runMigrations(db, createMigrationRegistry(), { now });
-    expect(second.fromVersion).toBe(1);
-    expect(second.toVersion).toBe(1);
+    expect(second.fromVersion).toBe(2);
+    expect(second.toVersion).toBe(2);
     expect(second.applied).toEqual([]);
-    // still exactly one history row
-    expect(readSchemaHistory(db)).toHaveLength(1);
+    // two rows: one per migration
+    expect(readSchemaHistory(db)).toHaveLength(2);
   });
 
   it('fails fast if the db is newer than the runtime target', () => {
@@ -168,15 +179,22 @@ describe('schema v1 — structure', () => {
   });
 });
 
-describe('migration registry — chain validation', () => {
+describe('migration registry -- chain validation', () => {
   it('MIGRATIONS forms a contiguous chain from 0', () => {
     const reg = createMigrationRegistry(MIGRATIONS);
-    expect(reg.latestVersion()).toBe(1);
+    expect(reg.latestVersion()).toBe(2);
     expect(reg.getByToVersion(1)?.migrationId).toBe('0001_create_initial_schema');
+    expect(reg.getByToVersion(2)?.migrationId).toBe('0002_phase15_approvals_failures_recovery');
   });
 
   it('rejects a broken chain (gap)', () => {
     const broken = [{ ...migration0001, fromVersion: 0, toVersion: 2 }];
     expect(() => createMigrationRegistry(broken)).toThrow(/chain broken/);
+  });
+
+  it('migration0002 is exported and has correct version bounds', () => {
+    expect(migration0002.fromVersion).toBe(1);
+    expect(migration0002.toVersion).toBe(2);
+    expect(migration0002.reversible).toBe(true);
   });
 });

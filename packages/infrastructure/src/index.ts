@@ -22,3 +22,7 @@ export * from './redaction/index.js';
 export * from './event-log/index.js';
 export * from './repositories/index.js';
 export * from './graph-hash/index.js';
+
+// Phase 1.5:
+//   - process/ (P1.5-PS1: NodeProcessSupervisor — SE-007/008, TG-010)
+export * from './process/index.js';

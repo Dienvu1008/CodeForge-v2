@@ -35,3 +35,7 @@ export * from './scheduler/index.js';
 export * from './budget/index.js';
 export * from './checkpoint/index.js';
 export * from './recovery/index.js';
+
+// Phase 1.5:
+//   - process/ (P1.5-PS1: ProcessSupervisor contract — SE-007/008, TG-010)
+export * from './process/index.js';
