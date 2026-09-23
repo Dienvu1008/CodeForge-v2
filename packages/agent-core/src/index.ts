@@ -41,3 +41,5 @@ export * from './recovery/index.js';
 export * from './process/index.js';
 //   - security/ (P1.5-SE1: StructuredOutputValidator + PromptBoundary + EnvGuard)
 export * from './security/index.js';
+//   - tool/    (P1.5-TG1: ToolGateway + ToolPolicy + ToolCallStateMachine)
+export * from './tool/index.js';
