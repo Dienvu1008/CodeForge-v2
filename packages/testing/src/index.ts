@@ -15,3 +15,5 @@ export * from './harness/index.js';
 // Phase 1.5:
 //   - process/ (P1.5-PS1: FakeProcessSupervisor)
 export * from './process/index.js';
+//   - verification/ (P1.5-VR1: FakeRevisionProvider)
+export * from './verification/index.js';

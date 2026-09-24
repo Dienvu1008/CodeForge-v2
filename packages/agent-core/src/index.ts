@@ -43,3 +43,5 @@ export * from './process/index.js';
 export * from './security/index.js';
 //   - tool/    (P1.5-TG1: ToolGateway + ToolPolicy + ToolCallStateMachine)
 export * from './tool/index.js';
+//   - verification/ (P1.5-VR1/VR2: VerificationEngine + CompletionGate — TI-005)
+export * from './verification/index.js';
