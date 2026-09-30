@@ -26,3 +26,6 @@ export * from './graph-hash/index.js';
 // Phase 1.5:
 //   - process/ (P1.5-PS1: NodeProcessSupervisor — SE-007/008, TG-010)
 export * from './process/index.js';
+// Phase 2:
+//   - model/ (P2-MG1: OllamaModelGateway — MG-001/004/005)
+export * from './model/index.js';

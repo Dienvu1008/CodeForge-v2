@@ -1,7 +1,7 @@
 # Phase 1.5 Sign-off — Verification, ToolGateway & Security Boundary
 
 Date: 2026-09-14
-Commit: _______________ (P1.5-I3/signoff commit on `main`)
+Commit: f97bf65  (P1.5-I3/signoff commit on `main`)
 Branch: main
 
 Format per PHASE_1_5_ROADMAP §7 (Exit criteria). Phase 1.5 delivers the

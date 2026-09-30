@@ -9,9 +9,10 @@ import { DbError } from '../errors.js';
 import type { Migration, MigrationRegistry, MigrationResult, SchemaVersionRecord } from './types.js';
 import { migration0001 } from './0001-initial-schema.js';
 import { migration0002 } from './0002-phase15-tables.js';
+import { migration0003 } from './0003-context-tables.js';
 
 /** All migrations, ordered by toVersion. Append new migrations here. */
-export const MIGRATIONS: readonly Migration[] = [migration0001, migration0002];
+export const MIGRATIONS: readonly Migration[] = [migration0001, migration0002, migration0003];
 
 class DefaultMigrationRegistry implements MigrationRegistry {
   constructor(private readonly migrations: readonly Migration[]) {
