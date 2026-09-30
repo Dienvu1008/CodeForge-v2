@@ -25,7 +25,7 @@ export type { OutputSchema };
 
 // ── ParseOptions ──────────────────────────────────────────────────────────────
 
-export interface ParseOptions<T = unknown> extends ValidateOptions {
+export interface ParseOptions extends ValidateOptions {
   /**
    * When provided, the parser retries the model call with this feedback appended
    * to the task prompt (bounded to MAX_OUTPUT_RETRIES).
@@ -45,7 +45,7 @@ export interface ParseOptions<T = unknown> extends ValidateOptions {
 export async function parseModelOutput<T = unknown>(
   gateway: ModelGateway,
   request: ModelRequest,
-  options: ParseOptions<T> = {},
+  options: ParseOptions = {},
 ): Promise<T> {
   let lastError: ModelOutputError | undefined;
 
@@ -100,11 +100,11 @@ export async function parseModelOutput<T = unknown>(
  * Validate already-obtained raw output without calling the model again.
  * Useful when the gateway has already been called and you just need the typed value.
  */
-export function parseRawOutput<T = unknown>(
+export function parseRawOutput<_T = unknown>(
   raw: string,
-  options: ParseOptions<T> = {},
-): T {
-  const result = validateModelOutput<T>(raw, options);
+  options: ParseOptions = {},
+): _T {
+  const result = validateModelOutput<_T>(raw, options);
   if (result.ok) return result.value;
   const err = result.error;
   throw new ModelError(
