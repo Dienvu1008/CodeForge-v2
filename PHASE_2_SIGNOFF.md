@@ -1,7 +1,7 @@
 # Phase 2 Sign-off — ModelGateway + ContextBuilder + Planning
 
 Date: 2026-09-14
-Commit: _______________ (P2-I1/signoff commit on `main`)
+Commit: 60208e0 (P2-I1/signoff commit on `main`)
 Branch: main
 
 Format per PHASE_2_ROADMAP §8 (Exit criteria). Phase 2 delivers the
