@@ -37,3 +37,12 @@ export {
   type OverrideRequest,
   type HumanOverrideRepository,
 } from './approval-engine.js';
+
+// Phase 3 — P3-TR1: ToolRegistry
+export {
+  ToolRegistry,
+  ToolRegistryError,
+  createDefaultRegistry,
+  FILESYSTEM_TOOL_DEFINITIONS,
+  type ToolDefinition,
+} from './tool-registry.js';
