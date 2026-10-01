@@ -48,3 +48,5 @@ export * from './verification/index.js';
 // Phase 2:
 //   - context/ (P2-CX1: ContextBuilder pipeline — CX-001..006, PR-002)
 export * from './context/index.js';
+//   - planning/ (P2-PL1: Planner + PlanValidator + PlanCritic — MG-001/002/006, GI-009)
+export * from './planning/index.js';
