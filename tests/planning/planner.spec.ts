@@ -17,16 +17,9 @@ import {
   SqliteDatabaseAdapter,
   SqliteTaskRepository,
   SqliteTaskGraphRepository,
-  SqliteGraphCommitter,
-  SqliteEventLog,
-  Blake3GraphHasher,
   runMigrations,
   createMigrationRegistry,
 } from '@codeforge/infrastructure';
-import {
-  GraphService,
-  GraphCommitService,
-} from '@codeforge/agent-core';
 import { FakeModel } from '@codeforge/testing';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -216,7 +209,6 @@ describe('PlanValidator — deterministic validation (GI-002/004..007)', () => {
   let db: SqliteDatabaseAdapter;
   let graphs: SqliteTaskGraphRepository;
   let tasks: SqliteTaskRepository;
-  let graphCommit: GraphCommitService;
 
   beforeEach(() => {
     db = new SqliteDatabaseAdapter(':memory:');
@@ -225,19 +217,6 @@ describe('PlanValidator — deterministic validation (GI-002/004..007)', () => {
     db.execute(`INSERT INTO sessions (session_id, workspace_id, workspace_root, goal_id, graph_version, state, created_at, updated_at, runtime_version, schema_version, budget_id, lock_id, metadata_json) VALUES ('S','W','/r','G',1,'RUNNING','t','t','0.1.0',1,'B','L','{}')`);
     graphs = new SqliteTaskGraphRepository(db);
     tasks  = new SqliteTaskRepository(db);
-    const events = new SqliteEventLog(db);
-    const c = makeCounters();
-    const graphSvc = new GraphService({
-      hasher:               new Blake3GraphHasher(),
-      now:                  c.now,
-      nextId:               c.nextId,
-      canonicalFormVersion: 'v1',
-      schemaVersion:        1,
-    });
-    graphCommit = new GraphCommitService({
-      graphs, committer: new SqliteGraphCommitter(db), graphService: graphSvc,
-      now: c.now, nextId: c.nextId,
-    });
   });
   afterEach(() => db.close());
 
