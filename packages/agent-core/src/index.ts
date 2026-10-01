@@ -45,3 +45,6 @@ export * from './security/index.js';
 export * from './tool/index.js';
 //   - verification/ (P1.5-VR1/VR2: VerificationEngine + CompletionGate — TI-005)
 export * from './verification/index.js';
+// Phase 2:
+//   - context/ (P2-CX1: ContextBuilder pipeline — CX-001..006, PR-002)
+export * from './context/index.js';
