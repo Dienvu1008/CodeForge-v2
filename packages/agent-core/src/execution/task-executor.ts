@@ -1,4 +1,4 @@
-// TaskExecutor — P3-TE1. Orchestrates one TaskRun end-to-end.
+// TaskExecutor — P3-TE1 + P4-AP1 + P4-IK1. Orchestrates one TaskRun end-to-end.
 //
 // Flow for a single TaskRun:
 //   1. Start TaskRun via TaskRunService (EX-004: anchor required).
@@ -8,9 +8,13 @@
 //      a. Ask model for next action (purpose='execute').
 //      b. Parse model output through StructuredOutputParser (MG-002/003, SE-010).
 //      c. If {type:'done'} → break loop (success).
-//      d. If {type:'tool_call'} → route via ToolGateway (TG-001):
+//      d. If {type:'tool_call'} → check idempotency (TG-006):
+//         - IdempotencyEngine.check() → idempotencyKey | isDuplicate.
+//         - If duplicate: skip, continue loop.
+//      e. Route via ToolGateway (TG-001):
 //         - request() → policy check → APPROVED | DENIAL.
 //         - execute() → SUCCEEDED | FAILED | TIMEOUT.
+//         - ArtifactCapturePort.record() → stdoutArtifactId + stderrArtifactId (PR-001).
 //         - Record toolCallId on accumulator.
 //   5. Finalize TaskRun (EX-005 reconcile, EX-L14 end revision).
 //   6. Update ExecutionCoordinator projection.
@@ -23,6 +27,8 @@
 //   EX-L14: workspaceRevisionAtEnd written by finalize.
 //   MG-001: all model calls through ModelGateway.
 //   TG-001: all tool execution through ToolGateway.
+//   TG-006: idempotency key set on MODIFY_WORKSPACE/DESTRUCTIVE/SYSTEM tools.
+//   PR-001: stdout/stderr persisted as artifacts after each tool call.
 //   SE-010: model output treated as untrusted.
 import type { Task, TaskRun }           from '../domain/task.js';
 import type { WorkspaceRevision }       from '../domain/workspace-revision.js';
@@ -45,6 +51,9 @@ import {
   type RawExecuteOutput,
   type RawToolCallProposal,
 } from './tool-call-schema.js';
+import type { ArtifactCapturePort } from './artifact-capture-port.js';
+import type { IdempotencyEngine }   from './idempotency-engine.js';
+import type { ToolRegistry }        from '../tool/tool-registry.js';
 
 // ── TaskExecutorError ─────────────────────────────────────────────────────────
 
@@ -78,6 +87,26 @@ export interface TaskExecutorDeps {
   readonly toolGateway:          ToolGateway;
   /** Physical executor routed per toolName (produced by NodeToolExecutor in infra). */
   readonly executor:             ToolExecutor;
+  /**
+   * Optional artifact capture port (P4-AP1).
+   * When provided, stdout/stderr of every tool call is persisted as artifacts (PR-001).
+   * If omitted, artifacts are not stored (Phase 3 behaviour).
+   */
+  readonly artifactCapture?: ArtifactCapturePort;
+  /**
+   * Optional idempotency engine (P4-IK1).
+   * When provided, duplicate MODIFY_WORKSPACE/DESTRUCTIVE tool calls with the same
+   * content-hash idempotency key are skipped (TG-006).
+   * Also sets ToolCall.idempotencyKey for non-'none' tools.
+   * If omitted, all tool calls pass through without deduplication.
+   */
+  readonly idempotencyEngine?: IdempotencyEngine;
+  /**
+   * Optional tool registry (P4-IK1).
+   * Required when idempotencyEngine is provided — used to look up idempotencyStrategy.
+   * If idempotencyEngine is provided but toolRegistry is omitted, strategy defaults to 'none'.
+   */
+  readonly toolRegistry?: ToolRegistry;
   /**
    * Hard upper bound on tool calls per run (prevents infinite loops).
    * Default: 25. Must be > 0.
@@ -237,6 +266,23 @@ export class TaskExecutor {
       // ── 3d. Build ToolCall domain record ────────────────────────────────────
       const toolCallId   = this.deps.nextId();
       const argumentsHash = this.hashArguments(proposal.arguments);
+
+      // ── 3d-i. Idempotency check (TG-006) ────────────────────────────────────
+      let idempotencyKey: string | undefined;
+      if (this.deps.idempotencyEngine !== undefined) {
+        const def = this.deps.toolRegistry?.get(proposal.toolName);
+        const idResult = this.deps.idempotencyEngine.check(
+          def ?? { toolName: proposal.toolName, version: '1.0', description: '',
+                   riskClass: 'SYSTEM', argsSchema: {}, idempotencyStrategy: 'none' },
+          proposal.arguments,
+        );
+        if (idResult.isDuplicate) {
+          // Skip duplicate MODIFY call — continue loop without executing.
+          continue;
+        }
+        idempotencyKey = idResult.idempotencyKey;
+      }
+
       const provenance: Provenance = {
         provenanceId: this.deps.nextId(),
         source:       { kind: 'model', id: this.deps.gateway.identity.name },
@@ -260,6 +306,7 @@ export class TaskExecutor {
         riskClass:     this.resolveRiskClass(proposal.toolName),
         arguments:     proposal.arguments,
         argumentsHash,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         state:         'REQUESTED',
         proposedBy:    'model',
         provenance,
@@ -293,9 +340,14 @@ export class TaskExecutor {
       }
 
       // ── 3f. ToolGateway.execute() — run the tool ────────────────────────────
+      // We wrap deps.executor with a capturing proxy so we can retrieve the
+      // ExecutorResult (stdout/stderr) for artifact recording after execute() completes.
+      // ToolGateway calls executor.execute() internally but only keeps exitCode/durationMs
+      // in ToolResult — this proxy saves the full ExecutorResult for us.
+      const capturingProxy = new CapturingExecutorProxy(this.deps.executor);
       let executedCall: ToolCall;
       try {
-        executedCall = await this.deps.toolGateway.execute(toolCallId, this.deps.executor);
+        executedCall = await this.deps.toolGateway.execute(toolCallId, capturingProxy);
       } catch (err) {
         if (err instanceof ToolGatewayError) {
           finalState = 'FAILED';
@@ -303,6 +355,24 @@ export class TaskExecutor {
           break;
         }
         throw err; // unexpected — re-throw
+      }
+
+      // ── 3g. Artifact capture (P4-AP1, PR-001) ───────────────────────────────
+      if (this.deps.artifactCapture !== undefined && capturingProxy.lastResult !== undefined) {
+        try {
+          await this.deps.artifactCapture.record(
+            toolCallId,
+            req.sessionId,
+            capturingProxy.lastResult,
+          );
+        } catch {
+          // Artifact recording failure is non-fatal — continue execution.
+        }
+      }
+
+      // Mark idempotency key as executed (TG-006).
+      if (this.deps.idempotencyEngine !== undefined) {
+        this.deps.idempotencyEngine.markExecuted(idempotencyKey);
       }
 
       toolCallIds.push(toolCallId);
@@ -425,5 +495,25 @@ export class TaskExecutor {
    */
   private hashArguments(args: Record<string, unknown>): string {
     return `sha1:${Buffer.from(JSON.stringify(args)).toString('base64').slice(0, 40)}`;
+  }
+}
+
+// ── CapturingExecutorProxy ────────────────────────────────────────────────────
+
+/**
+ * Lightweight ToolExecutor proxy that stores the last ExecutorResult so
+ * TaskExecutor can retrieve stdout/stderr for artifact recording (P4-AP1).
+ *
+ * Created per tool-call inside TaskExecutor.execute() — no state leaks between calls.
+ */
+class CapturingExecutorProxy implements ToolExecutor {
+  public lastResult: import('../tool/tool-gateway.js').ExecutorResult | undefined;
+
+  constructor(private readonly inner: ToolExecutor) {}
+
+  async execute(call: ToolCall): Promise<import('../tool/tool-gateway.js').ExecutorResult> {
+    const result = await this.inner.execute(call);
+    this.lastResult = result;
+    return result;
   }
 }
