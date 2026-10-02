@@ -54,6 +54,11 @@ import {
 import type { ArtifactCapturePort } from './artifact-capture-port.js';
 import type { IdempotencyEngine }   from './idempotency-engine.js';
 import type { ToolRegistry }        from '../tool/tool-registry.js';
+import type { VerificationEngine }  from '../verification/verification-engine.js';
+import type { CompletionGate }      from '../verification/completion-gate.js';
+import type { VerificationPolicy }  from '../verification/verification-policy.js';
+import type { VerificationStatus }  from '../domain/verification.js';
+import { DEFAULT_VERIFICATION_POLICY } from '../verification/verification-policy.js';
 
 // ── TaskExecutorError ─────────────────────────────────────────────────────────
 
@@ -92,6 +97,25 @@ export interface TaskExecutorDeps {
    * When provided, stdout/stderr of every tool call is persisted as artifacts (PR-001).
    * If omitted, artifacts are not stored (Phase 3 behaviour).
    */
+  /**
+   * Optional verification engine (P4-VW1).
+   * When provided, VerificationEngine.verify() runs after a SUCCEEDED TaskRun.
+   * If the report status is PASS and CompletionGate allows, the task projection
+   * is promoted to PASSED (TI-005 northstar).
+   * If omitted, verification is skipped (Phase 3 behaviour — projection stays VERIFYING).
+   */
+  readonly verificationEngine?:  VerificationEngine;
+  /**
+   * Optional completion gate (P4-VW1).
+   * Required when verificationEngine is provided — gates VERIFYING → PASSED.
+   * If omitted, no PASSED transition occurs even if verification runs.
+   */
+  readonly completionGate?:      CompletionGate;
+  /**
+   * Verification policy to use when verificationEngine is provided.
+   * Defaults to DEFAULT_VERIFICATION_POLICY (checks:[], AFFECTED_DIRECT scope).
+   */
+  readonly verificationPolicy?:  VerificationPolicy;
   readonly artifactCapture?: ArtifactCapturePort;
   /**
    * Optional idempotency engine (P4-IK1).
@@ -140,6 +164,12 @@ export interface TaskExecutorResult {
   readonly summary?: string;
   /** Wall-clock duration in ms. */
   readonly durationMs: number;
+  /** Verification report ID if verification ran (P4-VW1). */
+  readonly verificationId?: string | undefined;
+  /** Verification status if verification ran (P4-VW1). */
+  readonly verificationStatus?: VerificationStatus | undefined;
+  /** Whether task reached PASSED state (TI-005). */
+  readonly taskPassed?: boolean | undefined;
 }
 
 // ── TaskExecutor ──────────────────────────────────────────────────────────────
@@ -420,10 +450,53 @@ export class TaskExecutor {
     // ── 5. Update projection ──────────────────────────────────────────────────
     await this.deps.executionCoordinator.onRunEnded(req.task.taskId, runId, finalState);
 
+    // ── 6. Verification (P4-VW1, TI-005) ─────────────────────────────────────
+    // Only run verification on SUCCEEDED runs (failed/timed-out runs go to VERIFYING
+    // then a future recovery cycle handles them — Phase 5).
+    let verificationId:     string | undefined;
+    let verificationStatus: VerificationStatus | undefined;
+    let taskPassed         = false;
+
+    if (finalState === 'SUCCEEDED' && this.deps.verificationEngine !== undefined) {
+      try {
+        const policy   = this.deps.verificationPolicy ?? DEFAULT_VERIFICATION_POLICY;
+        const report   = await this.deps.verificationEngine.verify({
+          sessionId:       req.sessionId,
+          taskId:          req.task.taskId,
+          taskRunId:       runId,
+          targetRevision:  req.workspaceRevisionAtEnd,
+          policy,
+          reason:          'task_completion',
+        });
+
+        verificationId     = report.verificationId;
+        verificationStatus = report.status;
+
+        // If report PASS and CompletionGate allows → PASSED (TI-005).
+        if (report.status === 'PASS' && this.deps.completionGate !== undefined) {
+          const gate = await this.deps.completionGate.canComplete(
+            req.task.taskId,
+            req.workspaceRevisionAtEnd,
+            policy.requiredScope,
+          );
+          if (gate.canComplete) {
+            await this.deps.executionCoordinator.setState(req.task.taskId, 'PASSED');
+            taskPassed = true;
+          }
+        }
+      } catch {
+        // Verification failure is non-fatal for the run — projection stays VERIFYING.
+        // A future recovery cycle (Phase 5) will re-run verification.
+      }
+    }
+
     return {
       finalState,
       toolCallCount: toolCallIds.length,
-      ...(summary !== undefined ? { summary } : {}),
+      ...(summary            !== undefined ? { summary }            : {}),
+      ...(verificationId     !== undefined ? { verificationId }     : {}),
+      ...(verificationStatus !== undefined ? { verificationStatus } : {}),
+      ...(taskPassed                       ? { taskPassed }         : {}),
       durationMs: Date.now() - t0,
     };
   }
