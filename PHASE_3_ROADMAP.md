@@ -206,14 +206,14 @@ No FakeProcessSupervisor — uses `NodeProcessSupervisor` directly.
 
 ```
 Tuần 1 — Tool Infrastructure
-  P3-TR1   ToolRegistry                                             [1 ngày]
-  P3-FS1   FilesystemExecutor (read/write/list/delete)             [2 ngày]
-  P3-AS1   ArtifactStore + Schema migration v4                     [2 ngày]
+  P3-TR1   ToolRegistry                                             [DONE ✓] 681 tests
+  P3-WM1   WorkspaceManager + NodeWorkspaceManager                 [DONE ✓]
+  P3-FS1   FilesystemExecutor (read/write/list/delete)             [DONE ✓]
+  P3-AS1   ArtifactStore + Schema migration v4                     [DONE ✓] 707 tests, W+WSL
 
-Tuần 2 — Git + Shell + WorkspaceManager
+Tuần 2 — Git + Shell
   P3-GIT1  GitExecutor (status/diff/add/commit/log)                [2 ngày]
   P3-SH1   ShellExecutor (allowlisted)                             [1 ngày]
-  P3-WM1   WorkspaceManager full impl                              [2 ngày]
 
 Tuần 3 — TaskExecutor
   P3-TE1   NodeToolExecutor + TaskExecutor                         [3 ngày]

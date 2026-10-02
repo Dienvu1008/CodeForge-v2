@@ -29,3 +29,10 @@ export * from './process/index.js';
 // Phase 2:
 //   - model/ (P2-MG1: OllamaModelGateway — MG-001/004/005)
 export * from './model/index.js';
+// Phase 3:
+//   - workspace/ (P3-WM1: NodeWorkspaceManager — WS-003/004/005/010)
+export * from './workspace/index.js';
+//   - artifacts/ (P3-AS1: ArtifactStore — PR-003)
+export * from './artifacts/index.js';
+//   - tools/ (P3-FS1: FilesystemExecutor — WS-003/004/005/010)
+export * from './tools/index.js';

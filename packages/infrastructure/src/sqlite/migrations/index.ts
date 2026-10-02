@@ -10,3 +10,4 @@ export {
 export { migration0001 } from './0001-initial-schema.js';
 export { migration0002 } from './0002-phase15-tables.js';
 export { migration0003 } from './0003-context-tables.js';
+export { migration0004 } from './0004-artifacts.js';

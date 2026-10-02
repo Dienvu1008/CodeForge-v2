@@ -50,3 +50,6 @@ export * from './verification/index.js';
 export * from './context/index.js';
 //   - planning/ (P2-PL1: Planner + PlanValidator + PlanCritic — MG-001/002/006, GI-009)
 export * from './planning/index.js';
+// Phase 3:
+//   - workspace/ (P3-WM1: WorkspaceManager contract — WS-003/004/005/006/010)
+export * from './workspace/index.js';
