@@ -5,3 +5,5 @@ export { FilesystemExecutor, type FilesystemExecutorDeps } from './filesystem-ex
 export { GitExecutor, type GitExecutorDeps } from './git-executor.js';
 // P3-SH1: Shell tool executor.
 export { ShellExecutor, type ShellExecutorDeps } from './shell-executor.js';
+// P3-TE1: Composite NodeToolExecutor (routes to FS / Git / Shell by toolName).
+export { NodeToolExecutor, type NodeToolExecutorDeps } from './node-tool-executor.js';

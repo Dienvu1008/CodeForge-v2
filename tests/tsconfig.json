@@ -11,6 +11,7 @@
     "workspace/**/*.ts",
     "git/**/*.ts",
     "shell/**/*.ts",
+    "execution/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",
     "state-machine/**/*.ts",
