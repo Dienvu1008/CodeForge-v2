@@ -10,6 +10,7 @@
     "invariants/**/*.ts",
     "workspace/**/*.ts",
     "git/**/*.ts",
+    "shell/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",
     "state-machine/**/*.ts",

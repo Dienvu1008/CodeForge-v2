@@ -46,3 +46,14 @@ export {
   FILESYSTEM_TOOL_DEFINITIONS,
   type ToolDefinition,
 } from './tool-registry.js';
+
+// Phase 3 — P3-SH1: ShellPolicy
+export {
+  ShellPolicyError,
+  DEFAULT_SHELL_ALLOWLIST,
+  DEFAULT_SHELL_POLICY,
+  createShellPolicy,
+  checkCommand,
+  resolveTimeout,
+  type ShellPolicy,
+} from './shell-policy.js';
