@@ -55,8 +55,6 @@ function toolCall(id: string, riskClass: ToolCall['riskClass'] = 'READ_ONLY'): T
     provenance:    { provenanceId: 'P', source: { kind: 'model', id: 'executor' },
                      inputs: [], reason: 'execute', at: '2026-01-01T00:00:00.000Z' },
     requestedAt:   '2026-01-01T00:00:00.000Z',
-    toolCalls:     [],
-    failures:      [],
   };
 }
 
