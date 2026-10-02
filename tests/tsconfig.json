@@ -9,6 +9,7 @@
   "include": [
     "invariants/**/*.ts",
     "workspace/**/*.ts",
+    "git/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",
     "state-machine/**/*.ts",

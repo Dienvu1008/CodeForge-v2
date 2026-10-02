@@ -188,6 +188,14 @@ export const FILESYSTEM_TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     idempotencyStrategy:  'content-hash',
   },
   {
+    toolName:             'git_log',
+    version:              '1.0',
+    description:          'Show recent git commits (one-line format).',
+    riskClass:            'READ_ONLY',
+    argsSchema:           { n: { type: 'number', min: 1, max: 100 } },
+    idempotencyStrategy:  'none',
+  },
+  {
     toolName:             'run_command',
     version:              '1.0',
     description:          'Run an allowlisted shell command (no shell interpolation).',
