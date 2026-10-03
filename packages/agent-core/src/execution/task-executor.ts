@@ -1,4 +1,4 @@
-// TaskExecutor — P3-TE1 + P4-AP1 + P4-IK1. Orchestrates one TaskRun end-to-end.
+﻿// TaskExecutor — P3-TE1 + P4-AP1 + P4-IK1. Orchestrates one TaskRun end-to-end.
 //
 // Flow for a single TaskRun:
 //   1. Start TaskRun via TaskRunService (EX-004: anchor required).
@@ -41,6 +41,8 @@ import type { ToolGateway }             from '../tool/tool-gateway.js';
 import type { ToolCall, RiskClass }     from '../domain/tool-call.js';
 import type { Provenance }              from '../domain/provenance.js';
 import type { BudgetConsumption }       from '../domain/budget.js';
+import type { BudgetRepository }        from '../repositories/index.js';
+import { BudgetError }                  from '../budget/budget-engine.js';
 import { parseModelOutput, modelRequest } from '../model/structured-output-parser.js';
 import { buildPrompt, BOUNDARY_SYSTEM_PREAMBLE } from '../security/prompt-boundary.js';
 import { ModelError }                   from '../model/gateway.js';
@@ -131,6 +133,17 @@ export interface TaskExecutorDeps {
    * If idempotencyEngine is provided but toolRegistry is omitted, strategy defaults to 'none'.
    */
   readonly toolRegistry?: ToolRegistry;
+  /**
+   * Optional budget repository (P4-BW1).
+   * When provided, each tool call debits { toolCalls: 1 } before execution (BU-003).
+   * Budget exhaustion stops the run with finalState='TIMEOUT' (BU-005).
+   */
+  readonly budgetRepository?: BudgetRepository;
+  /**
+   * Budget ID to debit against (session-level budget).
+   * Required when budgetRepository is provided.
+   */
+  readonly budgetId?: string;
   /**
    * Hard upper bound on tool calls per run (prevents infinite loops).
    * Default: 25. Must be > 0.
@@ -342,6 +355,21 @@ export class TaskExecutor {
         provenance,
         requestedAt:   this.deps.now(),
       };
+
+      // ── 3e-i. Budget debit (P4-BW1, BU-003) ────────────────────────────────
+      if (this.deps.budgetRepository !== undefined && this.deps.budgetId !== undefined) {
+        try {
+          await this.deps.budgetRepository.consume(this.deps.budgetId, { toolCalls: 1 });
+        } catch (err) {
+          if (err instanceof BudgetError && err.code === 'BUDGET_EXHAUSTED') {
+            // BU-005: exhausted budget must stop the task, not continue silently.
+            finalState = 'TIMEOUT';
+            loopDone   = true;
+            break;
+          }
+          throw err; // unexpected — re-throw
+        }
+      }
 
       // ── 3e. ToolGateway.request() — policy check (TG-001/TG-007/TG-009) ────
       let requestedCall: ToolCall;
