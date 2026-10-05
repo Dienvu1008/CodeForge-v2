@@ -17,6 +17,8 @@
   "dependencies": {
     "@codeforge/agent-core": "*",
     "@noble/hashes": "^1.5.0",
-    "better-sqlite3": "^11.8.0"
+    "better-sqlite3": "^11.8.0",
+    "tree-sitter-wasms": "0.1.13",
+    "web-tree-sitter": "0.20.8"
   }
 }

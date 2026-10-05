@@ -36,3 +36,5 @@ export * from './workspace/index.js';
 export * from './artifacts/index.js';
 //   - tools/ (P3-FS1: FilesystemExecutor — WS-003/004/005/010)
 export * from './tools/index.js';
+// Phase 6 — P6-TS1/SX1: Code intelligence (Tree-sitter + symbols)
+export * from './code-intelligence/index.js';
