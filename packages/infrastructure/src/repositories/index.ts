@@ -1,4 +1,4 @@
-// Repository implementations (P1-F5) — DOMAIN_CONTRACTS §23.
+﻿// Repository implementations (P1-F5) — DOMAIN_CONTRACTS §23.
 // EventLog impl lives in ../event-log (P1-F4).
 export * from './errors.js';
 export { SqliteSessionRepository } from './session-repository.js';
@@ -13,3 +13,4 @@ export { SqliteGraphCommitter } from './graph-committer.js';
 export { SqliteToolCallRepository, SqliteApprovalRepository } from './tool-call-repository.js';
 export { SqliteBudgetRepository } from './budget-repository.js';
 export { SqliteCheckpointRepository } from './checkpoint-repository.js';
+export { SqliteFailureRepository, SqliteRecoveryActionRepository } from './recovery-repository.js';
