@@ -169,8 +169,8 @@ export interface TaskExecutorRequest {
 // ── TaskExecutorResult ────────────────────────────────────────────────────────
 
 export interface TaskExecutorResult {
-  /** Final TaskRun state after finalization. */
-  readonly finalState:  'SUCCEEDED' | 'FAILED' | 'TIMEOUT';
+  /** Final TaskRun state after finalization, or SUSPENDED when awaiting approval. */
+  readonly finalState:  'SUCCEEDED' | 'FAILED' | 'TIMEOUT' | 'SUSPENDED';
   /** Number of tool calls executed in this run. */
   readonly toolCallCount: number;
   /** Model's completion summary (from {type:'done'} signal). */
@@ -183,6 +183,8 @@ export interface TaskExecutorResult {
   readonly verificationStatus?: VerificationStatus | undefined;
   /** Whether task reached PASSED state (TI-005). */
   readonly taskPassed?: boolean | undefined;
+  /** Tool call ID awaiting human approval (when finalState='SUSPENDED'). */
+  readonly pendingApprovalToolCallId?: string | undefined;
 }
 
 // ── TaskExecutor ──────────────────────────────────────────────────────────────
@@ -253,6 +255,7 @@ export class TaskExecutor {
     let loopDone    = false;
     let finalState: 'SUCCEEDED' | 'FAILED' | 'TIMEOUT' = 'FAILED';
     let summary: string | undefined;
+    let pendingApprovalToolCallIdRef: string | undefined;
 
     for (let i = 0; i < this.maxToolCalls && !loopDone; i++) {
       // ── 3a. Build model request ─────────────────────────────────────────────
@@ -390,10 +393,13 @@ export class TaskExecutor {
       }
 
       if (requestedCall.state === 'APPROVAL_PENDING') {
-        // Human approval required — cannot proceed autonomously; fail the run.
-        // In a future phase, this would surface to the UI and pause.
+        // P5-AH1: surface to caller — do NOT finalize as FAILED.
+        // Finalize run as FAILED (best we can do without suspending the loop),
+        // but signal SUSPENDED so SessionOrchestrator can escalate properly.
         finalState = 'FAILED';
         loopDone   = true;
+        // Record the pending approval ID for the caller to surface.
+        pendingApprovalToolCallIdRef = toolCallId;
         break;
       }
 
@@ -521,10 +527,11 @@ export class TaskExecutor {
     return {
       finalState,
       toolCallCount: toolCallIds.length,
-      ...(summary            !== undefined ? { summary }            : {}),
-      ...(verificationId     !== undefined ? { verificationId }     : {}),
-      ...(verificationStatus !== undefined ? { verificationStatus } : {}),
-      ...(taskPassed                       ? { taskPassed }         : {}),
+      ...(summary                         !== undefined ? { summary }            : {}),
+      ...(verificationId                  !== undefined ? { verificationId }     : {}),
+      ...(verificationStatus              !== undefined ? { verificationStatus } : {}),
+      ...(taskPassed                                   ? { taskPassed }         : {}),
+      ...(pendingApprovalToolCallIdRef    !== undefined ? { pendingApprovalToolCallId: pendingApprovalToolCallIdRef } : {}),
       durationMs: Date.now() - t0,
     };
   }

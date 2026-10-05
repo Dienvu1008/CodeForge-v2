@@ -10,12 +10,17 @@ import type { TaskGraph }               from '../graph/types.js';
 import type { SessionService }          from './session-service.js';
 import type { Planner }                 from '../planning/planner.js';
 import type { GraphCommitService }      from '../graph/graph-commit-service.js';
-import type { TaskGraphRepository, TaskRepository, TaskExecutionRepository } from '../repositories/index.js';
+import type { TaskGraphRepository, TaskRepository, TaskExecutionRepository, TaskRunRepository } from '../repositories/index.js';
 import type { ExecutionCoordinator }    from '../execution/execution-coordinator.js';
 import type { TaskExecutor, TaskExecutorRequest } from '../execution/task-executor.js';
 import type { CheckpointService, CaptureInput }   from '../checkpoint/checkpoint-service.js';
 import { computeSchedule }              from '../scheduler/scheduler.js';
 import { isTerminalTaskState }          from '../state-machine/states.js';
+import type { FailureAnalyzer }          from '../recovery/failure-analyzer.js';
+import type { RecoveryEngine }          from '../recovery/recovery-engine.js';
+import type { FailureRepository }       from '../repositories/index.js';
+import { decide, type RecoveryPolicyConfig } from '../recovery/recovery-policy.js';
+import { detectNoProgress }             from '../recovery/no-progress-detector.js';
 
 export class SessionOrchestratorError extends Error {
   public readonly code: 'PLAN_FAILED' | 'COMMIT_FAILED' | 'DEADLOCK' | 'SESSION_FAILED';
@@ -37,6 +42,19 @@ export interface SessionOrchestratorDeps {
   readonly taskExecutor:         TaskExecutor;
   readonly checkpointService:    CheckpointService;
   readonly maxIterations?:       number;
+  /**
+   * Optional P5-SO2: FailureAnalyzer to classify failed task runs.
+   * When omitted, failed tasks are not analyzed and recovery is skipped.
+   */
+  /** Required for P5-SO2 recovery: look up the last TaskRun for a task. */
+  readonly taskRunRepository?:   TaskRunRepository;
+  readonly failureAnalyzer?:     FailureAnalyzer;
+  /** Optional P5-SO2: RecoveryEngine to execute recovery actions. */
+  readonly recoveryEngine?:      RecoveryEngine;
+  /** Optional P5-SO2: FailureRepository for NoProgressDetector history. */
+  readonly failureRepository?:   FailureRepository;
+  /** Optional P5-SO2: custom recovery policy config. */
+  readonly recoveryPolicy?:      RecoveryPolicyConfig;
   readonly now:    () => string;
   readonly nextId: () => string;
 }
@@ -151,6 +169,41 @@ export class SessionOrchestrator {
       taskRunCount++;
       if (result.taskPassed === true) passedIds.push(task.taskId);
 
+      // ── P5-SO2: Recovery loop after FAILED/TIMEOUT ──────────────────────
+      if ((result.finalState === 'FAILED' || result.finalState === 'TIMEOUT')
+          && this.deps.failureAnalyzer !== undefined
+          && this.deps.recoveryEngine  !== undefined) {
+        try {
+          const lastRun = await this.findLastRun(task.taskId);
+          if (lastRun !== null) {
+            const failure = await this.deps.failureAnalyzer.analyze({
+              sessionId: input.sessionId,
+              taskRun:   lastRun,
+            });
+            // Check for no-progress before deciding action.
+            const history = this.deps.failureRepository !== undefined
+              ? await this.deps.failureRepository.getByTask(task.taskId)
+              : [];
+            const npResult = detectNoProgress([...history], 3);
+            const decision = npResult.noProgress
+              ? { action: 'ESCALATE' as const, policyVersion: 1, reason: 'No progress detected' }
+              : decide({ failureClass: failure.class, attemptsSoFar: history.length,
+                         policy: this.deps.recoveryPolicy });
+            const reResult = await this.deps.recoveryEngine.execute({
+              failure, action: decision.action,
+              reason: decision.reason,
+              policyVersion: decision.policyVersion,
+              sessionId: input.sessionId,
+            });
+            if (reResult.sessionEscalated) {
+              // Session is now AWAITING_HUMAN — exit loop.
+              break;
+            }
+            // shouldRetry=true: loop will pick the task up again on next iteration.
+          }
+        } catch { /* recovery failure is non-fatal — continue */ }
+      }
+
       try {
         const ug = await this.deps.graphRepository.getCurrent(input.sessionId);
         const us = await this.buildStatesMap(ug);
@@ -215,5 +268,15 @@ export class SessionOrchestrator {
 
   private async abortSession(sessionId: string): Promise<void> {
     try { await this.deps.sessionService.transition(sessionId, 'CANCEL_REQUESTED'); } catch { /* best-effort */ }
+  }
+
+  /** Find the most recent TaskRun for a task (for FailureAnalyzer). */
+  private async findLastRun(taskId: string): Promise<import('../domain/task.js').TaskRun | null> {
+    if (this.deps.taskRunRepository === undefined) return null;
+    // findRunning returns currently-running runs; we look for the latest by scanning
+    // via the projection which has the currentRunId after a completed run.
+    const proj = await this.deps.executionRepository.getByTask(taskId);
+    if (proj?.currentRunId === undefined) return null;
+    return this.deps.taskRunRepository.getById(proj.currentRunId);
   }
 }
