@@ -1,4 +1,4 @@
-// Repository interfaces (C7) — DOMAIN_CONTRACTS §23. RI-1..RI-8.
+﻿// Repository interfaces (C7) — DOMAIN_CONTRACTS §23. RI-1..RI-8.
 //
 // Immutable entities have NO update() (RI-7). Every repo has getById() (RI-8).
 // These are CONTRACTS only; concrete SQLite adapters live in infrastructure (Phase 1).
@@ -108,4 +108,24 @@ export interface EventLog {
   append(event: DomainEvent): Promise<void>;
   stream(sessionId: string, fromSequence?: number): AsyncIterable<DomainEvent>;
   query(filter: EventFilter): Promise<readonly DomainEvent[]>;
+}
+
+
+// §10 — Failure evidence (P5-FA1). Append-only.
+import type { Failure, RecoveryAction } from '../domain/failure.js';
+
+export interface FailureRepository {
+  create(failure: Failure): Promise<void>;
+  getById(failureId: string): Promise<Failure | null>;
+  getByTask(taskId: string): Promise<readonly Failure[]>;
+  getBySession(sessionId: string): Promise<readonly Failure[]>;
+}
+
+// §11 — RecoveryAction (P5-RP1/RE1). Append-only; outcome updated in place.
+export interface RecoveryActionRepository {
+  create(action: RecoveryAction): Promise<void>;
+  getById(actionId: string): Promise<RecoveryAction | null>;
+  getByFailure(failureId: string): Promise<readonly RecoveryAction[]>;
+  /** Update outcome after action completes. */
+  setOutcome(actionId: string, outcome: RecoveryAction['outcome'], endedAt: string): Promise<void>;
 }

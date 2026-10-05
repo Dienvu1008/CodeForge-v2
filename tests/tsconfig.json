@@ -1,4 +1,4 @@
-{
+﻿{
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
@@ -12,6 +12,7 @@
     "git/**/*.ts",
     "shell/**/*.ts",
     "execution/**/*.ts",
+    "recovery/**/*.ts",
     "integration/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",
