@@ -13,3 +13,5 @@ export * from './recovery-policy.js';
 
 // Phase 5 — P5-NPD1: NoProgressDetector
 export * from './no-progress-detector.js';
+// Phase 5 — P5-RE1: RecoveryEngine
+export * from './recovery-engine.js';
