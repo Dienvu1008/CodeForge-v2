@@ -29,7 +29,10 @@ export interface FailureAnalyzerDeps {
 
 export interface AnalyzeInput {
   readonly sessionId:          string;
-  readonly taskRun:            TaskRun;
+  /** The TaskRun to analyze. If not provided, a minimal synthetic run is used. */
+  readonly taskRun:            TaskRun | undefined;
+  readonly taskId?:            string;
+  readonly runState?:          TaskRun['state'];
   /**
    * Most recent VerificationReport for this run (undefined if verification
    * did not run or was skipped).
@@ -55,7 +58,22 @@ export class FailureAnalyzer {
    * RC-006: provenance (classifiedBy, detectedAt, evidence) always recorded.
    */
   async analyze(input: AnalyzeInput): Promise<Failure> {
-    const { sessionId, taskRun, verificationReport, lastStderr = '' } = input;
+    const { sessionId, verificationReport, lastStderr = '' } = input;
+    // Build a minimal synthetic TaskRun if not provided.
+    const taskRun: TaskRun = input.taskRun ?? {
+      taskRunId:                this.deps.nextId(),
+      taskId:                   input.taskId ?? 'unknown',
+      sessionId,
+      attemptNumber:            1,
+      state:                    input.runState ?? 'FAILED',
+      graphVersionAtStart:      1,
+      workspaceRevisionAtStart: { revisionId: 'r', canonicalFormVersion: 'v1', root: '/', includedPaths: [], excludedScratchPaths: [], hashAlgorithm: 'blake3', hash: 'H', fileCount: 0, totalBytes: 0, createdAt: this.deps.now(), createdBy: { sessionId, reason: 'session_start' } },
+      strategyUsed:             { kind: 'generate' },
+      startedAt:                this.deps.now(),
+      toolCalls:                [],
+      failures:                 [],
+      budgetConsumed:           { wallClockMs: 0, modelTokens: 0, toolCalls: 0, recoveryAttempts: 0 },
+    };
 
     // 1. Deterministic classification (RC-001, RC-003).
     const failureClass = classifyFailure({

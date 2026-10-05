@@ -174,11 +174,14 @@ export class SessionOrchestrator {
           && this.deps.failureAnalyzer !== undefined
           && this.deps.recoveryEngine  !== undefined) {
         try {
-          const lastRun = await this.findLastRun(task.taskId);
-          if (lastRun !== null) {
+          // Pass task info directly — FailureAnalyzer builds synthetic run if needed.
+          const runState = result.finalState === 'TIMEOUT' ? 'TIMEOUT' as const : 'FAILED' as const;
+          {
             const failure = await this.deps.failureAnalyzer.analyze({
               sessionId: input.sessionId,
-              taskRun:   lastRun,
+              taskRun:   undefined,
+              taskId:    task.taskId,
+              runState,
             });
             // Check for no-progress before deciding action.
             const history = this.deps.failureRepository !== undefined
@@ -270,13 +273,18 @@ export class SessionOrchestrator {
     try { await this.deps.sessionService.transition(sessionId, 'CANCEL_REQUESTED'); } catch { /* best-effort */ }
   }
 
-  /** Find the most recent TaskRun for a task (for FailureAnalyzer). */
-  private async findLastRun(taskId: string): Promise<import('../domain/task.js').TaskRun | null> {
+  /**
+   * Find the most recent TaskRun for a task (for FailureAnalyzer).
+   * findRunning(sessionId) returns all RUNNING runs for the session;
+   * after TaskRunService.finalize(), the run is terminal but currentRunId
+   * on the projection was cleared. We build a minimal TaskRun from what we know.
+   */
+  private async findLastRun(taskId: string, sessionId: string): Promise<import('../domain/task.js').TaskRun | null> {
     if (this.deps.taskRunRepository === undefined) return null;
-    // findRunning returns currently-running runs; we look for the latest by scanning
-    // via the projection which has the currentRunId after a completed run.
-    const proj = await this.deps.executionRepository.getByTask(taskId);
-    if (proj?.currentRunId === undefined) return null;
-    return this.deps.taskRunRepository.getById(proj.currentRunId);
+    // Try any running runs for the session that match this task.
+    const allRunning = await this.deps.taskRunRepository.findRunning(sessionId);
+    const match = allRunning.find((r) => r.taskId === taskId);
+    if (match !== undefined) return match;
+    return null;
   }
 }
