@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.2
+version: 1.3
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1257,5 +1257,63 @@ invariants:
     violation_class: MEMORY_BYPASS_POLICY
     test: "tests/invariants/memory/me-007.spec.ts"
     phase: 7
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Autonomy (AU) ───────────────────────────────────────────────
+  - id: AU-001
+    statement: "Task song song không bypass ToolGateway/Policy — mọi tác động vẫn qua kernel."
+    enforcement: ["ParallelExecutor", "ToolGateway"]
+    violation_class: PARALLEL_BYPASS
+    test: "tests/invariants/autonomy/au-001.spec.ts"
+    phase: 8
+    severity: CRITICAL
+    status: ACTIVE
+  - id: AU-002
+    statement: "Multi-agent coordination không tạo authority mới; vẫn chịu TaskGraph + Verification."
+    enforcement: ["MultiAgentCoordinator"]
+    violation_class: AGENT_AUTHORITY
+    test: "tests/invariants/autonomy/au-002.spec.ts"
+    phase: 8
+    severity: CRITICAL
+    status: ACTIVE
+  - id: AU-003
+    statement: "Lập lịch song song deterministic trên cùng input."
+    enforcement: ["Scheduler", "ParallelExecutor"]
+    violation_class: NON_DETERMINISTIC_PARALLEL
+    test: "tests/invariants/autonomy/au-003.spec.ts"
+    phase: 8
+    severity: HIGH
+    status: ACTIVE
+  - id: AU-004
+    statement: "Mỗi nhánh song song chịu Budget phân cấp (child <= parent.remaining)."
+    enforcement: ["BudgetPolicy"]
+    violation_class: PARALLEL_BUDGET_ESCAPE
+    test: "tests/invariants/autonomy/au-004.spec.ts"
+    phase: 8
+    severity: CRITICAL
+    status: ACTIVE
+  - id: AU-005
+    statement: "Hai nhánh/agent không ghi đè workspace của nhau ngoài policy (isolation)."
+    enforcement: ["BranchIsolation", "WorkspaceManager"]
+    violation_class: BRANCH_WORKSPACE_COLLISION
+    test: "tests/invariants/autonomy/au-005.spec.ts"
+    phase: 8
+    severity: CRITICAL
+    status: ACTIVE
+  - id: AU-006
+    statement: "Hủy một nhánh song song không để lại orphan."
+    enforcement: ["ParallelExecutor", "StateMachine"]
+    violation_class: PARALLEL_ORPHAN
+    test: "tests/invariants/autonomy/au-006.spec.ts"
+    phase: 8
+    severity: CRITICAL
+    status: ACTIVE
+  - id: AU-007
+    statement: "Sub-agent output là proposal, không phải authority."
+    enforcement: ["PolicyEngine"]
+    violation_class: SUBAGENT_AUTHORITY
+    test: "tests/invariants/autonomy/au-007.spec.ts"
+    phase: 8
     severity: CRITICAL
     status: ACTIVE

@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Runtime Safety Invariants**
 
-Version: 1.2
+Version: 1.3
 Status: Architecture Baseline
 Owner: Runtime / Control Plane
 Scope: v1 (single user, single workspace, sequential, local, Ollama)
@@ -81,6 +81,7 @@ Phase gate:
 | `OB` | Observability |
 | `DC` | Dependency Direction (architecture) |
 | `ME` | Memory / RAG |
+| `AU` | Autonomy (parallel / multi-agent) |
 
 ---
 
@@ -341,6 +342,18 @@ Phase gate:
 | ME-005 | RAG content ngoài (docs/repo) được đánh dấu untrusted + ghi nguồn. | TrustMarker / ProvenanceTracker | 7 | CRITICAL |
 | ME-006 | Memory store có retention bound; không ghi không giới hạn. | MemoryWriter | 7 | HIGH |
 | ME-007 | Memory/RAG không bypass Policy/ToolGateway để lấy dữ liệu. | PolicyEngine / ToolGateway | 7 | CRITICAL |
+
+### 3.22 Autonomy (AU)
+
+| ID | Statement | Enforcement | Phase | Severity |
+|---|---|---|---|---|
+| AU-001 | Task song song không bypass ToolGateway/Policy — mọi tác động vẫn qua kernel. | ParallelExecutor / ToolGateway | 8 | CRITICAL |
+| AU-002 | Multi-agent coordination không tạo authority mới; vẫn chịu TaskGraph + Verification. | MultiAgentCoordinator | 8 | CRITICAL |
+| AU-003 | Lập lịch song song deterministic trên cùng input. | Scheduler / ParallelExecutor | 8 | HIGH |
+| AU-004 | Mỗi nhánh song song chịu Budget phân cấp (child ≤ parent.remaining). | BudgetPolicy | 8 | CRITICAL |
+| AU-005 | Hai nhánh/agent không ghi đè workspace của nhau ngoài policy (isolation). | BranchIsolation / WorkspaceManager | 8 | CRITICAL |
+| AU-006 | Hủy một nhánh song song không để lại orphan. | ParallelExecutor / StateMachine | 8 | CRITICAL |
+| AU-007 | Sub-agent output là proposal, không phải authority. | PolicyEngine | 8 | CRITICAL |
 
 ---
 
@@ -919,6 +932,7 @@ Lịch sử:
 | 1.0 | (baseline) | Initial 120+ invariants across 20 domains |
 | 1.1 | 2026-09-14 | Thêm CP-010, CP-011, CP-012 (checkpoint atomic boundary + drift detection); làm rõ TI-005 (human override exception), SS-004/SM-005 (cancel từ AWAITING_HUMAN), RC-003 (graceful degradation tín hiệu). Tạo `invariants.yaml` đầy đủ (144 invariant). |
 | 1.2 | 2026-09-14 | Phase 7 (P7-INV): thêm nhóm Memory / RAG (ME-001..007) — §2 prefix `ME`, §3.21 bảng tóm tắt. Registry 144 → 151 invariant. |
+| 1.3 | 2026-09-14 | Phase 8 (P8-INV): thêm nhóm Autonomy (AU-001..007) — §2 prefix `AU`, §3.22 bảng tóm tắt. Registry 151 → 158 invariant. |
 
 ---
 

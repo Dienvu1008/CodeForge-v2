@@ -18,6 +18,7 @@
     "context/**/*.ts",
     "invariants/**/*.ts",
     "memory/**/*.ts",
+    "autonomy/**/*.ts",
     "integration/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",
