@@ -92,6 +92,10 @@ export class HttpTransport {
         if (session === '') return this.sendJson(res, 400, { error: 'session required' });
         return this.sendJson(res, 200, await this.opts.service.getAuditTimeline(session));
       }
+      if (method === 'GET' && path === '/metrics') {
+        if (session === '') return this.sendJson(res, 400, { error: 'session required' });
+        return this.sendJson(res, 200, await this.opts.service.getMetrics(session));
+      }
       if (method === 'GET' && path === '/events') {
         if (session === '') return this.sendJson(res, 400, { error: 'session required' });
         return this.sendJson(res, 200, await this.opts.service.getEvents(session, from));

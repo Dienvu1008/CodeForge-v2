@@ -9,3 +9,5 @@ export * from './activity-trace.js';
 export * from './continuation-manifest.js';
 // AuditTimeline (P9.10) — replayable audit view with phase + authority path. OB-004/007.
 export * from './audit-timeline.js';
+// DogfoodMetrics (P9.12) — per-session behavior metrics for empirical measurement.
+export * from './dogfood-metrics.js';

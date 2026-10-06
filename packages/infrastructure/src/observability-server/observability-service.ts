@@ -20,6 +20,7 @@ import type {
   RuntimeProjection,
   ActivityTrace,
   AuditTimeline,
+  SessionMetrics,
   ControlRequest,
   ControlStateInput,
   AdmissionResult,
@@ -35,6 +36,7 @@ import {
   computeRuntimeProjection,
   buildActivityTrace,
   buildAuditTimeline,
+  computeSessionMetrics,
   ControlPlane,
   buildInterventionRecord,
 } from '@codeforge/agent-core';
@@ -142,6 +144,12 @@ export class ObservabilityService {
   async getAuditTimeline(sessionId: string): Promise<AuditTimeline> {
     const events = await this.deps.events.query({ sessionId });
     return buildAuditTimeline(sessionId, events);
+  }
+
+  /** Per-session behavior metrics for dogfood measurement (P9.12). */
+  async getMetrics(sessionId: string): Promise<SessionMetrics> {
+    const events = await this.deps.events.query({ sessionId });
+    return computeSessionMetrics(sessionId, events);
   }
 
   /** Raw ordered events for replay/audit (OB-004). */

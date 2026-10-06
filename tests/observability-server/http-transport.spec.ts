@@ -124,6 +124,16 @@ describe('P9.3 HttpTransport — reads', () => {
     expect(typeof a.phaseCounts.lifecycle).toBe('number');
   });
 
+  it('GET /metrics returns per-session behavior metrics', async () => {
+    const m = await (await fetch(`${base}/metrics?session=S`)).json() as {
+      sessionId: string; eventCount: number; tools: { requested: number }; eventTypeCounts: unknown[];
+    };
+    expect(m.sessionId).toBe('S');
+    expect(m.eventCount).toBeGreaterThanOrEqual(1);
+    expect(typeof m.tools.requested).toBe('number');
+    expect(Array.isArray(m.eventTypeCounts)).toBe(true);
+  });
+
   it('GET / serves the dashboard HTML and /app.js the script', async () => {
     const html = await fetch(`${base}/`);
     expect(html.headers.get('content-type')).toContain('text/html');
