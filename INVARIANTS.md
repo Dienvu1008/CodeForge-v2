@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Runtime Safety Invariants**
 
-Version: 1.1
+Version: 1.2
 Status: Architecture Baseline
 Owner: Runtime / Control Plane
 Scope: v1 (single user, single workspace, sequential, local, Ollama)
@@ -80,6 +80,7 @@ Phase gate:
 | `PR` | Provenance |
 | `OB` | Observability |
 | `DC` | Dependency Direction (architecture) |
+| `ME` | Memory / RAG |
 
 ---
 
@@ -328,6 +329,18 @@ Phase gate:
 | DC-003 | `agent-core` không import `models`, `tools`, `infrastructure`. | Lint rule | 1 | CRITICAL |
 | DC-004 | `verification` không import `models`. | Lint rule | 1 | CRITICAL |
 | DC-005 | `recovery` không import `models` trực tiếp (chỉ qua interface). | Lint rule | 1 | HIGH |
+
+### 3.21 Memory / RAG (ME)
+
+| ID | Statement | Enforcement | Phase | Severity |
+|---|---|---|---|---|
+| ME-001 | Memory item không bao giờ là runtime authority — chỉ là context evidence. | PolicyEngine / ContextBuilder | 7 | CRITICAL |
+| ME-002 | Mọi memory item mang `trust: 'untrusted'` trong ContextSnapshot. | TrustMarker | 7 | CRITICAL |
+| ME-003 | Mọi memory write có provenance + reason + timestamp; append-only. | MemoryWriter | 7 | CRITICAL |
+| ME-004 | Memory retrieval deterministic trên cùng (query, store state). | MemoryRetriever | 7 | HIGH |
+| ME-005 | RAG content ngoài (docs/repo) được đánh dấu untrusted + ghi nguồn. | TrustMarker / ProvenanceTracker | 7 | CRITICAL |
+| ME-006 | Memory store có retention bound; không ghi không giới hạn. | MemoryWriter | 7 | HIGH |
+| ME-007 | Memory/RAG không bypass Policy/ToolGateway để lấy dữ liệu. | PolicyEngine / ToolGateway | 7 | CRITICAL |
 
 ---
 

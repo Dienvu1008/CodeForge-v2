@@ -16,6 +16,7 @@
     "code-intelligence/**/*.ts",
     "verification/**/*.ts",
     "context/**/*.ts",
+    "invariants/**/*.ts",
     "integration/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",

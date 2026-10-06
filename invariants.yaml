@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.1
+version: 1.2
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1200,4 +1200,62 @@ invariants:
     test: "tests/invariants/dependency-direction/dc-005.spec.ts"
     phase: 1
     severity: HIGH
+    status: ACTIVE
+
+  # ── Memory / RAG (ME) ───────────────────────────────────────────
+  - id: ME-001
+    statement: "Memory item không bao giờ là runtime authority — chỉ là context evidence."
+    enforcement: ["PolicyEngine", "ContextBuilder"]
+    violation_class: MEMORY_AS_AUTHORITY
+    test: "tests/invariants/memory/me-001.spec.ts"
+    phase: 7
+    severity: CRITICAL
+    status: ACTIVE
+  - id: ME-002
+    statement: "Mọi memory item mang trust 'untrusted' trong ContextSnapshot."
+    enforcement: ["TrustMarker"]
+    violation_class: MEMORY_TRUST_UNMARKED
+    test: "tests/invariants/memory/me-002.spec.ts"
+    phase: 7
+    severity: CRITICAL
+    status: ACTIVE
+  - id: ME-003
+    statement: "Mọi memory write có provenance + reason + timestamp; append-only."
+    enforcement: ["MemoryWriter"]
+    violation_class: MEMORY_WRITE_UNTRACKED
+    test: "tests/invariants/memory/me-003.spec.ts"
+    phase: 7
+    severity: CRITICAL
+    status: ACTIVE
+  - id: ME-004
+    statement: "Memory retrieval deterministic trên cùng (query, store state)."
+    enforcement: ["MemoryRetriever"]
+    violation_class: NON_DETERMINISTIC_MEMORY
+    test: "tests/invariants/memory/me-004.spec.ts"
+    phase: 7
+    severity: HIGH
+    status: ACTIVE
+  - id: ME-005
+    statement: "RAG content ngoài (docs/repo) được đánh dấu untrusted + ghi nguồn."
+    enforcement: ["TrustMarker", "ProvenanceTracker"]
+    violation_class: RAG_TRUST_UNMARKED
+    test: "tests/invariants/memory/me-005.spec.ts"
+    phase: 7
+    severity: CRITICAL
+    status: ACTIVE
+  - id: ME-006
+    statement: "Memory store có retention bound; không ghi không giới hạn."
+    enforcement: ["MemoryWriter"]
+    violation_class: MEMORY_UNBOUNDED
+    test: "tests/invariants/memory/me-006.spec.ts"
+    phase: 7
+    severity: HIGH
+    status: ACTIVE
+  - id: ME-007
+    statement: "Memory/RAG không bypass Policy/ToolGateway để lấy dữ liệu."
+    enforcement: ["PolicyEngine", "ToolGateway"]
+    violation_class: MEMORY_BYPASS_POLICY
+    test: "tests/invariants/memory/me-007.spec.ts"
+    phase: 7
+    severity: CRITICAL
     status: ACTIVE

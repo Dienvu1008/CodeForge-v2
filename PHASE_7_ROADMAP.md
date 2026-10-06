@@ -46,26 +46,29 @@ kernel.*
 
 ## 1. Con số Phase 7
 
-Hiện tại `invariants.yaml` **chưa có** invariant nào cho phase 7 (grep `phase: 7`
-= 0, chưa có `MEM-*`). Phase 7 cần **thêm mới** một nhóm invariant Memory và khai báo
-vào `invariants.yaml` như một task đầu phase (P7-INV).
+Phase 7 **thêm mới** một nhóm invariant Memory và khai báo vào `invariants.yaml`
+như task đầu phase (P7-INV). **Đã triển khai** (version registry 1.1 → 1.2).
 
-Nhóm invariant đề xuất (ID chốt lại khi thêm vào `invariants.yaml`):
+> **Lưu ý đặt tên:** schema `invariants.schema.json` yêu cầu prefix domain đúng
+> **2 chữ cái** (`^[A-Z]{2}-[0-9]{3}$`). Bản nháp roadmap ban đầu dùng `ME-*`
+> (3 chữ) — không hợp lệ — nên nhóm đã được chốt là **`ME-*`**.
 
-| ID (đề xuất) | Statement | Severity |
+Nhóm invariant (đã thêm vào `invariants.yaml`, phase 7):
+
+| ID | Statement | Severity |
 |---|---|---|
-| MEM-001 | Memory item không bao giờ là runtime authority — chỉ là context evidence. | CRITICAL |
-| MEM-002 | Mọi memory item mang `trust: 'untrusted'` trong ContextSnapshot. | CRITICAL |
-| MEM-003 | Mọi memory write có provenance + reason + timestamp; append-only. | CRITICAL |
-| MEM-004 | Memory retrieval deterministic trên cùng (query, store state). | HIGH |
-| MEM-005 | RAG content ngoài (docs/repo) được đánh dấu untrusted + ghi nguồn. | CRITICAL |
-| MEM-006 | Memory store có retention bound; không ghi không giới hạn. | HIGH |
-| MEM-007 | Memory/RAG không bao giờ bypass Policy/ToolGateway để lấy dữ liệu. | CRITICAL |
+| ME-001 | Memory item không bao giờ là runtime authority — chỉ là context evidence. | CRITICAL |
+| ME-002 | Mọi memory item mang `trust: 'untrusted'` trong ContextSnapshot. | CRITICAL |
+| ME-003 | Mọi memory write có provenance + reason + timestamp; append-only. | CRITICAL |
+| ME-004 | Memory retrieval deterministic trên cùng (query, store state). | HIGH |
+| ME-005 | RAG content ngoài (docs/repo) được đánh dấu untrusted + ghi nguồn. | CRITICAL |
+| ME-006 | Memory store có retention bound; không ghi không giới hạn. | HIGH |
+| ME-007 | Memory/RAG không bao giờ bypass Policy/ToolGateway để lấy dữ liệu. | CRITICAL |
 
 Các invariant đã có được Phase 7 làm giàu (không thêm mới):
 - **CX-002** (provenance mọi context item) — memory item cũng phải có.
 - **CX-003** (untrusted marking) — memory/RAG đánh dấu untrusted.
-- **CX-005** (context không phải authority) — nền tảng của MEM-001.
+- **CX-005** (context không phải authority) — nền tảng của ME-001.
 - **RC-003** (NoProgressDetector deterministic) — tín hiệu `relevantFilesChanged`
   (deferred từ Phase 6) được nối ở đây.
 
@@ -77,15 +80,15 @@ Các invariant đã có được Phase 7 làm giàu (không thêm mới):
 
 | Component | Mục tiêu | Enforces |
 |---|---|---|
-| `MemoryStore` | Lưu/truy vấn memory records (SQLite, schema mới) | MEM-003, MEM-006 |
-| `MemoryWriter` | Ghi outcome/failure-pattern/note có provenance, bounded | MEM-003, MEM-006 |
-| `MemoryRetriever` | Truy xuất memory tất định (keyword/symbol/recency) | MEM-002, MEM-004 |
-| `DocRetriever` (RAG) | Truy xuất tài liệu cục bộ (project docs) làm context | MEM-005 |
-| `RepoRetriever` (RAG) | Truy xuất đoạn repo liên quan (dùng Code Intelligence P6) | MEM-005 |
+| `MemoryStore` | Lưu/truy vấn memory records (SQLite, schema mới) | ME-003, ME-006 |
+| `MemoryWriter` | Ghi outcome/failure-pattern/note có provenance, bounded | ME-003, ME-006 |
+| `MemoryRetriever` | Truy xuất memory tất định (keyword/symbol/recency) | ME-002, ME-004 |
+| `DocRetriever` (RAG) | Truy xuất tài liệu cục bộ (project docs) làm context | ME-005 |
+| `RepoRetriever` (RAG) | Truy xuất đoạn repo liên quan (dùng Code Intelligence P6) | ME-005 |
 | `Retriever` wiring | Bơm memory + RAG items vào ContextSnapshot (nối CR1) | CX-002, CX-003 |
 | `NoProgressDetector` upgrade | Nối tín hiệu `relevantFilesChanged` (deferred P6) | RC-003 |
 | P6-LX1 `LspAdapter` | Deferred từ Phase 6 — thực hiện ở đây (optional, CI-safe) | — |
-| P7-INV | Thêm nhóm MEM-* vào `invariants.yaml` + test invariant | MEM-* |
+| P7-INV | Thêm nhóm ME-* vào `invariants.yaml` + test invariant | ME-* |
 | P7-I1 Integration E2E | Task lặp lại → truy xuất outcome/failure + RAG doc như untrusted | tất cả Phase-7 |
 
 ### 2.2 Out-of-scope (Phase 7)
@@ -94,7 +97,7 @@ Các invariant đã có được Phase 7 làm giàu (không thêm mới):
 - Fine-tuning / self-improvement (Phase 8+).
 - Multi-agent shared memory (Phase 8+).
 - Network fetch tới GitHub/web ngoài **nếu** vi phạm NetworkPolicy — chỉ làm khi
-  đi qua ToolGateway + Policy (MEM-007); RAG v1 ưu tiên nguồn cục bộ.
+  đi qua ToolGateway + Policy (ME-007); RAG v1 ưu tiên nguồn cục bộ.
 - Cloud memory / remote sync (Phase 8+).
 
 ---
@@ -124,7 +127,7 @@ Các invariant đã có được Phase 7 làm giàu (không thêm mới):
 | `DocRetriever` / `RepoRetriever` | infrastructure | nguồn RAG cục bộ |
 | Retriever memory/RAG wiring | agent-core | thêm field request (plain data) |
 | `LspAdapter` (P6-LX1) | infrastructure | TypeScript LSP, CI-safe skip |
-| MEM-* invariants | invariants.yaml + tests | nhóm invariant mới |
+| ME-* invariants | invariants.yaml + tests | nhóm invariant mới |
 
 Nguyên tắc decoupling (giữ như Phase 6): `agent-core` **không** phụ thuộc
 `infrastructure`. `MemoryRetriever` nhận records dưới dạng dữ liệu thuần; caller
@@ -136,7 +139,7 @@ chạy `MemoryStore`/RAG rồi feed vào — y hệt cách CR1 nhận symbols/gr
 
 ### 4.1 P7-INV — Memory invariants
 
-Thêm nhóm MEM-001..007 (§1) vào `invariants.yaml` với `phase: 7`, kèm test
+Thêm nhóm ME-001..007 (§1) vào `invariants.yaml` với `phase: 7`, kèm test
 `tests/invariants/memory/*.spec.ts`. Làm **đầu tiên** để các component sau có
 ràng buộc rõ ràng (đúng thứ tự Architecture Target §59: Invariants trước code).
 
@@ -158,13 +161,13 @@ interface MemoryRecord {
   tags:       readonly string[];
   provenance: Provenance;  // reason + at + source
   createdAt:  string;
-  // retention: TTL hoặc max-count enforced bởi MemoryWriter (MEM-006)
+  // retention: TTL hoặc max-count enforced bởi MemoryWriter (ME-006)
 }
 ```
 
 ### 4.3 P7-MW1 — MemoryWriter
 
-Ghi record có provenance, enforce retention bound (MEM-003/006). Nguồn ghi:
+Ghi record có provenance, enforce retention bound (ME-003/006). Nguồn ghi:
 TaskRun outcome (SUCCEEDED/FAILED), FailureClassifier output (failure pattern),
 user note. Append-only; không sửa record cũ.
 
@@ -188,7 +191,7 @@ interface MemoryRetriever {
 }
 ```
 
-Tất định (MEM-004): xếp hạng theo (tag match desc, recency desc, id asc). Trả plain
+Tất định (ME-004): xếp hạng theo (tag match desc, recency desc, id asc). Trả plain
 data để `Retriever` map thành ContextItem `kind: 'memory'`, `trust: 'untrusted'`.
 
 ### 4.5 P7-RAG1 — DocRetriever / RepoRetriever
@@ -196,8 +199,8 @@ data để `Retriever` map thành ContextItem `kind: 'memory'`, `trust: 'untrust
 - `DocRetriever`: index tài liệu cục bộ (`*.md` trong workspace) → trả đoạn liên quan.
 - `RepoRetriever`: dùng Code Intelligence (SX1/IG1) để trả đoạn code liên quan theo
   symbol/import distance (tái dùng CR1 ranking).
-- Cả hai đánh dấu untrusted + ghi nguồn (MEM-005). RAG v1 ưu tiên nguồn **cục bộ**;
-  fetch mạng (nếu có) phải qua ToolGateway + NetworkPolicy (MEM-007).
+- Cả hai đánh dấu untrusted + ghi nguồn (ME-005). RAG v1 ưu tiên nguồn **cục bộ**;
+  fetch mạng (nếu có) phải qua ToolGateway + NetworkPolicy (ME-007).
 
 ### 4.6 P7-CR2 — Retriever memory/RAG wiring
 
@@ -228,7 +231,7 @@ Scenarios:
 1. Ghi task outcome + failure pattern → truy xuất lại ở task tương tự (untrusted).
 2. DocRetriever trả đoạn doc cục bộ liên quan → vào ContextSnapshot untrusted.
 3. RepoRetriever trả đoạn code liên quan theo symbol/import distance.
-4. Memory item không bao giờ xuất hiện như authority (MEM-001) — chỉ là context data.
+4. Memory item không bao giờ xuất hiện như authority (ME-001) — chỉ là context data.
 
 ### 4.10 Forward-compatible interface contract (khóa khả năng nâng cấp)
 
@@ -263,7 +266,7 @@ Mục này biến lời hứa "nâng cấp sau không phá phần cũ" thành r�
    symbols/đoạn code qua **cùng interface retriever** như SX1/IG1 — không sửa CR1/CR2.
 
 **Vì sao điều này đủ để không phá Phase 0–6:** memory/RAG chỉ chảy **một chiều vào**
-context như untrusted evidence (MEM-001/002). Kernel (Policy/ToolGateway/Verification/
+context như untrusted evidence (ME-001/002). Kernel (Policy/ToolGateway/Verification/
 WorkspaceRevision) không bao giờ đọc memory để ra quyết định, và `agent-core` không
 phụ thuộc `infrastructure` (depcruise canh). Do đó không tồn tại đường nào để một
 nâng cấp Phase 7/7.5 làm hỏng runtime đã hoàn thành — nâng cấp luôn là *thêm
@@ -275,7 +278,7 @@ implementation sau interface*, không phải *sửa consumer*.
 
 ```
 Tuần 1 — Invariants + Store
-  P7-INV   MEM-* vào invariants.yaml + test                      [1 ngày]
+  P7-INV   ME-* vào invariants.yaml + test                      [1 ngày]
   P7-MS1   MemoryStore + schema migration                        [2 ngày]
   P7-MW1   MemoryWriter (bounded + provenance)                   [2 ngày]
 
@@ -304,14 +307,14 @@ Tuần 5 — Sign-off + buffer
 
 Map theo `EVALUATION_MODEL §11.9` (Phase 7 gate) + nguyên tắc §0.
 
-1. MEM-001..007 khai báo trong `invariants.yaml` + test `tests/invariants/memory/`.
-2. **MEM-001**: không có đường nào để memory trở thành runtime authority (test chứng minh).
-3. **MEM-002/CX-003**: mọi memory item untrusted trong ContextSnapshot.
-4. **MEM-003**: mọi memory write có provenance + append-only.
-5. **MEM-004**: MemoryRetriever deterministic (same query+store → same result).
-6. **MEM-005**: RAG content untrusted + ghi nguồn.
-7. **MEM-006**: retention bound enforced (test ghi quá hạn → bị cắt).
-8. **MEM-007**: memory/RAG không bypass Policy/ToolGateway (depcruise + test).
+1. ME-001..007 khai báo trong `invariants.yaml` + test `tests/invariants/memory/`.
+2. **ME-001**: không có đường nào để memory trở thành runtime authority (test chứng minh).
+3. **ME-002/CX-003**: mọi memory item untrusted trong ContextSnapshot.
+4. **ME-003**: mọi memory write có provenance + append-only.
+5. **ME-004**: MemoryRetriever deterministic (same query+store → same result).
+6. **ME-005**: RAG content untrusted + ghi nguồn.
+7. **ME-006**: retention bound enforced (test ghi quá hạn → bị cắt).
+8. **ME-007**: memory/RAG không bypass Policy/ToolGateway (depcruise + test).
 9. RAG integration E2E pass (`tests/integration/memory/` — P7-I1).
 10. P7-LX1 LspAdapter: hoặc hoàn thành (CI-safe), hoặc nếu vẫn bất khả thi headless
     thì ghi tiếp Deferred với lý do cập nhật (không âm thầm bỏ).
@@ -327,10 +330,10 @@ Map theo `EVALUATION_MODEL §11.9` (Phase 7 gate) + nguyên tắc §0.
 
 | Rủi ro | Xác suất | Tác động | Mitigation |
 |---|---|---|---|
-| Memory biến thành authority (vi phạm MEM-001) | Thấp | Cao | Thiết kế read-only vào context; test adversarial MEM-001 |
+| Memory biến thành authority (vi phạm ME-001) | Thấp | Cao | Thiết kế read-only vào context; test adversarial ME-001 |
 | Embedding kéo phụ thuộc nặng + phi xác định | Cao | Trung bình | Lõi dùng retrieval tất định; embedding deferred (§8) |
-| RAG fetch mạng vi phạm NetworkPolicy | Trung bình | Cao | RAG v1 chỉ nguồn cục bộ; fetch mạng phải qua ToolGateway (MEM-007) |
-| Memory phình vô hạn | Trung bình | Trung bình | Retention bound (MEM-006) enforced ở MemoryWriter |
+| RAG fetch mạng vi phạm NetworkPolicy | Trung bình | Cao | RAG v1 chỉ nguồn cục bộ; fetch mạng phải qua ToolGateway (ME-007) |
+| Memory phình vô hạn | Trung bình | Trung bình | Retention bound (ME-006) enforced ở MemoryWriter |
 | LSP startup headless/CI (lặp lại rủi ro P6) | Cao | Trung bình | CI-safe skip; vẫn optional, có thể deferred tiếp |
 | `agent-core` lỡ phụ thuộc infra | Thấp | Cao | Giữ pattern plain-data như CR1; depcruise canh |
 
@@ -339,7 +342,7 @@ Map theo `EVALUATION_MODEL §11.9` (Phase 7 gate) + nguyên tắc §0.
 ## 8. Những gì Phase 7 KHÔNG làm (và vì sao)
 
 - **Semantic embedding / vector store** — deferred (cân nhắc Phase 7.5). Lý do:
-  mô hình embedding + vector index khó đảm bảo determinism (MEM-004) và headless-CI
+  mô hình embedding + vector index khó đảm bảo determinism (ME-004) và headless-CI
   cross-platform; lõi tất định đủ cho v1. Khi làm, nó cắm vào **cùng interface
   MemoryRetriever** (plain data) nên không phải sửa P7-CR2.
 - **Self-improvement / fine-tuning** — Phase 8+.
@@ -359,10 +362,10 @@ interface, không sửa consumer, không phá Phase 0–6.
    đã chừa sẵn chỗ ngữ nghĩa (§4.4) → thêm embedding sau không đổi chữ ký (§4.10 luật 2).
 2. **Schema: MỘT bảng `memory_records` + cột `kind`.** Thêm kind = thêm giá trị cột;
    thêm thuộc tính = migration additive theo `MIGRATION_SPEC.md` (§4.10 luật 4).
-3. **Retention: max-count per (scope, kind)** cho v1 (tất định, dễ test MEM-004/006).
+3. **Retention: max-count per (scope, kind)** cho v1 (tất định, dễ test ME-004/006).
    Đổi/thêm TTL sau = sửa riêng `MemoryWriter` (§4.10 luật 5).
 4. **LX1: quyết định trong Phase 7** sau khi thử CI-safe skip. Nếu vẫn bất khả thi
    headless thì ghi Deferred tiếp (không âm thầm bỏ) — exit criteria §6 mục 10.
 
-Thứ tự thực hiện: **P7-INV trước tiên** (thêm MEM-001..007 vào `invariants.yaml` +
+Thứ tự thực hiện: **P7-INV trước tiên** (thêm ME-001..007 vào `invariants.yaml` +
 test), đúng Architecture Target §59 (invariants trước code).
