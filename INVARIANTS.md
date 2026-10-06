@@ -918,6 +918,7 @@ Lịch sử:
 |---|---|---|
 | 1.0 | (baseline) | Initial 120+ invariants across 20 domains |
 | 1.1 | 2026-09-14 | Thêm CP-010, CP-011, CP-012 (checkpoint atomic boundary + drift detection); làm rõ TI-005 (human override exception), SS-004/SM-005 (cancel từ AWAITING_HUMAN), RC-003 (graceful degradation tín hiệu). Tạo `invariants.yaml` đầy đủ (144 invariant). |
+| 1.2 | 2026-09-14 | Phase 7 (P7-INV): thêm nhóm Memory / RAG (ME-001..007) — §2 prefix `ME`, §3.21 bảng tóm tắt. Registry 144 → 151 invariant. |
 
 ---
 
