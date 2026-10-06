@@ -20,6 +20,7 @@
     "memory/**/*.ts",
     "autonomy/**/*.ts",
     "observability/**/*.ts",
+    "observability-server/**/*.ts",
     "control/**/*.ts",
     "session/**/*.ts",
     "integration/**/*.ts",
