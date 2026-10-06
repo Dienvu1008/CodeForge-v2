@@ -17,6 +17,7 @@ export {
   computeAffectedDirect,
   computeAffectedFromChanges,
   computeAffectedClosure,
+  computeAffectedClosureFromGraph,
 } from './affected-set.js';
 
 export { isFresh, isUsableForCompletion, isPassing } from './freshness.js';

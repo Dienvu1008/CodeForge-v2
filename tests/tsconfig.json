@@ -14,6 +14,7 @@
     "execution/**/*.ts",
     "recovery/**/*.ts",
     "code-intelligence/**/*.ts",
+    "verification/**/*.ts",
     "integration/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",

@@ -11,6 +11,11 @@
 //
 // Note: ChangeRecord-based approach is equivalent but requires runtime data.
 // Here we use WorkspaceRevision.includedPaths directly for pure computation.
+//
+// Phase 6 (P6-AS1): computeAffectedClosureFromGraph() replaces the §4.4 regex
+// heuristic with a real transitive closure over an import graph's reverse edges.
+// The graph is passed in as plain data (file -> importers) so this module stays
+// in agent-core and does not depend on the infrastructure TreeSitter layer.
 import type { WorkspaceRevision } from '../domain/workspace-revision.js';
 
 // ── computeAffectedDirect ─────────────────────────────────────────────────────
@@ -155,4 +160,48 @@ function referencesPath(content: string, stemPath: string): boolean {
     `(?:import|require)\\s*(?:[\\s\\S]*?from)?\\s*['"](?:[^'"]*\\/)?${escaped}(?:['"./]|$)`,
   );
   return pattern.test(content);
+}
+
+// ── computeAffectedClosureFromGraph (P6-AS1) ──────────────────────────────────
+
+/**
+ * Compute the real transitive affected closure (roadmap §4.4) from an import
+ * graph's reverse edges, replacing the Phase 1.5 regex heuristic.
+ *
+ * `reverseEdges` maps a file to the set of files that import it (i.e. the reverse
+ * of a forward import graph). Starting from `affectedDirect`, we walk reverse
+ * edges transitively: if X is affected and Y imports X, then Y is affected too.
+ * This is exactly the set of files whose behavior can change when the direct set
+ * changes — the correct denominator-free scope for AFFECTED_CLOSURE (VR-004).
+ *
+ * The traversal is a BFS with a visited set, so cycles terminate safely. It is
+ * deterministic (VR-010): the result depends only on the inputs, and neighbor
+ * iteration is sorted so traversal order is stable regardless of Set insertion
+ * order. The returned set includes every member of `affectedDirect`.
+ *
+ * Pure: no I/O, no clock, no dependency on the infrastructure layer. Callers that
+ * have no import graph should fall back to computeAffectedClosure (heuristic).
+ */
+export function computeAffectedClosureFromGraph(
+  affectedDirect: ReadonlySet<string>,
+  reverseEdges: ReadonlyMap<string, ReadonlySet<string>>,
+): ReadonlySet<string> {
+  const visited = new Set<string>();
+  // Stable seed order so the BFS is deterministic (VR-010).
+  const queue: string[] = [...affectedDirect].sort();
+
+  while (queue.length > 0) {
+    const file = queue.shift() as string;
+    if (visited.has(file)) continue;
+    visited.add(file);
+
+    const importers = reverseEdges.get(file);
+    if (importers === undefined) continue;
+    // Sort neighbors for deterministic traversal order.
+    for (const importer of [...importers].sort()) {
+      if (!visited.has(importer)) queue.push(importer);
+    }
+  }
+
+  return visited;
 }
