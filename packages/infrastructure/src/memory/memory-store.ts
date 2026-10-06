@@ -90,6 +90,25 @@ export class SqliteMemoryStore implements MemoryStore {
     );
     return rows[0]?.n ?? 0;
   }
+
+  async evictOldest(scope: MemoryScope, kind: MemoryKind, keep: number): Promise<number> {
+    const keepN = Math.max(0, Math.floor(keep));
+    // Delete every record in the bucket EXCEPT the newest `keep` ones. "Newest"
+    // uses the same deterministic order as query(): created_at desc, memory_id asc.
+    // The NOT IN subquery selects the ids to retain; everything else is evicted.
+    const result = this.db.execute(
+      `DELETE FROM memory_records
+         WHERE scope = ? AND kind = ?
+           AND memory_id NOT IN (
+             SELECT memory_id FROM memory_records
+              WHERE scope = ? AND kind = ?
+              ORDER BY created_at DESC, memory_id ASC
+              LIMIT ?
+           )`,
+      [scope, kind, scope, kind, keepN],
+    );
+    return result.changes;
+  }
 }
 
 function rowToRecord(row: MemoryRow): MemoryRecord {

@@ -60,4 +60,13 @@ export interface MemoryStore {
 
   /** Count records in a (scope, kind) bucket — used by MemoryWriter for retention. */
   count(scope: MemoryScope, kind: MemoryKind): Promise<number>;
+
+  /**
+   * Retention primitive: delete all but the newest `keep` records in a
+   * (scope, kind) bucket, by the same deterministic order as query() (recency
+   * desc, memoryId asc). Returns the number of records evicted. The store only
+   * executes this; the WHEN/HOW-MANY policy lives in MemoryWriter (ME-006).
+   * This is the only non-insert mutation — records are never updated (ME-003).
+   */
+  evictOldest(scope: MemoryScope, kind: MemoryKind, keep: number): Promise<number>;
 }

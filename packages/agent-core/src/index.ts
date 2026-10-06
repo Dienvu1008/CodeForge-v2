@@ -53,3 +53,6 @@ export * from './planning/index.js';
 // Phase 3:
 //   - workspace/ (P3-WM1: WorkspaceManager contract — WS-003/004/005/006/010)
 export * from './workspace/index.js';
+// Phase 7:
+//   - memory/ (P7-MW1: MemoryWriter — ME-003/006)
+export * from './memory/index.js';
