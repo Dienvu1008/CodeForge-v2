@@ -24,7 +24,15 @@ describe('AU-001 — parallel execution never bypasses the kernel', () => {
     expect(schedulable).toEqual(snapshot);
   });
 
-  // Full end-to-end "every admitted task runs via ToolGateway" is covered by the
-  // P8-I1 integration E2E (the planner has no way to execute anything itself).
-  it.todo('E2E: each admitted task is executed through ExecutionCoordinator + ToolGateway (P8-I1)');
+  // The planner emits only ids; it cannot wire itself to an executor. The admitted set
+  // is a plain string[], so there is no object the planner could call to run a task —
+  // execution must be done by the caller through the ToolGateway. The full
+  // "each admitted task runs via ToolGateway, nothing bypasses it" path is exercised
+  // end-to-end in tests/integration/autonomy-e2e.spec.ts (P8-I1).
+  it('a batch carries no executable handle — only ids the caller must run via the gateway', () => {
+    const r = planParallelBatch({ schedulable: ['a', 'b'], maxConcurrency: 2 });
+    for (const admitted of r.admitted) {
+      expect(typeof admitted).toBe('string'); // not a thunk, promise, or socket
+    }
+  });
 });
