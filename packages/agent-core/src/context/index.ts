@@ -7,7 +7,12 @@ export {
   type ContextItemProvenance,
   type RetrievedBy,
 } from './provenance-tracker.js';
-export { Retriever, type RetrieveRequest, type RetrieverDeps } from './retriever.js';
+export {
+  Retriever,
+  type RetrieveRequest,
+  type RetrieverDeps,
+  type RetrievedSymbol,
+} from './retriever.js';
 export {
   fitToBudget,
   ContextBudgetError,

@@ -1,10 +1,19 @@
-// Retriever — CONTEXT_SPEC §4, P2-CX1.
+// Retriever — CONTEXT_SPEC §4, P2-CX1 / P6-CR1.
 //
-// Baseline Phase 2 retriever: diff-based workspace files + direct-inject for
-// task/goal/graph. No Tree-sitter/LSP (Phase 6).
+// Phase 2 baseline: diff-based workspace files + direct-inject for task/goal/graph.
+// Phase 6 (P6-CR1) upgrade — code intelligence:
+//   - Injects symbol definitions (from SymbolExtractor) for changed/affected files.
+//   - Ranks workspace files by import distance from the changed set (closer = higher
+//     priority), using the import graph's reverse edges.
 //
-// CX-002: every item must have provenance (caller supplies ProvenanceTracker).
-// CX-006: snapshot must record workspaceRevision.
+// Decoupling: the symbol list and import reverse-edges are passed in as PLAIN DATA
+// (RetrievedSymbol[] and ReadonlyMap). The retriever stays in agent-core and does
+// NOT depend on the infrastructure TreeSitter layer. The caller runs SX1/IG1 and
+// feeds results in — the same pattern used for workspaceFiles / changedPaths.
+//
+// CX-002: every item has provenance.
+// CX-003: workspace content (files + symbols) is marked untrusted.
+// CX-006: snapshot records workspaceRevision.
 // Determinism: same request → same candidate set (sorted, no randomness).
 import type {
   ContextItem,
@@ -18,6 +27,23 @@ import type { Task } from '../domain/task.js';
 import type { Goal } from '../domain/goal.js';
 import type { Provenance } from '../domain/provenance.js';
 import { countTokens } from './token-counter.js';
+
+// ── RetrievedSymbol ───────────────────────────────────────────────────────────
+
+/**
+ * A code symbol surfaced for context, decoupled from the infrastructure
+ * SymbolExtractor's CodeSymbol. The caller maps SX1 output into this shape and
+ * tags each symbol with the file it came from.
+ */
+export interface RetrievedSymbol {
+  /** Canonical project-relative path of the file the symbol is defined in. */
+  readonly file:      string;
+  readonly name:      string;
+  readonly kind:      string;
+  readonly startLine: number; // 0-indexed
+  readonly endLine:   number; // 0-indexed
+  readonly exported:  boolean;
+}
 
 // ── RetrieveRequest ───────────────────────────────────────────────────────────
 
@@ -38,6 +64,17 @@ export interface RetrieveRequest {
   readonly graphSummary?: string;
   /** Failure evidence text (optional). */
   readonly failureEvidence?: string;
+  /**
+   * P6-CR1: code symbols (from SymbolExtractor), each tagged with its file.
+   * Symbols in changed/affected files are injected as symbol_definition items.
+   */
+  readonly symbols?: readonly RetrievedSymbol[];
+  /**
+   * P6-CR1: import graph reverse edges (file -> files that import it, from
+   * ImportGraphBuilder). Used to rank workspace files by import distance from
+   * the changed set. When absent, ranking falls back to alphabetical (Phase 2).
+   */
+  readonly importReverseEdges?: ReadonlyMap<string, ReadonlySet<string>>;
   /** Hard limit on candidate items returned. */
   readonly maxItems?: number;
 }
@@ -137,13 +174,49 @@ export class Retriever {
       }));
     }
 
+    // 5.5. Symbol definitions for changed/affected files (P6-CR1).
+    //      Untrusted (workspace_symbol), priority 60 — above fill-in files,
+    //      below the changed files themselves. Only symbols whose file is in the
+    //      changed set (or, when a graph is available, its affected closure).
+    if (request.symbols !== undefined && request.symbols.length > 0) {
+      const relevantFiles = this.affectedFiles(changedSet, request.importReverseEdges);
+      const relevantSymbols = request.symbols
+        .filter((s) => relevantFiles.has(s.file))
+        .sort(compareSymbols);
+      for (const sym of relevantSymbols) {
+        items.push(this.makeItem({
+          kind:      'symbol_definition',
+          content:   this.symbolContent(sym),
+          source:    {
+            kind: 'workspace_symbol',
+            path: sym.file,
+            symbolName: sym.name,
+            revisionId: request.workspaceRevision.revisionId,
+          },
+          trust:     'untrusted',
+          reason:    'symbol in changed/affected file',
+          priority:  60,
+          pinned:    false,
+          sessionId: request.sessionId,
+        }));
+      }
+    }
+
     // 6. Other workspace files (untrusted, priority 40 — fill-in).
+    //    P6-CR1: rank by import distance from the changed set when a reverse-edge
+    //    graph is available (closer importers first); fall back to alphabetical.
     if (request.workspaceFiles !== undefined) {
       const maxItems = request.maxItems ?? 50;
-      for (const [path, content] of [...request.workspaceFiles.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-        if (changedSet.has(path)) continue; // already included above
+      const ranked = this.rankOtherFiles(
+        request.workspaceFiles,
+        changedSet,
+        request.importReverseEdges,
+      );
+      for (const path of ranked) {
+        const content = request.workspaceFiles.get(path) ?? '';
         if (content.length === 0) continue;
         if (items.length >= maxItems) break;
+        const distance = this.importDistance(path, changedSet, request.importReverseEdges);
         items.push(this.makeItem({
           kind:      'file_full',
           content,
@@ -153,8 +226,12 @@ export class Retriever {
             revisionId: request.workspaceRevision.revisionId,
           },
           trust:     'untrusted',
-          reason:    'workspace context',
-          priority:  40,
+          reason:    distance === null
+            ? 'workspace context'
+            : `imports changed file (distance ${distance})`,
+          // Closer files rank higher: distance 1 → 49, 2 → 48, ... capped so
+          // fill-in files never outrank the changed files (80) or symbols (60).
+          priority:  distance === null ? 40 : Math.min(50, 51 - distance),
           pinned:    false,
           sessionId: request.sessionId,
         }));
@@ -162,6 +239,93 @@ export class Retriever {
     }
 
     return items.slice(0, request.maxItems ?? items.length);
+  }
+
+  // ── code-intelligence helpers (P6-CR1) ──────────────────────────────────────
+
+  /**
+   * The set of files relevant for symbol injection: the changed set plus, when a
+   * reverse-edge graph is given, every file that transitively imports a changed
+   * file (the affected closure). Pure + deterministic.
+   */
+  private affectedFiles(
+    changed: ReadonlySet<string>,
+    reverseEdges?: ReadonlyMap<string, ReadonlySet<string>>,
+  ): ReadonlySet<string> {
+    if (reverseEdges === undefined) return changed;
+    const visited = new Set<string>();
+    const queue: string[] = [...changed].sort();
+    while (queue.length > 0) {
+      const file = queue.shift() as string;
+      if (visited.has(file)) continue;
+      visited.add(file);
+      const importers = reverseEdges.get(file);
+      if (importers === undefined) continue;
+      for (const imp of [...importers].sort()) {
+        if (!visited.has(imp)) queue.push(imp);
+      }
+    }
+    return visited;
+  }
+
+  /**
+   * Import distance (hops) from `file` to the nearest changed file via reverse
+   * edges: 0 if `file` is itself changed, 1 if it directly imports a changed file,
+   * etc. Returns null if there is no path (or no graph).
+   */
+  private importDistance(
+    file: string,
+    changed: ReadonlySet<string>,
+    reverseEdges?: ReadonlyMap<string, ReadonlySet<string>>,
+  ): number | null {
+    if (changed.has(file)) return 0;
+    if (reverseEdges === undefined) return null;
+    // BFS outward from the changed set along reverse edges, tracking depth.
+    const depth = new Map<string, number>();
+    const queue: string[] = [];
+    for (const c of [...changed].sort()) { depth.set(c, 0); queue.push(c); }
+    let head = 0;
+    while (head < queue.length) {
+      const cur = queue[head++] as string;
+      const d = depth.get(cur) as number;
+      const importers = reverseEdges.get(cur);
+      if (importers === undefined) continue;
+      for (const imp of [...importers].sort()) {
+        if (!depth.has(imp)) {
+          depth.set(imp, d + 1);
+          if (imp === file) return d + 1;
+          queue.push(imp);
+        }
+      }
+    }
+    return depth.get(file) ?? null;
+  }
+
+  /**
+   * Order the non-changed workspace files for fill-in. With a graph: by import
+   * distance ascending (closer first), ties broken alphabetically; files with no
+   * path to the changed set come last (alphabetical). Without a graph: alphabetical.
+   */
+  private rankOtherFiles(
+    files: ReadonlyMap<string, string>,
+    changed: ReadonlySet<string>,
+    reverseEdges?: ReadonlyMap<string, ReadonlySet<string>>,
+  ): string[] {
+    const candidates = [...files.keys()].filter((p) => !changed.has(p)).sort();
+    if (reverseEdges === undefined) return candidates;
+    return candidates.sort((a, b) => {
+      const da = this.importDistance(a, changed, reverseEdges);
+      const db = this.importDistance(b, changed, reverseEdges);
+      const ra = da === null ? Number.POSITIVE_INFINITY : da;
+      const rb = db === null ? Number.POSITIVE_INFINITY : db;
+      if (ra !== rb) return ra - rb;
+      return a.localeCompare(b);
+    });
+  }
+
+  private symbolContent(sym: RetrievedSymbol): string {
+    const exp = sym.exported ? 'exported ' : '';
+    return `${exp}${sym.kind} ${sym.name} (${sym.file}:${sym.startLine + 1}-${sym.endLine + 1})`;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -227,4 +391,13 @@ export class Retriever {
     }
     return lines.join('\n');
   }
+}
+
+// ── module helpers ──────────────────────────────────────────────────────────
+
+/** Deterministic ordering of symbols: by file, then start line, then name. */
+function compareSymbols(a: RetrievedSymbol, b: RetrievedSymbol): number {
+  if (a.file !== b.file) return a.file.localeCompare(b.file);
+  if (a.startLine !== b.startLine) return a.startLine - b.startLine;
+  return a.name.localeCompare(b.name);
 }

@@ -11,7 +11,7 @@ import type { ContextSnapshot, ContextItem, BuildReason } from '../domain/contex
 import type { WorkspaceRevision } from '../domain/workspace-revision.js';
 import type { Task } from '../domain/task.js';
 import type { Goal } from '../domain/goal.js';
-import { Retriever, type RetrieveRequest } from './retriever.js';
+import { Retriever, type RetrieveRequest, type RetrievedSymbol } from './retriever.js';
 import { fitToBudget, ContextBudgetError, type BudgetConfig } from './token-budgeter.js';
 import { ProvenanceTracker } from './provenance-tracker.js';
 import { CANONICAL_FORM_VERSION } from '../domain/workspace-revision.js';
@@ -55,6 +55,10 @@ export interface BuildContextRequest {
   readonly changedPaths?:     readonly string[];
   readonly graphSummary?:     string;
   readonly failureEvidence?:  string;
+  /** P6-CR1: code symbols (from SymbolExtractor), each tagged with its file. */
+  readonly symbols?:          readonly RetrievedSymbol[];
+  /** P6-CR1: import graph reverse edges (from ImportGraphBuilder). */
+  readonly importReverseEdges?: ReadonlyMap<string, ReadonlySet<string>>;
   readonly policy?:           ContextPolicy;
 }
 
@@ -118,6 +122,8 @@ export class ContextBuilder {
       ...(request.changedPaths   !== undefined ? { changedPaths:   request.changedPaths }   : {}),
       ...(request.graphSummary   !== undefined ? { graphSummary:   request.graphSummary }   : {}),
       ...(request.failureEvidence !== undefined ? { failureEvidence: request.failureEvidence } : {}),
+      ...(request.symbols          !== undefined ? { symbols:          request.symbols }          : {}),
+      ...(request.importReverseEdges !== undefined ? { importReverseEdges: request.importReverseEdges } : {}),
       maxItems: policy.maxItems,
     };
     const candidates = retriever.retrieve(retrieveReq);

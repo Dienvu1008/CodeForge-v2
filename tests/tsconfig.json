@@ -15,6 +15,7 @@
     "recovery/**/*.ts",
     "code-intelligence/**/*.ts",
     "verification/**/*.ts",
+    "context/**/*.ts",
     "integration/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",
