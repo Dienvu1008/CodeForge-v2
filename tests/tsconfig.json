@@ -21,6 +21,7 @@
     "autonomy/**/*.ts",
     "observability/**/*.ts",
     "observability-server/**/*.ts",
+    "telegram/**/*.ts",
     "control/**/*.ts",
     "session/**/*.ts",
     "integration/**/*.ts",

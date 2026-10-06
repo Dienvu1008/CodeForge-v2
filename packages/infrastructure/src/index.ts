@@ -42,3 +42,5 @@ export * from './code-intelligence/index.js';
 export * from './memory/index.js';
 // Phase 9 — P9.3: Observability server (protocol-agnostic service + node:http transport)
 export * from './observability-server/index.js';
+// Phase 9 — P9.8: Telegram adapter (another transport over ObservabilityService)
+export * from './telegram/index.js';
