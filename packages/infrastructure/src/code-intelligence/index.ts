@@ -6,3 +6,12 @@ export type { CodeSymbol, SymbolKind } from './symbol-extractor.js';
 // P6-IG1: Import graph builder (TS/JS).
 export { ImportGraphBuilder } from './import-graph-builder.js';
 export type { ImportGraph, ImportEdge, BuildInput } from './import-graph-builder.js';
+// P7-LX1: LSP adapter (typescript-language-server over stdio).
+export { LspAdapter, LspError } from './lsp-adapter.js';
+export type {
+  LspSymbol,
+  LspLocation,
+  LspPosition,
+  LspRange,
+  LspAdapterOptions,
+} from './lsp-adapter.js';
