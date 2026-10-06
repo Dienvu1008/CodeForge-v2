@@ -70,3 +70,25 @@ export interface MemoryStore {
    */
   evictOldest(scope: MemoryScope, kind: MemoryKind, keep: number): Promise<number>;
 }
+
+// ── RAG ─────────────────────────────────────────────────────────────────────
+
+export type RagSource = 'doc' | 'repo';
+
+/**
+ * A retrieval-augmented-generation item: a chunk of local documentation or
+ * repository code surfaced as context. It is ALWAYS untrusted evidence (ME-005)
+ * and always records where it came from (`path`). Produced by the RAG retrievers
+ * (infrastructure) as plain data and mapped into an untrusted ContextItem by the
+ * context Retriever (agent-core) — the retriever never trusts it as authority.
+ */
+export interface RagItem {
+  readonly source:  RagSource;
+  /** Canonical project-relative path the chunk came from (provenance, ME-005). */
+  readonly path:    string;
+  readonly content: string;
+  /** Relevance score (higher = more relevant); for ranking/diagnostics. */
+  readonly score:   number;
+  /** Human-readable reason recorded in provenance when mapped to a ContextItem. */
+  readonly reason:  string;
+}
