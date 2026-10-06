@@ -8,7 +8,9 @@
     "node": ">=20"
   },
   "workspaces": [
-    "packages/*",
+    "packages/agent-core",
+    "packages/infrastructure",
+    "packages/testing",
     "tests"
   ],
   "scripts": {

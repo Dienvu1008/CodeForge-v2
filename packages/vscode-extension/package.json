@@ -1,0 +1,37 @@
+{
+  "name": "@codeforge/vscode-extension",
+  "displayName": "CodeForge",
+  "description": "Observe and control a CodeForge runtime from VS Code.",
+  "version": "0.1.0",
+  "publisher": "codeforge",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "codeforge.connect",    "title": "CodeForge: Connect to Runtime" },
+      { "command": "codeforge.dashboard",  "title": "CodeForge: Open Dashboard" },
+      { "command": "codeforge.pause",      "title": "CodeForge: Pause Session" },
+      { "command": "codeforge.resume",     "title": "CodeForge: Resume Session" },
+      { "command": "codeforge.cancel",     "title": "CodeForge: Cancel Session" },
+      { "command": "codeforge.checkpoint", "title": "CodeForge: Checkpoint" }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.21.0"
+  },
+  "dependencies": {
+    "@codeforge/agent-core": "*"
+  }
+}
