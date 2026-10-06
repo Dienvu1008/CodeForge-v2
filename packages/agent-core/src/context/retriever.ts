@@ -3,16 +3,19 @@
 // Phase 2 baseline: diff-based workspace files + direct-inject for task/goal/graph.
 // Phase 6 (P6-CR1) upgrade — code intelligence:
 //   - Injects symbol definitions (from SymbolExtractor) for changed/affected files.
-//   - Ranks workspace files by import distance from the changed set (closer = higher
-//     priority), using the import graph's reverse edges.
+//   - Ranks workspace files by import distance from the changed set.
+// Phase 7 (P7-CR2) upgrade — memory / RAG:
+//   - Injects memory records (from MemoryRetriever) and RAG chunks (from the Doc/
+//     Repo retrievers) as untrusted, lower-priority context evidence (ME-001/002).
 //
-// Decoupling: the symbol list and import reverse-edges are passed in as PLAIN DATA
-// (RetrievedSymbol[] and ReadonlyMap). The retriever stays in agent-core and does
-// NOT depend on the infrastructure TreeSitter layer. The caller runs SX1/IG1 and
-// feeds results in — the same pattern used for workspaceFiles / changedPaths.
+// Decoupling: symbols, import reverse-edges, memory records and RAG items are all
+// passed in as PLAIN DATA. The retriever stays in agent-core and does NOT depend on
+// the infrastructure layer. The caller runs SX1/IG1/MemoryStore/RAG and feeds the
+// results in — the same pattern used for workspaceFiles / changedPaths.
 //
 // CX-002: every item has provenance.
-// CX-003: workspace content (files + symbols) is marked untrusted.
+// CX-003: workspace content (files + symbols + memory + RAG) is marked untrusted.
+// CX-005 / ME-001: context (incl. memory) is evidence only, never runtime authority.
 // CX-006: snapshot records workspaceRevision.
 // Determinism: same request → same candidate set (sorted, no randomness).
 import type {
@@ -26,6 +29,7 @@ import type { WorkspaceRevision } from '../domain/workspace-revision.js';
 import type { Task } from '../domain/task.js';
 import type { Goal } from '../domain/goal.js';
 import type { Provenance } from '../domain/provenance.js';
+import type { MemoryRecord, RagItem } from '../domain/memory.js';
 import { countTokens } from './token-counter.js';
 
 // ── RetrievedSymbol ───────────────────────────────────────────────────────────
@@ -75,6 +79,16 @@ export interface RetrieveRequest {
    * the changed set. When absent, ranking falls back to alphabetical (Phase 2).
    */
   readonly importReverseEdges?: ReadonlyMap<string, ReadonlySet<string>>;
+  /**
+   * P7-CR2: memory records (from MemoryRetriever), already ranked by the caller.
+   * Injected as untrusted `memory` context items (ME-001/002).
+   */
+  readonly memoryRecords?: readonly MemoryRecord[];
+  /**
+   * P7-CR2: RAG chunks (from Doc/Repo retrievers), already ranked by the caller.
+   * Injected as untrusted context items that record their source path (ME-005).
+   */
+  readonly ragItems?: readonly RagItem[];
   /** Hard limit on candidate items returned. */
   readonly maxItems?: number;
 }
@@ -232,6 +246,45 @@ export class Retriever {
           // Closer files rank higher: distance 1 → 49, 2 → 48, ... capped so
           // fill-in files never outrank the changed files (80) or symbols (60).
           priority:  distance === null ? 40 : Math.min(50, 51 - distance),
+          pinned:    false,
+          sessionId: request.sessionId,
+        }));
+      }
+    }
+
+    // 7. Memory records (P7-CR2) — untrusted evidence, priority 35 (below fill-in
+    //    files so remembered context never outranks the current workspace). Caller
+    //    supplies them already ranked by MemoryRetriever; we preserve that order.
+    if (request.memoryRecords !== undefined) {
+      for (const mem of request.memoryRecords) {
+        items.push(this.makeItem({
+          kind:      'memory',
+          content:   mem.content,
+          source:    { kind: 'memory', artifactId: mem.memoryId },
+          trust:     'untrusted',
+          reason:    `memory (${mem.kind})`,
+          priority:  35,
+          pinned:    false,
+          sessionId: request.sessionId,
+        }));
+      }
+    }
+
+    // 8. RAG chunks (P7-CR2) — untrusted, priority 30. Each records its source
+    //    path (ME-005). Caller supplies them already ranked by the RAG retrievers.
+    if (request.ragItems !== undefined) {
+      for (const rag of request.ragItems) {
+        items.push(this.makeItem({
+          kind:      'file_snippet',
+          content:   rag.content,
+          source:    {
+            kind: 'workspace_file',
+            path: rag.path,
+            revisionId: request.workspaceRevision.revisionId,
+          },
+          trust:     'untrusted',
+          reason:    `rag:${rag.source} ${rag.reason}`,
+          priority:  30,
           pinned:    false,
           sessionId: request.sessionId,
         }));

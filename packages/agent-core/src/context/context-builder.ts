@@ -11,6 +11,7 @@ import type { ContextSnapshot, ContextItem, BuildReason } from '../domain/contex
 import type { WorkspaceRevision } from '../domain/workspace-revision.js';
 import type { Task } from '../domain/task.js';
 import type { Goal } from '../domain/goal.js';
+import type { MemoryRecord, RagItem } from '../domain/memory.js';
 import { Retriever, type RetrieveRequest, type RetrievedSymbol } from './retriever.js';
 import { fitToBudget, ContextBudgetError, type BudgetConfig } from './token-budgeter.js';
 import { ProvenanceTracker } from './provenance-tracker.js';
@@ -59,6 +60,10 @@ export interface BuildContextRequest {
   readonly symbols?:          readonly RetrievedSymbol[];
   /** P6-CR1: import graph reverse edges (from ImportGraphBuilder). */
   readonly importReverseEdges?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** P7-CR2: memory records (from MemoryRetriever), already ranked. */
+  readonly memoryRecords?:    readonly MemoryRecord[];
+  /** P7-CR2: RAG chunks (from Doc/Repo retrievers), already ranked. */
+  readonly ragItems?:         readonly RagItem[];
   readonly policy?:           ContextPolicy;
 }
 
@@ -124,6 +129,8 @@ export class ContextBuilder {
       ...(request.failureEvidence !== undefined ? { failureEvidence: request.failureEvidence } : {}),
       ...(request.symbols          !== undefined ? { symbols:          request.symbols }          : {}),
       ...(request.importReverseEdges !== undefined ? { importReverseEdges: request.importReverseEdges } : {}),
+      ...(request.memoryRecords    !== undefined ? { memoryRecords:    request.memoryRecords }    : {}),
+      ...(request.ragItems         !== undefined ? { ragItems:         request.ragItems }         : {}),
       maxItems: policy.maxItems,
     };
     const candidates = retriever.retrieve(retrieveReq);
