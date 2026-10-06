@@ -3,7 +3,7 @@
 Date: 2026-09-14
 Branch: main
 Commits: fbb5761 (P6-TS1/SX1), ee8d25d (P6-IG1), 8d504f6 (P6-AS1),
-         40f407b (P6-CR1), 342dea4 (P6-I1 E2E + sign-off)
+         40f407b (P6-CR1), ea15426 (P6-I1 E2E + sign-off)
 
 Format per PHASE_6_ROADMAP §6 (Exit criteria). Phase 6 delivers the
 **Code Intelligence Layer**: the agent now parses source into an AST, extracts
