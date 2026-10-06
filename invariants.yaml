@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.3
+version: 1.4
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1157,6 +1157,54 @@ invariants:
     violation_class: UNQUERYABLE_EVENTLOG
     test: "tests/invariants/observability/ob-004.spec.ts"
     phase: 1
+    severity: HIGH
+    status: ACTIVE
+  - id: OB-005
+    statement: "Runtime projection / read-model không phải authority; không có đường ghi vào state authoritative."
+    enforcement: ["RuntimeProjection"]
+    violation_class: PROJECTION_AS_AUTHORITY
+    test: "tests/invariants/observability/ob-005.spec.ts"
+    phase: 9
+    severity: CRITICAL
+    status: ACTIVE
+  - id: OB-006
+    statement: "Mọi control request phải qua ControlPlane admission + Policy; UI không có authority riêng."
+    enforcement: ["ControlPlane", "PolicyEngine"]
+    violation_class: UI_CONTROL_AUTHORITY
+    test: "tests/invariants/observability/ob-006.spec.ts"
+    phase: 9
+    severity: CRITICAL
+    status: ACTIVE
+  - id: OB-007
+    statement: "Activity trace / observability chỉ phơi bày hoạt động + chứng cứ có cấu trúc đã redact; không reasoning thô, không secret."
+    enforcement: ["ActivityTrace", "Redactor"]
+    violation_class: TRACE_LEAK
+    test: "tests/invariants/observability/ob-007.spec.ts"
+    phase: 9
+    severity: CRITICAL
+    status: ACTIVE
+  - id: OB-008
+    statement: "ContinuationManifest là non-authoritative; không ghi đè state authoritative; session kế tiếp nạp lại từ nguồn authoritative."
+    enforcement: ["ContinuationManifest"]
+    violation_class: CONTINUATION_OVERWRITES_STATE
+    test: "tests/invariants/observability/ob-008.spec.ts"
+    phase: 9
+    severity: CRITICAL
+    status: ACTIVE
+  - id: OB-009
+    statement: "Live event tailer chỉ đọc EventLog đã persist (tail theo sequenceNumber); không phải đường ghi thứ hai."
+    enforcement: ["EventTailer", "EventLog"]
+    violation_class: TAILER_SECOND_WRITE_PATH
+    test: "tests/invariants/observability/ob-009.spec.ts"
+    phase: 9
+    severity: HIGH
+    status: ACTIVE
+  - id: OB-010
+    statement: "Context telemetry là suy diễn từ ContextSnapshot/EventLog; không điều khiển việc chọn context (không authority context)."
+    enforcement: ["ContextTelemetry"]
+    violation_class: TELEMETRY_AS_CONTEXT_AUTHORITY
+    test: "tests/invariants/observability/ob-010.spec.ts"
+    phase: 9
     severity: HIGH
     status: ACTIVE
 

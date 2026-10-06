@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Runtime Safety Invariants**
 
-Version: 1.3
+Version: 1.4
 Status: Architecture Baseline
 Owner: Runtime / Control Plane
 Scope: v1 (single user, single workspace, sequential, local, Ollama)
@@ -320,6 +320,12 @@ Phase gate:
 | OB-002 | Mọi tool call phải phát event với đủ metadata. | ToolGateway | 1.5 | HIGH |
 | OB-003 | Mọi verification phải phát event với revision + scope + status. | VerificationEngine | 1.5 | HIGH |
 | OB-004 | EventLog phải queryable theo session, task, revision. | EventLog | 1 | HIGH |
+| OB-005 | Runtime projection / read-model không phải authority; không có đường ghi vào state authoritative. | RuntimeProjection | 9 | CRITICAL |
+| OB-006 | Mọi control request phải qua ControlPlane admission + Policy; UI không có authority riêng. | ControlPlane / PolicyEngine | 9 | CRITICAL |
+| OB-007 | Activity trace / observability chỉ phơi bày hoạt động + chứng cứ có cấu trúc đã redact; không reasoning thô, không secret. | ActivityTrace / Redactor | 9 | CRITICAL |
+| OB-008 | ContinuationManifest là non-authoritative; không ghi đè state authoritative; session kế tiếp nạp lại từ nguồn authoritative. | ContinuationManifest | 9 | CRITICAL |
+| OB-009 | Live event tailer chỉ đọc EventLog đã persist (tail theo sequenceNumber); không phải đường ghi thứ hai. | EventTailer / EventLog | 9 | HIGH |
+| OB-010 | Context telemetry là suy diễn từ ContextSnapshot/EventLog; không điều khiển việc chọn context. | ContextTelemetry | 9 | HIGH |
 
 ### 3.20 Dependency Direction (DC)
 
@@ -933,6 +939,7 @@ Lịch sử:
 | 1.1 | 2026-09-14 | Thêm CP-010, CP-011, CP-012 (checkpoint atomic boundary + drift detection); làm rõ TI-005 (human override exception), SS-004/SM-005 (cancel từ AWAITING_HUMAN), RC-003 (graceful degradation tín hiệu). Tạo `invariants.yaml` đầy đủ (144 invariant). |
 | 1.2 | 2026-09-14 | Phase 7 (P7-INV): thêm nhóm Memory / RAG (ME-001..007) — §2 prefix `ME`, §3.21 bảng tóm tắt. Registry 144 → 151 invariant. |
 | 1.3 | 2026-09-14 | Phase 8 (P8-INV): thêm nhóm Autonomy (AU-001..007) — §2 prefix `AU`, §3.22 bảng tóm tắt. Registry 151 → 158 invariant. |
+| 1.4 | 2026-09-14 | Phase 9 (P9-INV): mở rộng nhóm Observability (OB-005..010) — projection/control/trace/continuation/tailer/telemetry không phải authority, §3.19 bảng. Registry 158 → 164 invariant. |
 
 ---
 
