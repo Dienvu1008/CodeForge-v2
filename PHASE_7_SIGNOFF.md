@@ -5,7 +5,7 @@ Branch: main
 Commits: cd44577 + db3f9bc (roadmap + §4.10), d89572f + 1ecbf3c (P7-INV),
          c3245d7 (P7-MS1), 50d6552 (P7-MW1), 156cda4 (P7-MR1), bfb8702 (P7-RAG1),
          a512df0 (P7-CR2), 2a1bd15 (P7-NPD2), a61008c (P7-LX1),
-         + this change (P7-I1 E2E + sign-off)
+         11e56ee (P7-I1 E2E + sign-off)
 
 Format per PHASE_7_ROADMAP §6 (Exit criteria) + EVALUATION_MODEL §11.9 (Phase 7
 gate). Phase 7 delivers the **Memory / RAG Layer**: the agent can remember task
