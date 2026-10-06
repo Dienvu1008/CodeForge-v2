@@ -18,6 +18,8 @@ export type SessionEvent =
   | 'SESSION_READY'
   | 'HUMAN_REQUIRED'
   | 'HUMAN_DECIDED'
+  | 'PAUSE_REQUESTED'
+  | 'RESUME_REQUESTED'
   | 'CANCEL_REQUESTED'
   | 'CANCEL_COMPLETED'
   | 'ALL_TASKS_TERMINAL'
@@ -41,11 +43,18 @@ export const SESSION_TRANSITIONS: readonly TransitionRule<SessionState, SessionE
   { from: 'RUNNING', event: 'CANCEL_REQUESTED', to: 'CANCELLING' },
   { from: 'CANCELLING', event: 'CANCEL_COMPLETED', to: 'ABORTED' },
   { from: 'RUNNING', event: 'ALL_TASKS_TERMINAL', to: 'COMPLETED', guards: ['allTasksTerminal'] },
+  // P9.7: human/control pause-resume. PAUSED is a non-terminal hold; the orchestrator's
+  // cooperative control-poll parks the loop here and resumes on RESUME_REQUESTED. Pause
+  // does not change authority — it only suspends scheduling (OB-006).
+  { from: 'RUNNING', event: 'PAUSE_REQUESTED', to: 'PAUSED' },
+  { from: 'PAUSED', event: 'RESUME_REQUESTED', to: 'RUNNING' },
+  { from: 'PAUSED', event: 'CANCEL_REQUESTED', to: 'CANCELLING' },
   // ABORT is allowed from any non-terminal state (DOMAIN_CONTRACTS §25.1 "any --ABORT-->").
   { from: 'CREATED', event: 'ABORT', to: 'ABORTED' },
   { from: 'INITIALIZING', event: 'ABORT', to: 'ABORTED' },
   { from: 'RUNNING', event: 'ABORT', to: 'ABORTED' },
   { from: 'AWAITING_HUMAN', event: 'ABORT', to: 'ABORTED' },
+  { from: 'PAUSED', event: 'ABORT', to: 'ABORTED' },
   { from: 'CANCELLING', event: 'ABORT', to: 'ABORTED' },
 ];
 

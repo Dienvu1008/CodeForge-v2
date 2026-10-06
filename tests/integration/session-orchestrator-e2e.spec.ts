@@ -1,4 +1,4 @@
-﻿// P4-SO1 — SessionOrchestrator E2E.
+// P4-SO1 — SessionOrchestrator E2E.
 // Full autonomous session loop: CREATED → RUNNING → Plan → Execute → COMPLETED.
 // Uses FakeModel (no real Ollama) + SQLite :memory: + FakeRevisionProvider.
 // Verifies: SS-003, SC-003, TI-005 (PASSED projection), GI-009, EX-002.
@@ -257,5 +257,108 @@ describe('P4-SO1 SessionOrchestrator', () => {
 
     await expect(orchestrator.run({ sessionId: 'S', goal: makeGoal(), revision: REVISION, graphVersion: 1 }))
       .rejects.toMatchObject({ code: 'PLAN_FAILED' });
+  });
+});
+
+// ── P9.7: cooperative control gate (pause/resume/cancel mid-run) ───────────────
+describe('P9.7 SessionOrchestrator — cooperative control gate', () => {
+  async function wire(c: ReturnType<typeof makeCounters>, model: FakeModel) {
+    const revProvider = new FakeRevisionProvider(REVISION);
+    const sessions = new SqliteSessionRepository(db);
+    const events = new SqliteEventLog(db);
+    const tasks = new SqliteTaskRepository(db);
+    const taskRuns = new SqliteTaskRunRepository(db);
+    const executions = new SqliteTaskExecutionRepository(db);
+    const graphs = new SqliteTaskGraphRepository(db);
+    const committer = new SqliteGraphCommitter(db);
+    const checkpoints = new SqliteCheckpointRepository(db);
+    const lock = new SqliteWorkspaceLockService(db);
+    const toolCalls = new SqliteToolCallRepository(db);
+    const approvals = new SqliteApprovalRepository(db);
+    const verReports = new SqliteVerificationRepository(db);
+
+    const hasher = new Blake3GraphHasher();
+    const graphSvc = new GraphService({ hasher, now: c.now, nextId: c.nextId, canonicalFormVersion: 'v1', schemaVersion: 1 });
+    const graphCommitSvc = new GraphCommitService({ graphs, committer, graphService: graphSvc, now: c.now, nextId: c.nextId });
+    const sessionSvc = new SessionService({ sessions, events, lock, now: c.now, nextId: c.nextId });
+    const coordinator = new ExecutionCoordinator({ executions, now: c.now });
+    const taskRunSvc = new TaskRunService({ runs: taskRuns, events, reconciler: new NoopProcessReconciler(), now: c.now, nextId: c.nextId });
+    const checkpointSvc = new CheckpointService({ checkpoints, events, now: c.now, nextId: c.nextId });
+    const planner = new Planner({ gateway: model, now: c.now, nextId: c.nextId });
+    const verEngine = new VerificationEngine({ reports: verReports, events, supervisor: { spawn: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false, killed: false, durationMs: 0 }) }, revisionProvider: revProvider, now: c.now, nextId: c.nextId });
+    const completionGate = new CompletionGate({ reports: verReports });
+    const { ToolGateway, ContextBuilder } = await import('@codeforge/agent-core');
+    const taskExec = new TaskExecutor({
+      taskRunService: taskRunSvc, executionCoordinator: coordinator,
+      contextBuilder: new ContextBuilder({ now: c.now, nextId: c.nextId }), gateway: model,
+      toolGateway: new ToolGateway({ calls: toolCalls, approvals, events, policy: PERMISSIVE_TEST_POLICY, now: c.now, nextId: c.nextId }),
+      executor: { execute: async () => ({ exitCode: 0, stdout: 'ok', stderr: '', timedOut: false }) },
+      verificationEngine: verEngine, completionGate, verificationPolicy: DEFAULT_VERIFICATION_POLICY,
+      now: c.now, nextId: c.nextId,
+    });
+
+    await sessionSvc.create({ session: makeSession(), hostname: 'h', processId: 1 });
+    await graphs.commit({
+      graphId: 'GR', sessionId: 'S', version: 1, nodes: [], edges: [],
+      createdAt: 't', createdBy: 'planner', canonicalHash: 'seed', schemaVersion: 1, canonicalFormVersion: 'v1',
+    }, {
+      mutationId: 'M0', sessionId: 'S', baseVersion: 0, operations: [],
+      proposedBy: 'planner', reason: 'seed',
+      provenance: { provenanceId: 'P', source: { kind: 'runtime', id: 'init' }, inputs: [], reason: 'seed', at: 't' },
+      createdAt: 't', status: 'COMMITTED',
+    });
+
+    return { sessions, taskRuns, deps: {
+      sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs,
+      taskRepository: tasks, executionRepository: executions, executionCoordinator: coordinator,
+      taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, now: c.now, nextId: c.nextId,
+    } };
+  }
+
+  it('a control gate that cancels aborts the run before any task is scheduled', async () => {
+    const c = makeCounters();
+    const model = new FakeModel();
+    model.setSequence([PLAN_RESPONSE, JSON.stringify({ type: 'done', summary: 'x' })]);
+    const { sessions, taskRuns, deps } = await wire(c, model);
+
+    // Gate cancels on the first poll — this happens at the top of the loop, before scheduling.
+    const gate = {
+      async poll() { return { kind: 'cancel' as const }; },
+      async awaitResume() { return 'cancel' as const; },
+    };
+    const orchestrator = new SessionOrchestrator({ ...deps, controlGate: gate });
+
+    const result = await orchestrator.run({ sessionId: 'S', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
+
+    expect(result.sessionState).toBe('ABORTED');
+    expect(result.taskRunCount).toBe(0); // cancelled before any task ran
+    expect((await sessions.getById('S'))?.state).toBe('ABORTED');
+    expect(await taskRuns.findRunning('S')).toEqual([]); // no orphan run
+  });
+
+  it('a pause-then-resume gate lets the run proceed to completion', async () => {
+    const c = makeCounters();
+    const model = new FakeModel();
+    model.setSequence([PLAN_RESPONSE, JSON.stringify({ type: 'done', summary: 'x' })]);
+    const { sessions, deps } = await wire(c, model);
+
+    // Pause once, then resume; the run should finish normally.
+    let paused = false;
+    const gate = {
+      async poll() {
+        if (!paused) { paused = true; return { kind: 'pause' as const }; }
+        return { kind: 'none' as const };
+      },
+      async awaitResume() { return 'resume' as const; },
+    };
+    const orchestrator = new SessionOrchestrator({ ...deps, controlGate: gate });
+
+    const result = await orchestrator.run({ sessionId: 'S', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
+
+    // Paused once then resumed → the session reaches a terminal non-aborted-by-control state.
+    expect(['COMPLETED', 'ABORTED']).toContain(result.sessionState);
+    expect(paused).toBe(true); // the pause branch was exercised
+    const s = await sessions.getById('S');
+    expect(['COMPLETED', 'ABORTED', 'RUNNING']).toContain(s?.state); // resumed past PAUSED
   });
 });

@@ -20,6 +20,8 @@
     "memory/**/*.ts",
     "autonomy/**/*.ts",
     "observability/**/*.ts",
+    "control/**/*.ts",
+    "session/**/*.ts",
     "integration/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",

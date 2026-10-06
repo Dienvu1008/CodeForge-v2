@@ -74,3 +74,35 @@ describe('SESSION_TRANSITIONS table integrity', () => {
     expect(outgoingFromTerminal).toEqual([]);
   });
 });
+
+describe('transitionSession — P9.7 pause/resume (PAUSED)', () => {
+  it('RUNNING -> PAUSED on PAUSE_REQUESTED', () => {
+    const r = transitionSession('RUNNING', 'PAUSE_REQUESTED');
+    expect(r.ok && r.next).toBe('PAUSED');
+  });
+
+  it('PAUSED -> RUNNING on RESUME_REQUESTED', () => {
+    const r = transitionSession('PAUSED', 'RESUME_REQUESTED');
+    expect(r.ok && r.next).toBe('RUNNING');
+  });
+
+  it('PAUSED is not terminal and can be cancelled or aborted', () => {
+    expect(isSessionTerminal('PAUSED')).toBe(false);
+    expect(transitionSession('PAUSED', 'CANCEL_REQUESTED').ok).toBe(true);
+    const aborted = transitionSession('PAUSED', 'ABORT');
+    expect(aborted.ok && aborted.next).toBe('ABORTED');
+  });
+
+  it('rejects PAUSE_REQUESTED from a non-RUNNING state', () => {
+    expect(transitionSession('AWAITING_HUMAN', 'PAUSE_REQUESTED').ok).toBe(false);
+    expect(transitionSession('CREATED', 'PAUSE_REQUESTED').ok).toBe(false);
+  });
+
+  it('rejects RESUME_REQUESTED from a non-PAUSED state', () => {
+    expect(transitionSession('RUNNING', 'RESUME_REQUESTED').ok).toBe(false);
+  });
+
+  it('pause/resume is deterministic', () => {
+    expect(transitionSession('RUNNING', 'PAUSE_REQUESTED')).toEqual(transitionSession('RUNNING', 'PAUSE_REQUESTED'));
+  });
+});

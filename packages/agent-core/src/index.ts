@@ -62,3 +62,5 @@ export * from './coordination/index.js';
 // Phase 9:
 //   - observability/ (P9.2: RuntimeProjection + ContextTelemetry — OB-005/010)
 export * from './observability/index.js';
+//   - control/ (P9.7: ControlPlane — OB-006)
+export * from './control/index.js';

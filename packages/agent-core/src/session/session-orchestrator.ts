@@ -1,4 +1,4 @@
-﻿// SessionOrchestrator — P4-SO1. Full autonomous session loop.
+// SessionOrchestrator — P4-SO1. Full autonomous session loop.
 // GI-009: Planner returns GraphMutation; handed to GraphCommitService.
 // SC-003: task only READY when every dependency is PASSED.
 // SS-003: session only COMPLETED when all tasks are terminal.
@@ -21,6 +21,32 @@ import type { RecoveryEngine }          from '../recovery/recovery-engine.js';
 import type { FailureRepository }       from '../repositories/index.js';
 import { decide, type RecoveryPolicyConfig } from '../recovery/recovery-policy.js';
 import { detectNoProgress }             from '../recovery/no-progress-detector.js';
+
+// P9.7: cooperative control signal polled once per loop iteration. A no-op gate (the
+// default) always returns 'none', so the loop behaves exactly as before. The real gate
+// is fed by the ControlPlane: an admitted pause/cancel surfaces here as a signal, so an
+// in-flight autonomous run becomes responsive to pause/resume/cancel between iterations
+// WITHOUT a second authority path (the gate only reports; the orchestrator drives the
+// session machine through SessionService as always).
+export type ControlSignalKind = 'none' | 'pause' | 'cancel';
+export interface ControlSignal {
+  readonly kind: ControlSignalKind;
+}
+export interface ControlGate {
+  /** Report the pending control signal for this session (does not mutate state). */
+  poll(sessionId: string): Promise<ControlSignal>;
+  /**
+   * Block until the session should leave PAUSED. Resolves with 'resume' (continue the
+   * loop) or 'cancel' (abort). Implementations typically poll an admitted-control store.
+   */
+  awaitResume(sessionId: string): Promise<'resume' | 'cancel'>;
+}
+
+/** Default gate: never pauses or cancels — preserves pre-P9.7 orchestrator behavior. */
+export const NOOP_CONTROL_GATE: ControlGate = {
+  async poll(): Promise<ControlSignal> { return { kind: 'none' }; },
+  async awaitResume(): Promise<'resume' | 'cancel'> { return 'resume'; },
+};
 
 export class SessionOrchestratorError extends Error {
   public readonly code: 'PLAN_FAILED' | 'COMMIT_FAILED' | 'DEADLOCK' | 'SESSION_FAILED';
@@ -55,6 +81,13 @@ export interface SessionOrchestratorDeps {
   readonly failureRepository?:   FailureRepository;
   /** Optional P5-SO2: custom recovery policy config. */
   readonly recoveryPolicy?:      RecoveryPolicyConfig;
+  /**
+   * Optional P9.7: cooperative control gate polled once per loop iteration. When omitted,
+   * NOOP_CONTROL_GATE is used and the loop behaves exactly as before (no pause/cancel
+   * checkpoints). The gate only REPORTS signals; the orchestrator drives the session
+   * machine through SessionService, so no new authority path is introduced (OB-006).
+   */
+  readonly controlGate?:         ControlGate;
   readonly now:    () => string;
   readonly nextId: () => string;
 }
@@ -77,8 +110,10 @@ export interface SessionOrchestratorResult {
 
 export class SessionOrchestrator {
   private readonly maxIterations: number;
+  private readonly controlGate: ControlGate;
   constructor(private readonly deps: SessionOrchestratorDeps) {
     this.maxIterations = deps.maxIterations ?? 100;
+    this.controlGate = deps.controlGate ?? NOOP_CONTROL_GATE;
   }
 
   async run(input: SessionOrchestratorRunInput): Promise<SessionOrchestratorResult> {
@@ -126,8 +161,16 @@ export class SessionOrchestrator {
 
     // 5. Main execution loop
     let iterations = 0;
+    let cancelledByControl = false;
     while (iterations < this.maxIterations) {
       iterations++;
+
+      // P9.7: cooperative control checkpoint — poll BEFORE scheduling the next task so an
+      // admitted pause/cancel takes effect between iterations (never mid-task). The gate
+      // only reports; the session machine is driven through SessionService as always.
+      const control = await this.handleControl(input.sessionId);
+      if (control === 'cancelled') { cancelledByControl = true; break; }
+
       const g      = await this.deps.graphRepository.getCurrent(input.sessionId);
       const states = await this.buildStatesMap(g);
       if (this.allTerminal(g, states)) break;
@@ -225,14 +268,20 @@ export class SessionOrchestrator {
       }
     }
 
-    // 7. Complete session (SS-003)
+    // 7. Complete session (SS-003) — unless control cancelled the run, in which case the
+    // session has already been driven to CANCELLING; finish the abort to ABORTED.
     let sessionState: 'COMPLETED' | 'ABORTED';
-    try {
-      await this.deps.sessionService.complete(input.sessionId, this.allTerminal(fg, fs));
-      sessionState = 'COMPLETED';
-    } catch {
-      await this.abortSession(input.sessionId);
+    if (cancelledByControl) {
+      await this.finishCancel(input.sessionId);
       sessionState = 'ABORTED';
+    } else {
+      try {
+        await this.deps.sessionService.complete(input.sessionId, this.allTerminal(fg, fs));
+        sessionState = 'COMPLETED';
+      } catch {
+        await this.abortSession(input.sessionId);
+        sessionState = 'ABORTED';
+      }
     }
 
     return { sessionState, taskRunCount, passedTaskIds: passedIds, nonPassedTaskIds: nonPassedIds, durationMs: Date.now() - t0 };
@@ -271,6 +320,39 @@ export class SessionOrchestrator {
 
   private async abortSession(sessionId: string): Promise<void> {
     try { await this.deps.sessionService.transition(sessionId, 'CANCEL_REQUESTED'); } catch { /* best-effort */ }
+  }
+
+  /**
+   * P9.7 cooperative control checkpoint. Polls the gate; drives the session machine via
+   * SessionService in response. Returns 'cancelled' if the run must abort, else 'continue'
+   * (including after a pause→resume cycle). Never mutates authoritative state except
+   * through SessionService transitions (no second authority path, OB-006).
+   */
+  private async handleControl(sessionId: string): Promise<'continue' | 'cancelled'> {
+    const signal = await this.controlGate.poll(sessionId);
+    if (signal.kind === 'none') return 'continue';
+    if (signal.kind === 'cancel') { await this.abortSession(sessionId); return 'cancelled'; }
+
+    // signal.kind === 'pause': transition RUNNING -> PAUSED, then park until the gate
+    // reports resume or cancel. Pause suspends scheduling only; it changes no authority.
+    try { await this.deps.sessionService.transition(sessionId, 'PAUSE_REQUESTED'); }
+    catch { /* if not RUNNING (e.g. already resumed), fall through to await */ }
+
+    const outcome = await this.controlGate.awaitResume(sessionId);
+    if (outcome === 'cancel') { await this.abortSession(sessionId); return 'cancelled'; }
+
+    try { await this.deps.sessionService.transition(sessionId, 'RESUME_REQUESTED'); }
+    catch { /* best-effort: if already RUNNING, continue */ }
+    return 'continue';
+  }
+
+  /** Finish a control-initiated cancel: CANCELLING -> ABORTED (best-effort). */
+  private async finishCancel(sessionId: string): Promise<void> {
+    try { await this.deps.sessionService.transition(sessionId, 'CANCEL_COMPLETED'); }
+    catch {
+      // Not in CANCELLING (e.g. abort already applied) — try a direct ABORT.
+      try { await this.deps.sessionService.transition(sessionId, 'ABORT'); } catch { /* best-effort */ }
+    }
   }
 
   /**

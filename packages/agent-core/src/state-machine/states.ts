@@ -8,6 +8,7 @@ export type SessionState =
   | 'INITIALIZING'
   | 'RUNNING'
   | 'AWAITING_HUMAN'
+  | 'PAUSED'
   | 'CANCELLING'
   | 'COMPLETED'
   | 'ABORTED';
