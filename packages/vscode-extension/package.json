@@ -1,5 +1,5 @@
 {
-  "name": "@codeforge/vscode-extension",
+  "name": "codeforge-observability",
   "displayName": "CodeForge",
   "description": "Observe and control a CodeForge runtime from VS Code.",
   "version": "0.1.0",
@@ -29,9 +29,8 @@
   "devDependencies": {
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.0.0",
-    "esbuild": "^0.21.0"
+    "esbuild": "^0.21.0",
+    "@codeforge/agent-core": "file:../agent-core"
   },
-  "dependencies": {
-    "@codeforge/agent-core": "*"
-  }
+  "dependencies": {}
 }

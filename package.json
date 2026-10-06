@@ -25,7 +25,8 @@
     "test:contracts": "vitest run tests/contracts",
     "lint": "eslint .",
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
-    "gen:vectors": "npm run typecheck && node scripts/gen-vector-expected.mjs"
+    "gen:vectors": "npm run typecheck && node scripts/gen-vector-expected.mjs",
+    "start": "npm run build && node packages/infrastructure/dist/cli/runtime-cli.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.11.0",
