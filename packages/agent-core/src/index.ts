@@ -56,3 +56,6 @@ export * from './workspace/index.js';
 // Phase 7:
 //   - memory/ (P7-MW1: MemoryWriter — ME-003/006)
 export * from './memory/index.js';
+// Phase 8:
+//   - coordination/ (P8-MA1: MultiAgentCoordinator — AU-002/007)
+export * from './coordination/index.js';
