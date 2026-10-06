@@ -3,7 +3,7 @@
 Date: 2026-09-14
 Branch: main
 Commits: eb18f69 (roadmap), a454635 (P8-INV), 6fbcc77 (P8-PX1), 5b825f7 (P8-MA1),
-         42d58ee (P8-BI1), __P8_I1__ (P8-I1 E2E + sign-off)
+         42d58ee (P8-BI1), fce45ac (P8-I1 E2E + sign-off)
 
 Format per PHASE_8_ROADMAP §6 (Exit criteria) + EVALUATION_MODEL §11.10 (Phase 8
 gate) + Architecture Target §60 (Phase Gate). Phase 8 delivers the **Advanced
