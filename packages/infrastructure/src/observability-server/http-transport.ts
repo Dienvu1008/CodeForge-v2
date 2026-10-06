@@ -12,7 +12,7 @@
 //   GET  /                          -> dashboard HTML (static client)
 //   GET  /app.js                    -> dashboard script (static client)
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Socket } from 'node:net';
 import type { ControlRequest } from '@codeforge/agent-core';
 import type { ObservabilityService } from './observability-service.js';
 import { DASHBOARD_HTML, DASHBOARD_JS } from './dashboard-assets.js';
@@ -26,10 +26,16 @@ export interface HttpTransportOptions {
 export class HttpTransport {
   private readonly server: Server;
   private readonly streamPollMs: number;
+  /** Open sockets, tracked so close() can force-drain lingering SSE connections. */
+  private readonly sockets = new Set<Socket>();
 
   constructor(private readonly opts: HttpTransportOptions) {
     this.streamPollMs = opts.streamPollMs ?? 500;
     this.server = createServer((req, res) => { void this.handle(req, res); });
+    this.server.on('connection', (socket: Socket) => {
+      this.sockets.add(socket);
+      socket.on('close', () => this.sockets.delete(socket));
+    });
   }
 
   /** Start listening. Returns the bound port (useful with port 0 for tests). */
@@ -42,7 +48,13 @@ export class HttpTransport {
   }
 
   close(): Promise<void> {
-    return new Promise((resolve) => this.server.close(() => resolve()));
+    return new Promise((resolve) => {
+      this.server.close(() => resolve());
+      // Force-drain any lingering connections (e.g. an open SSE stream) so close()
+      // resolves promptly instead of waiting on keep-alive sockets.
+      for (const socket of this.sockets) socket.destroy();
+      this.sockets.clear();
+    });
   }
 
   // ── request handling ──────────────────────────────────────────────────────────
@@ -75,6 +87,10 @@ export class HttpTransport {
       if (method === 'GET' && path === '/trace') {
         if (session === '') return this.sendJson(res, 400, { error: 'session required' });
         return this.sendJson(res, 200, await this.opts.service.getTrace(session));
+      }
+      if (method === 'GET' && path === '/audit') {
+        if (session === '') return this.sendJson(res, 400, { error: 'session required' });
+        return this.sendJson(res, 200, await this.opts.service.getAuditTimeline(session));
       }
       if (method === 'GET' && path === '/events') {
         if (session === '') return this.sendJson(res, 400, { error: 'session required' });
@@ -109,20 +125,28 @@ export class HttpTransport {
     });
     let cursor = from;
     let closed = false;
-    req.on('close', () => { closed = true; });
+    const stop = (): void => { closed = true; };
+    req.on('close', stop);
+    res.on('close', stop);
+    res.on('error', stop); // socket destroyed on server close — stop quietly, no throw
 
     // Prime with any events already past the cursor, then poll for new ones.
-    while (!closed) {
+    while (!closed && res.writable) {
       const events = await this.opts.service.getEvents(session, cursor);
       for (const e of events) {
         if (e.sequenceNumber <= cursor) continue;
-        res.write(`id: ${e.sequenceNumber}\n`);
-        res.write(`data: ${JSON.stringify(e)}\n\n`);
+        if (closed || !res.writable) break;
+        // Writes can race with a socket teardown; swallow the teardown error.
+        try {
+          res.write(`id: ${e.sequenceNumber}\n`);
+          res.write(`data: ${JSON.stringify(e)}\n\n`);
+        } catch { closed = true; break; }
         cursor = e.sequenceNumber;
       }
+      if (closed) break;
       await sleep(this.streamPollMs);
     }
-    res.end();
+    try { res.end(); } catch { /* already torn down */ }
   }
 
   // ── serializers ────────────────────────────────────────────────────────────────

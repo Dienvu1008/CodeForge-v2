@@ -7,3 +7,5 @@ export * from './context-telemetry.js';
 export * from './activity-trace.js';
 // ContinuationManifest (P9.6) — non-authoritative session-rollover hand-off. OB-008.
 export * from './continuation-manifest.js';
+// AuditTimeline (P9.10) — replayable audit view with phase + authority path. OB-004/007.
+export * from './audit-timeline.js';

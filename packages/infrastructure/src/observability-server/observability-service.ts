@@ -19,6 +19,7 @@ import type {
   DomainEvent,
   RuntimeProjection,
   ActivityTrace,
+  AuditTimeline,
   ControlRequest,
   ControlStateInput,
   AdmissionResult,
@@ -33,6 +34,7 @@ import type {
 import {
   computeRuntimeProjection,
   buildActivityTrace,
+  buildAuditTimeline,
   ControlPlane,
   buildInterventionRecord,
 } from '@codeforge/agent-core';
@@ -134,6 +136,12 @@ export class ObservabilityService {
   async getTrace(sessionId: string): Promise<ActivityTrace> {
     const events = await this.deps.events.query({ sessionId });
     return buildActivityTrace(sessionId, events);
+  }
+
+  /** Replayable audit timeline (phase + authority path) for the session (OB-004/007). */
+  async getAuditTimeline(sessionId: string): Promise<AuditTimeline> {
+    const events = await this.deps.events.query({ sessionId });
+    return buildAuditTimeline(sessionId, events);
   }
 
   /** Raw ordered events for replay/audit (OB-004). */

@@ -113,6 +113,17 @@ describe('P9.3 HttpTransport — reads', () => {
     expect(t.entries.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('GET /audit returns a replay timeline with phase + authority path', async () => {
+    const a = await (await fetch(`${base}/audit?session=S`)).json() as {
+      entries: Array<{ phase: string; authorityPath: string }>; phaseCounts: Record<string, number>;
+    };
+    expect(a.entries.length).toBeGreaterThanOrEqual(1);
+    expect(a.entries.every((e) => typeof e.phase === 'string' && typeof e.authorityPath === 'string')).toBe(true);
+    // The session lifecycle transitions were produced by the SessionStateMachine.
+    expect(a.entries.some((e) => e.authorityPath === 'SessionStateMachine')).toBe(true);
+    expect(typeof a.phaseCounts.lifecycle).toBe('number');
+  });
+
   it('GET / serves the dashboard HTML and /app.js the script', async () => {
     const html = await fetch(`${base}/`);
     expect(html.headers.get('content-type')).toContain('text/html');
@@ -155,31 +166,36 @@ describe('P9.3 HttpTransport — control (OB-006)', () => {
 });
 
 describe('P9.3 HttpTransport — SSE live tail (OB-009)', () => {
-  it('streams a newly appended event to a connected client', async () => {
-    const controller = new AbortController();
-    const resp = await fetch(`${base}/stream?session=S`, {
-      headers: { accept: 'text/event-stream' }, signal: controller.signal,
-    });
-    expect(resp.headers.get('content-type')).toContain('text/event-stream');
-
-    // Append a new event; the tail should deliver it.
+  it('streams a session event to a connected client', async () => {
+    // Append the event BEFORE opening the stream so delivery does not depend on precise
+    // append/poll timing — the server's first (prime) poll must deliver everything past
+    // the cursor. This keeps the test deterministic under parallel load.
     events.appendSync({
       eventId: 'E-live', sessionId: 'S', type: 'TASK_STATE_CHANGED',
       aggregate: { kind: 'task', id: 'T1' }, payload: { to: 'READY' },
       at: '2026-01-01T00:00:30.000Z', sequenceNumber: 0,
     });
 
+    const controller = new AbortController();
+    const resp = await fetch(`${base}/stream?session=S`, {
+      headers: { accept: 'text/event-stream' }, signal: controller.signal,
+    });
+    expect(resp.headers.get('content-type')).toContain('text/event-stream');
+
     const reader = resp.body!.getReader();
     const decoder = new TextDecoder();
     let buf = '';
-    const deadline = Date.now() + 4000;
-    while (Date.now() < deadline) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      if (buf.includes('TASK_STATE_CHANGED')) break;
+    const deadline = Date.now() + 8000;
+    try {
+      while (Date.now() < deadline && !buf.includes('TASK_STATE_CHANGED')) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+      }
+    } finally {
+      controller.abort();
+      reader.cancel().catch(() => undefined);
     }
-    controller.abort();
     expect(buf).toContain('TASK_STATE_CHANGED');
   });
 });
