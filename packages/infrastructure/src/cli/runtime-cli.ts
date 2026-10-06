@@ -65,7 +65,6 @@ import {
   DEFAULT_VERIFICATION_POLICY,
   type Session,
   type Goal,
-  type WorkspaceRevision,
 } from '@codeforge/agent-core';
 import { computeWorkspaceRevision } from '../workspace-revision/index.js';
 

@@ -62,6 +62,31 @@ import type { VerificationPolicy }  from '../verification/verification-policy.js
 import type { VerificationStatus }  from '../domain/verification.js';
 import { DEFAULT_VERIFICATION_POLICY } from '../verification/verification-policy.js';
 
+// ── System prompt for the multi-turn tool loop ────────────────────────────────
+
+const TASK_EXECUTOR_SYSTEM_PROMPT = `You are a coding agent executing a task step by step using tools.
+You MUST respond with a single JSON object — no markdown, no explanation.
+
+Available tools:
+  read_file     {"path": "<relative-path>"}                   — read a file's contents
+  write_file    {"path": "<relative-path>", "content": "..."}  — create or overwrite a file
+  list_dir      {"path": "<relative-path>"}                   — list directory contents
+  delete_file   {"path": "<relative-path>"}                   — delete a file
+  move_file     {"path": "<from>", "to": "<to>"}               — rename/move a file
+  run_command   {"command": "<shell command>"}                 — run a shell command
+  git_status    {}                                             — check git status
+  git_diff      {}                                             — show git diff
+  git_add       {"path": "<relative-path>"}                   — stage a file
+  git_commit    {"message": "<msg>"}                           — commit staged files
+  git_log       {}                                             — show recent git log
+
+Response format (pick ONE):
+  To call a tool: {"type":"tool_call","toolName":"<name>","arguments":{...}}
+  When done:      {"type":"done","summary":"<what was accomplished>"}
+
+Strategy: first explore the workspace (list_dir, read_file), then make changes (write_file),
+then verify your work (read_file, run_command). When everything is complete, respond with done.`;
+
 // ── TaskExecutorError ─────────────────────────────────────────────────────────
 
 export class TaskExecutorError extends Error {
@@ -252,6 +277,8 @@ export class TaskExecutor {
 
     // ── 3. Tool-call loop ─────────────────────────────────────────────────────
     const toolCallIds: string[] = [];
+    /** Accumulated tool-call transcript fed back to the model each iteration. */
+    const transcript: Array<{ step: number; toolName: string; arguments: Record<string, unknown>; result: string; exitCode: number | null }> = [];
     let loopDone    = false;
     let finalState: 'SUCCEEDED' | 'FAILED' | 'TIMEOUT' = 'FAILED';
     let summary: string | undefined;
@@ -259,17 +286,15 @@ export class TaskExecutor {
 
     for (let i = 0; i < this.maxToolCalls && !loopDone; i++) {
       // ── 3a. Build model request ─────────────────────────────────────────────
-      const taskPrompt = this.buildTaskPrompt(req.task, toolCallIds.length, summary);
+      const taskPrompt = this.buildTaskPrompt(req.task, transcript);
       const modelReq = modelRequest(
         'execute',
-        BOUNDARY_SYSTEM_PREAMBLE + '\n\nYou are executing a task step by step using tools.\n' +
-          'Respond with JSON: either {"type":"tool_call","toolName":"...","arguments":{...}} ' +
-          'or {"type":"done","summary":"..."}.',
+        BOUNDARY_SYSTEM_PREAMBLE + '\n\n' + TASK_EXECUTOR_SYSTEM_PROMPT,
         taskPrompt,
         {
           responseSchema:  TOOL_CALL_PROPOSAL_SCHEMA,
           temperature:     0,
-          maxOutputTokens: 1024,
+          maxOutputTokens: 2048,
         },
       );
       const requestWithCtx = { ...modelReq, contextSnapshotId: snapshot.snapshotId };
@@ -441,20 +466,29 @@ export class TaskExecutor {
 
       toolCallIds.push(toolCallId);
 
-      // Propagate timeout.
+      // Record the result in the transcript so the model sees it next iteration.
+      const execResult = capturingProxy.lastResult;
+      const resultText = (execResult?.exitCode === 0 || execResult?.exitCode === null)
+        ? (execResult?.stdout ?? '')
+        : `ERROR (exit ${execResult?.exitCode}): ${execResult?.stderr || execResult?.stdout || 'tool failed'}`;
+      transcript.push({
+        step: transcript.length + 1,
+        toolName: proposal.toolName,
+        arguments: proposal.arguments,
+        result: resultText.slice(0, 2000),
+        exitCode: execResult?.exitCode ?? null,
+      });
+
+      // Propagate timeout (fatal — tool timed out).
       if (executedCall.state === 'TIMEOUT') {
         finalState = 'TIMEOUT';
         loopDone   = true;
         break;
       }
-      // FAILED tool call is not necessarily fatal — loop can continue
-      // (model will see the failure in context on next iteration).
-      // For now, conservatively fail the run on any tool failure.
-      if (executedCall.state === 'FAILED') {
-        finalState = 'FAILED';
-        loopDone   = true;
-        break;
-      }
+      // FAILED tool call is NON-FATAL: the model will see the failure in the transcript
+      // and can retry, use a different approach, or decide the task is done. This is the
+      // key ReAct behavior — feedback drives the next action.
+      // (Only DENIED and TIMEOUT are fatal.)
     }
 
     // If loop exhausted without done signal → budget exceeded.
@@ -544,12 +578,23 @@ export class TaskExecutor {
    */
   private buildTaskPrompt(
     task: Task,
-    stepsSoFar: number,
-    _lastSummary?: string,
+    transcript: ReadonlyArray<{ step: number; toolName: string; arguments: Record<string, unknown>; result: string; exitCode: number | null }>,
   ): string {
     const acLines = task.acceptanceCriteria.length > 0
       ? task.acceptanceCriteria.map((ac) => `  - ${ac.description}`).join('\n')
       : '  (none specified)';
+
+    const transcriptText = transcript.length > 0
+      ? [
+          '',
+          'PREVIOUS STEPS (tool calls and their results):',
+          ...transcript.map((t) =>
+            `  Step ${t.step}: ${t.toolName}(${JSON.stringify(t.arguments)})` +
+            `\n    → exit ${t.exitCode}: ${t.result.slice(0, 800)}`,
+          ),
+          '',
+        ].join('\n')
+      : '\n(No tool calls made yet — this is the first step.)\n';
 
     return buildPrompt([
       {
@@ -560,11 +605,13 @@ export class TaskExecutor {
           'Acceptance criteria:',
           acLines,
           '',
-          `Progress: ${stepsSoFar} tool call(s) completed so far.`,
-          '',
+          `Progress: ${transcript.length} step(s) completed.`,
+          transcriptText,
           'Decide the next action. Respond with JSON only.',
           'To use a tool: {"type":"tool_call","toolName":"<name>","arguments":{...}}',
-          'When done:     {"type":"done","summary":"<what was accomplished>"}',
+          'When the task is complete: {"type":"done","summary":"<what was accomplished>"}',
+          '',
+          'Think step by step: first explore the workspace, then make changes, then verify.',
         ].join('\n'),
         trust: 'trusted',
       },
