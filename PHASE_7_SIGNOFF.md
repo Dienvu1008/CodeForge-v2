@@ -122,10 +122,16 @@ as a dependency (pure Node, no system install).
 - **Memory is one-way evidence.** It flows only INTO the context snapshot as
   untrusted items ranked below the live workspace (priority: task/goal > changed
   files > symbols > memory > RAG). The kernel never reads memory to decide (ME-001).
-- **Semantic embeddings: deferred to Phase 7.5** (as planned in the roadmap). The
-  v1 retrieval is deterministic (tag/recency/term-overlap). `MemoryQuery.text?` and
-  `DocQuery` already reserve a semantic hint, so embeddings plug into the same
-  interface later without changing consumers (§4.10).
+- **Semantic (neural) embeddings: deferred to Phase 8+** after a feasibility probe
+  (2026-09-14), not scheduled as a committed "Phase 7.5". Probe evidence: the dev
+  Ollama has its embeddings endpoint disabled and no embedding model; an external
+  embeddings service is not headless-CI-safe; and neural embeddings are not
+  byte-identical across calls/platforms (conflicts with ME-004). An embedding
+  model/service cannot be pinned as a pure-Node dep, so the LSP "pin-the-dep" fix
+  does not transfer. v1 retrieval stays deterministic (tag/recency/term-overlap).
+  Zero tech debt: `MemoryQuery.text?` and `DocQuery` already reserve the semantic
+  hint, so a future embedding retriever plugs into the same `MemoryRetriever`
+  interface without changing consumers (§4.10).
 - **RAG is local-only in v1.** Doc/Repo retrievers read only the data the caller
   supplies — no network. Network RAG, if added, must route through ToolGateway +
   NetworkPolicy (ME-007).
@@ -138,7 +144,7 @@ as a dependency (pure Node, no system install).
 
 ## What Phase 7 does NOT deliver
 
-- Semantic embeddings / vector store (Phase 7.5).
+- Semantic (neural) embeddings / vector store — deferred to Phase 8+ (probe-backed; see Honest scope notes).
 - Self-improvement / fine-tuning (Phase 8+).
 - Multi-agent shared memory, cloud/remote memory sync (Phase 8+).
 - Network RAG as a default (only via ToolGateway + NetworkPolicy).

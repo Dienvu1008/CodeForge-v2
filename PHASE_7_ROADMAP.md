@@ -341,10 +341,21 @@ Map theo `EVALUATION_MODEL §11.9` (Phase 7 gate) + nguyên tắc §0.
 
 ## 8. Những gì Phase 7 KHÔNG làm (và vì sao)
 
-- **Semantic embedding / vector store** — deferred (cân nhắc Phase 7.5). Lý do:
-  mô hình embedding + vector index khó đảm bảo determinism (ME-004) và headless-CI
-  cross-platform; lõi tất định đủ cho v1. Khi làm, nó cắm vào **cùng interface
-  MemoryRetriever** (plain data) nên không phải sửa P7-CR2.
+- **Semantic embedding / vector store (neural)** — **DEFERRED to Phase 8+** after a
+  feasibility probe (2026-09-14). Evidence: on the dev machine Ollama runs but its
+  embeddings endpoint is disabled (`HTTP 500: "This server does not support
+  embeddings. Start it with --embeddings"`) and no embedding model is installed; an
+  external embeddings service is not headless-CI-safe (absent in WSL `npm ci` / CI);
+  and neural embeddings are not byte-identical across calls/platforms, conflicting
+  with ME-004 (deterministic retrieval). Unlike the LSP server, an embedding
+  model/service cannot be pinned as a pure-Node npm dependency, so the LSP
+  "pin-the-dep" resolution does not apply.
+  Re-entry is zero-tech-debt: `MemoryQuery.text` + `DocQuery` already reserve the
+  semantic hint (§4.4, §4.10), so a future embedding retriever plugs in behind the
+  SAME `MemoryRetriever` interface without touching any consumer (P7-CR2 unchanged).
+  Definition of done when picked up: a semantic retriever that is EITHER deterministic
+  (so ME-004 holds) OR isolated on a clearly non-deterministic, CI-skippable branch
+  that never feeds the deterministic memory path; cross-platform verified.
 - **Self-improvement / fine-tuning** — Phase 8+.
 - **Multi-agent shared memory** — Phase 8+.
 - **Cloud / remote memory sync** — Phase 8+.
@@ -358,8 +369,10 @@ Các quyết định dưới đây đã được chốt. Tất cả đều an to
 §4.10 (Forward-compatible interface contract): nâng cấp = thêm implementation sau
 interface, không sửa consumer, không phá Phase 0–6.
 
-1. **Embedding: DEFERRED** (Phase 7.5). Lõi v1 dùng retrieval tất định. `MemoryQuery.text?`
-   đã chừa sẵn chỗ ngữ nghĩa (§4.4) → thêm embedding sau không đổi chữ ký (§4.10 luật 2).
+1. **Embedding: DEFERRED to Phase 8+** (probe 2026-09-14 — see §8). Lõi v1 dùng
+   retrieval tất định. Probe cho thấy embedding neural chưa đạt determinism (ME-004)
+   + headless-CI nên hoãn, có bằng chứng. `MemoryQuery.text?` đã chừa sẵn chỗ ngữ
+   nghĩa (§4.4) → thêm embedding sau không đổi chữ ký (§4.10 luật 2), không nợ kỹ thuật.
 2. **Schema: MỘT bảng `memory_records` + cột `kind`.** Thêm kind = thêm giá trị cột;
    thêm thuộc tính = migration additive theo `MIGRATION_SPEC.md` (§4.10 luật 4).
 3. **Retention: max-count per (scope, kind)** cho v1 (tất định, dễ test ME-004/006).
