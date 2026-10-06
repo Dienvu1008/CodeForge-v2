@@ -222,7 +222,7 @@ describe('Migration v2 (P1.5-DB2) — approvals, failures, recovery_actions', ()
     const result = runMigrations(db, createMigrationRegistry(), {
       now: () => '2026-01-01T00:00:00.000Z',
     });
-    expect(result.toVersion).toBe(4);
+    expect(result.toVersion).toBe(5);
     expect(result.applied).toContain('0002_phase15_approvals_failures_recovery');
 
     // Each table must exist and accept a basic query.
@@ -235,7 +235,7 @@ describe('Migration v2 (P1.5-DB2) — approvals, failures, recovery_actions', ()
     runMigrations(db, createMigrationRegistry(), { now: () => '2026-01-01T00:00:00.000Z' });
     const r2 = runMigrations(db, createMigrationRegistry(), { now: () => '2026-01-01T00:00:00.000Z' });
     expect(r2.applied).toHaveLength(0);
-    expect(r2.toVersion).toBe(4);
+    expect(r2.toVersion).toBe(5);
   });
 
   it('v1 tables still exist after v2 migration (additive-only, CP-007)', () => {

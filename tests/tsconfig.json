@@ -17,6 +17,7 @@
     "verification/**/*.ts",
     "context/**/*.ts",
     "invariants/**/*.ts",
+    "memory/**/*.ts",
     "integration/**/*.ts",
     "cross-platform/**/*.ts",
     "adversarial/**/*.ts",

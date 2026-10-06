@@ -16,3 +16,5 @@ export * from './artifact.js';
 export * from './event.js';
 // Phase 1.5:
 export * from './human-override.js';
+// Phase 7:
+export * from './memory.js';

@@ -38,3 +38,5 @@ export * from './artifacts/index.js';
 export * from './tools/index.js';
 // Phase 6 — P6-TS1/SX1: Code intelligence (Tree-sitter + symbols)
 export * from './code-intelligence/index.js';
+// Phase 7 — P7-MS1: Memory store (SQLite)
+export * from './memory/index.js';
