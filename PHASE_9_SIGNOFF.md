@@ -7,7 +7,7 @@ Commits: 5a15d18 (roadmap), 9f2f444 (P9-INV), 5ae6da1 (P9.2 projection+telemetry
          InterventionRecord), 50d5877 (P9.6 ContinuationManifest), 1973f7a (P9.3
          ObservabilityServer+Dashboard), 1b2b409 (P9.10 Replay/Audit), 4fb20fc
          (P9.8 Telegram), c19ad76 (P9-I1 E2E), b334184 (P9.12 Dogfood metrics),
-         903e361 (P9.11 VS Code extension), __SIGNOFF__ (sign-off)
+         903e361 (P9.11 VS Code extension), 21c70e7 (sign-off)
 
 Format per PHASE_9_ROADMAP §6 (Exit criteria) + the master prompt §16. Phase 9
 delivers the **Observability / Control substrate**: the Phase 0–8 agent is now
