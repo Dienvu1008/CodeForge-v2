@@ -59,3 +59,6 @@ export * from './memory/index.js';
 // Phase 8:
 //   - coordination/ (P8-MA1: MultiAgentCoordinator — AU-002/007)
 export * from './coordination/index.js';
+// Phase 9:
+//   - observability/ (P9.2: RuntimeProjection + ContextTelemetry — OB-005/010)
+export * from './observability/index.js';
