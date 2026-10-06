@@ -171,12 +171,20 @@ user note. Append-only; không sửa record cũ.
 ### 4.4 P7-MR1 — MemoryRetriever
 
 ```typescript
+interface MemoryQuery {
+  tags?:  readonly string[];
+  kinds?: readonly MemoryRecord['kind'][];
+  /**
+   * Forward-compatible semantic hint. v1 ignores it (deterministic keyword/recency
+   * ranking). When embeddings land (Phase 7.5) they consume `text` WITHOUT changing
+   * this signature — see §4.10 Forward-compatible interface contract.
+   */
+  text?:  string;
+  limit:  number;
+}
+
 interface MemoryRetriever {
-  retrieve(query: {
-    tags?: readonly string[];
-    kinds?: readonly MemoryRecord['kind'][];
-    limit: number;
-  }, records: readonly MemoryRecord[]): readonly MemoryRecord[];
+  retrieve(query: MemoryQuery, records: readonly MemoryRecord[]): readonly MemoryRecord[];
 }
 ```
 
@@ -221,6 +229,45 @@ Scenarios:
 2. DocRetriever trả đoạn doc cục bộ liên quan → vào ContextSnapshot untrusted.
 3. RepoRetriever trả đoạn code liên quan theo symbol/import distance.
 4. Memory item không bao giờ xuất hiện như authority (MEM-001) — chỉ là context data.
+
+### 4.10 Forward-compatible interface contract (khóa khả năng nâng cấp)
+
+Mục này biến lời hứa "nâng cấp sau không phá phần cũ" thành ràng buộc thiết kế
+**bắt buộc** từ P7-MS1/P7-MR1, cùng tinh thần plain-data đã chứng minh ở CR1 (Phase 6).
+
+**Luật thiết kế (bắt buộc):**
+
+1. **Consumer chỉ thấy dữ liệu trừu tượng.** `Retriever` và kernel chỉ nhìn thấy
+   `MemoryRecord[]` / `ContextItem`. Mọi "cái khó" — embedding, vector store, LSP
+   process, chính sách retention — nằm **sau** interface và không rò rỉ ra consumer.
+
+2. **`MemoryQuery` chừa sẵn chỗ ngữ nghĩa.** Field `text?` tồn tại từ v1 nhưng v1
+   bỏ qua. Khi thêm embedding (Phase 7.5), implementation mới tiêu thụ `text` mà
+   **không đổi chữ ký** `retrieve()`. Thêm embedding = thêm một implementation của
+   cùng interface, không sửa consumer.
+
+3. **`retrieve()` trả cùng shape bất kể chiến lược rank.** Embedding chỉ đổi
+   *thứ tự/điểm số*, không đổi *kiểu trả về*. Không bao giờ để lộ chi tiết
+   "keyword" hay "vector" ra ngoài interface.
+
+4. **Schema chỉ mở rộng additive.** Thêm thuộc tính (vd `embedding BLOB`,
+   `expiresAt`) là migration **thêm cột nullable / có default** theo
+   `MIGRATION_SPEC.md` — không drop/rename cột cũ, không mất dữ liệu. Thêm kind mới
+   = thêm giá trị cột `kind`, không cần bảng mới.
+
+5. **Retention cô lập ở write-path.** Chỉ `MemoryWriter` enforce retention. Đổi
+   max-count → TTL → lai là sửa **một chỗ**; `MemoryStore`/`MemoryRetriever` hoạt
+   động đúng với *bất kỳ* tập records nào được truyền vào (không giả định "luôn đủ").
+
+6. **RAG/LSP là producer của cùng loại dữ liệu.** LSP (P7-LX1) và RAG retriever bơm
+   symbols/đoạn code qua **cùng interface retriever** như SX1/IG1 — không sửa CR1/CR2.
+
+**Vì sao điều này đủ để không phá Phase 0–6:** memory/RAG chỉ chảy **một chiều vào**
+context như untrusted evidence (MEM-001/002). Kernel (Policy/ToolGateway/Verification/
+WorkspaceRevision) không bao giờ đọc memory để ra quyết định, và `agent-core` không
+phụ thuộc `infrastructure` (depcruise canh). Do đó không tồn tại đường nào để một
+nâng cấp Phase 7/7.5 làm hỏng runtime đã hoàn thành — nâng cấp luôn là *thêm
+implementation sau interface*, không phải *sửa consumer*.
 
 ---
 
@@ -302,11 +349,20 @@ Map theo `EVALUATION_MODEL §11.9` (Phase 7 gate) + nguyên tắc §0.
 
 ---
 
-## Phụ lục A — Quyết định cần chốt trước khi code
+## Phụ lục A — Quyết định đã chốt trước khi code
 
-1. **Embedding v1 hay deferred?** Khuyến nghị: deferred (lõi tất định trước).
-2. **Schema memory**: một bảng `memory_records` đa-kind, hay tách bảng theo kind?
-   Khuyến nghị: một bảng + cột `kind` (đơn giản, migration nhẹ).
-3. **Retention policy mặc định**: theo max-count per scope hay theo TTL? Khuyến nghị:
-   max-count per (scope, kind) cho v1 (dễ test tất định hơn TTL theo wall-clock).
-4. **LX1 làm trong Phase 7 hay deferred tiếp?** Quyết định sau khi thử CI-safe skip.
+Các quyết định dưới đây đã được chốt. Tất cả đều an toàn để nâng cấp sau nhờ
+§4.10 (Forward-compatible interface contract): nâng cấp = thêm implementation sau
+interface, không sửa consumer, không phá Phase 0–6.
+
+1. **Embedding: DEFERRED** (Phase 7.5). Lõi v1 dùng retrieval tất định. `MemoryQuery.text?`
+   đã chừa sẵn chỗ ngữ nghĩa (§4.4) → thêm embedding sau không đổi chữ ký (§4.10 luật 2).
+2. **Schema: MỘT bảng `memory_records` + cột `kind`.** Thêm kind = thêm giá trị cột;
+   thêm thuộc tính = migration additive theo `MIGRATION_SPEC.md` (§4.10 luật 4).
+3. **Retention: max-count per (scope, kind)** cho v1 (tất định, dễ test MEM-004/006).
+   Đổi/thêm TTL sau = sửa riêng `MemoryWriter` (§4.10 luật 5).
+4. **LX1: quyết định trong Phase 7** sau khi thử CI-safe skip. Nếu vẫn bất khả thi
+   headless thì ghi Deferred tiếp (không âm thầm bỏ) — exit criteria §6 mục 10.
+
+Thứ tự thực hiện: **P7-INV trước tiên** (thêm MEM-001..007 vào `invariants.yaml` +
+test), đúng Architecture Target §59 (invariants trước code).
