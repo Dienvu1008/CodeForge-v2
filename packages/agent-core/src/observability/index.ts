@@ -5,3 +5,5 @@ export * from './runtime-projection.js';
 export * from './context-telemetry.js';
 // ActivityTrace (P9.4) — structured activity trace, no raw reasoning. OB-007.
 export * from './activity-trace.js';
+// ContinuationManifest (P9.6) — non-authoritative session-rollover hand-off. OB-008.
+export * from './continuation-manifest.js';
