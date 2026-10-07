@@ -174,3 +174,59 @@ defensible than before but should still be gated on a broader regression dogfood
 pair with a fast model (7B), since the 14B reasoning model's latency makes a live chat loop
 painful. Determinism and the strict completion gate are unchanged, so the UI only ever
 observes/triggers; it never decides success.
+
+---
+
+## Addendum 3 — second prompt pass: transcript feedback + stronger rules (P10.7++)
+
+A review of ALL prompt-generation sites (executor system prompt, `buildTaskPrompt`, the
+planner prompt, and the security boundary preamble) surfaced one real waste **bug** and a
+few guidance gaps. Fixes are prompt/transcript-only — no kernel, verification, policy, or
+invariant touched; temp=0 determinism preserved; the CompletionGate still owns PASSED.
+
+What changed in `task-executor.ts`:
+
+1. **Duplicate tool call no longer dropped silently (the bug).** When the idempotency engine
+   detected a repeat MODIFY call, the loop did `continue` and wrote *nothing* to the
+   transcript — so the model saw no result and tended to repeat the call again. Now the skip
+   is recorded as a transcript line ("SKIPPED: duplicate … do NOT repeat it"), which closes a
+   real loop source and reinforces the NO REPEATS rule.
+2. **Two new executor RULES.** READ RESULTS (if a prior step shows ERROR / non-zero exit, fix
+   that root cause before continuing) and VERIFY (after changing code, run the checks and
+   confirm they pass before saying done). The reminder line in `buildTaskPrompt` matches.
+3. **write_file framed as a whole-file replace.** The tool description and RULE 2 now say
+   write_file replaces the WHOLE file — read it first and keep unrelated lines — to curb the
+   "rewrite the file from scratch" habit that produced stray edits.
+4. **Truncation is now signalled.** Transcript results are still clipped (2000 chars stored,
+   800 shown) but now carry a `…[truncated]` marker so the model doesn't mistake a clipped
+   result for the full output.
+
+### Re-run (same 3 tasks, workspace reset between runs)
+
+| Task | Model | Correct & in-scope? | test files untouched? | npm test green | Run outcome | Wall time |
+|------|-------|---------------------|-----------------------|----------------|-------------|-----------|
+| bugfix | qwen2.5-coder 7B | ✅ `a*b` | ✅ | ✅ | COMPLETED 3/4 PASSED | 40.6 s |
+| feature `square` | qwen2.5-coder 7B | ✅ reuses+exports `multiply`, adds asserts | ✅ (added asserts only) | ✅ | COMPLETED 2/2 PASSED | 28.2 s |
+| docs README | qwen2.5-coder 7B | ✅ full README; code/test untouched; **no duplicate heading this time** | ✅ | ✅ | COMPLETED 4/4 PASSED | 22.8 s |
+| bugfix (confirm) | deepseek-r1:14b | ✅ `a*b` | ✅ | ✅ | **COMPLETED 1/1 PASSED** (converged on its own) | 532 s |
+
+### Honest read
+
+- **qwen2.5-coder stays 3/3**, and the docs output improved (the earlier duplicated
+  `## square(n)` heading is gone; the README now has structured Parameters/Returns + runnable
+  examples). No regression from the extra rules — the small model did not get lost.
+- **deepseek-r1:14b now CONVERGES.** The previous pass had it produce the correct fix but then
+  loop past its budget and never emit `done` (stopped manually at >14 min). This pass it
+  reached `done` by itself — **COMPLETED 1/1 PASSED** in 532 s, one task (no over-decompose),
+  test.js untouched. The STOP/VERIFY/READ-RESULTS rules plus the duplicate-skip feedback are
+  the plausible cause; this is a single run, so treat it as encouraging, not proven.
+- **Latency unchanged and still the gate.** 532 s (~9 min) for a one-line fix confirms the
+  14B reasoning model is background-only, never interactive — a model property no prompt
+  fixes. Fast 7B at 20–40 s/task remains the model to pair with any UI.
+
+### Caveat
+
+Still a 3-task smoke suite on a one-file project, not a benchmark. The result shows the
+specific dogfood failure modes (silent-duplicate loops, over-reach into test files,
+non-convergence) are addressed on these tasks; it is not a general success-rate claim. A
+broader, varied task set is the right next measurement before trusting the agent widely.

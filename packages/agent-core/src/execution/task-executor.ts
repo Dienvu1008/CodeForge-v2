@@ -71,7 +71,7 @@ You MUST respond with a single JSON object — no markdown, no explanation.
 
 Available tools:
   read_file     {"path": "<relative-path>"}                   — read a file's contents
-  write_file    {"path": "<relative-path>", "content": "..."}  — create or overwrite a file
+  write_file    {"path": "<relative-path>", "content": "..."}  — create/overwrite a WHOLE file (read it first to preserve unrelated lines)
   list_dir      {"path": "<relative-path>"}                   — list directory contents
   delete_file   {"path": "<relative-path>"}                   — delete a file
   move_file     {"path": "<from>", "to": "<to>"}               — rename/move a file
@@ -94,11 +94,17 @@ RULES (follow strictly):
   1. SCOPE: change ONLY what the task asks for. Do NOT edit test files (test.js, *.test.*,
      *.spec.*) or change the acceptance criteria unless the task explicitly says so. To make
      a failing test pass, fix the SOURCE CODE — never rewrite the test to match the bug.
-  2. CONTENT: write_file must include the complete, real file content. Never write an empty
-     file or a placeholder/TODO stub.
-  3. STOP: as soon as the task is done (and the checks pass), respond with done on the very
+  2. CONTENT: write_file replaces the WHOLE file, so include the complete, real content —
+     read the file first and keep every unrelated line intact. Never write an empty file or
+     a placeholder/TODO stub.
+  3. READ RESULTS: each previous step shows its exit code and output. If a step shows ERROR
+     or a non-zero exit, fix that root cause before moving on — do not ignore it or repeat
+     the same failing action.
+  4. VERIFY: after you change code, run the project's checks (e.g. npm test) and confirm
+     they pass BEFORE you respond with done. Do not claim done on an unverified change.
+  5. STOP: as soon as the task is done and the checks pass, respond with done on the very
      next turn. Do NOT keep exploring or re-reading files after the change is complete.
-  4. NO REPEATS: do not repeat a tool call you already made with the same arguments.`;
+  6. NO REPEATS: do not repeat a tool call you already made with the same arguments.`;
 
 // ── TaskExecutorError ─────────────────────────────────────────────────────────
 
@@ -515,7 +521,19 @@ export class TaskExecutor {
           proposal.arguments,
         );
         if (idResult.isDuplicate) {
-          // Skip duplicate MODIFY call — continue loop without executing.
+          // Skip duplicate MODIFY call — but TELL the model (P10.7+). A silently-dropped
+          // call is a top cause of loops: the model repeats a call, sees no result next
+          // turn, and repeats again. Recording the skip in the transcript lets the model
+          // notice the repeat and change course (reinforces the NO REPEATS rule).
+          transcript.push({
+            step: transcript.length + 1,
+            toolName: proposal.toolName,
+            arguments: proposal.arguments,
+            result: 'SKIPPED: this is a duplicate of a tool call you already made with the '
+              + 'same arguments; its result is unchanged. Do NOT repeat it — take a different '
+              + 'action or respond with done.',
+            exitCode: null,
+          });
           continue;
         }
         idempotencyKey = idResult.idempotencyKey;
@@ -656,11 +674,16 @@ export class TaskExecutor {
       const resultText = (execResult?.exitCode === 0 || execResult?.exitCode === null)
         ? (execResult?.stdout ?? '')
         : `ERROR (exit ${execResult?.exitCode}): ${execResult?.stderr || execResult?.stdout || 'tool failed'}`;
+      // Truncate long output, but TELL the model it was cut (P10.7+) so it does not mistake
+      // a clipped result for the whole output.
+      const resultForTranscript = resultText.length > 2000
+        ? resultText.slice(0, 2000) + '\n…[truncated]'
+        : resultText;
       transcript.push({
         step: transcript.length + 1,
         toolName: proposal.toolName,
         arguments: proposal.arguments,
-        result: resultText.slice(0, 2000),
+        result: resultForTranscript,
         exitCode: execResult?.exitCode ?? null,
       });
 
@@ -784,10 +807,13 @@ export class TaskExecutor {
       ? [
           '',
           'PREVIOUS STEPS (tool calls and their results):',
-          ...transcript.map((t) =>
-            `  Step ${t.step}: ${t.toolName}(${JSON.stringify(t.arguments)})` +
-            `\n    → exit ${t.exitCode}: ${t.result.slice(0, 800)}`,
-          ),
+          ...transcript.map((t) => {
+            const shown = t.result.length > 800
+              ? t.result.slice(0, 800) + ' …[truncated]'
+              : t.result;
+            return `  Step ${t.step}: ${t.toolName}(${JSON.stringify(t.arguments)})` +
+              `\n    → exit ${t.exitCode}: ${shown}`;
+          }),
           '',
         ].join('\n')
       : '\n(No tool calls made yet — this is the first step.)\n';
@@ -849,7 +875,9 @@ export class TaskExecutor {
         'When the task is complete: {"type":"done","summary":"<what was accomplished>"}',
         '',
         'Reminder: change only what the task asks; never edit test files to make them pass;',
-        'write_file needs real content; respond with done as soon as the checks pass.',
+        'write_file replaces the whole file (keep unrelated lines); if a previous step shows',
+        'ERROR, fix that first; run the checks after changing code; respond with done only',
+        'once the checks pass.',
       ].join('\n'),
       trust: 'trusted',
     });
