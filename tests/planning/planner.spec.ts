@@ -376,3 +376,126 @@ describe('PlanCritic — MG-006 advisory only', () => {
 
 // Need to import beforeEach and afterEach for PlanValidator tests
 import { beforeEach, afterEach } from 'vitest';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P10.4 — decomposition prompt + bounded PlanCritic refinement
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EMPTY_GRAPH: TaskGraph = {
+  graphId: 'GR', sessionId: 'S', version: 1, nodes: [], edges: [],
+  createdAt: 't', createdBy: 'planner', canonicalHash: 'seed',
+  schemaVersion: 1, canonicalFormVersion: 'v1',
+};
+
+/** A rich multi-task plan with ordering edges. */
+const MULTI_TASK_PLAN = JSON.stringify({
+  tasks: [
+    { id: 'T1', description: 'add the data model', strategy: 'generate', acceptanceCriteria: ['model compiles'] },
+    { id: 'T2', description: 'implement the endpoint', strategy: 'generate', acceptanceCriteria: ['endpoint responds'] },
+    { id: 'T3', description: 'write tests', strategy: 'test', acceptanceCriteria: ['tests pass'] },
+  ],
+  edges: [
+    { from: 'T2', to: 'T1', kind: 'depends_on' },
+    { from: 'T3', to: 'T2', kind: 'depends_on' },
+  ],
+  reason: 'model -> endpoint -> tests',
+});
+
+describe('P10.4 Planner — multi-task decomposition', () => {
+  it('builds a mutation with one ADD_TASK per task and one ADD_EDGE per edge', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+
+    const addTasks = mutation.operations.filter((op) => op.kind === 'ADD_TASK');
+    const addEdges = mutation.operations.filter((op) => op.kind === 'ADD_EDGE');
+    expect(addTasks).toHaveLength(3);
+    expect(addEdges).toHaveLength(2);
+  });
+
+  it('edges reference the real ULIDs assigned to tasks (idMap)', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+
+    const taskIds = new Set(
+      mutation.operations.filter((op) => op.kind === 'ADD_TASK').map((op) => (op as { task: { taskId: string } }).task.taskId),
+    );
+    const edges = mutation.operations.filter((op) => op.kind === 'ADD_EDGE') as Array<{ fromTaskId: string; toTaskId: string }>;
+    // Every edge endpoint is a real task ULID (proposal ids T1/T2/T3 were remapped).
+    for (const e of edges) {
+      expect(taskIds.has(e.fromTaskId)).toBe(true);
+      expect(taskIds.has(e.toTaskId)).toBe(true);
+      expect(e.fromTaskId.startsWith('T')).toBe(false); // not the raw proposal id
+    }
+  });
+
+  it('propagates per-task acceptanceCriteria into the tasks', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+    const first = mutation.operations.find((op) => op.kind === 'ADD_TASK') as { task: { acceptanceCriteria: unknown[] } };
+    expect(first.task.acceptanceCriteria.length).toBeGreaterThan(0);
+  });
+});
+
+describe('P10.4 Planner — bounded PlanCritic refinement (MG-006)', () => {
+  it('re-plans once when the critic flags a weak plan, keeping the refined plan', async () => {
+    const fake = new FakeModel();
+    const c = makeCounters();
+    // First plan (no feedback) → a poor single task. Refined plan (prompt carries the
+    // review feedback section) → the rich multi-task plan. Critique → low score + issues.
+    fake.setResponse(/PLAN_REVIEW_FEEDBACK/, MULTI_TASK_PLAN); // refined call (checked first)
+    fake.setResponse(/PLANNING TASK/, JSON.stringify({
+      tasks: [{ id: 'T1', description: 'do everything at once', strategy: 'generate' }],
+      reason: 'monolithic',
+    }));
+    fake.setResponse(/Critique this plan/, JSON.stringify({
+      score: 2, issues: ['single task is too coarse'], suggestions: ['split into model/endpoint/tests'], summary: 'too coarse',
+    }));
+
+    const critic = new PlanCritic({ gateway: fake, now: c.now, nextId: c.nextId });
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId, planCritic: critic });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+
+    // The refined (multi-task) plan was adopted.
+    const addTasks = mutation.operations.filter((op) => op.kind === 'ADD_TASK');
+    expect(addTasks).toHaveLength(3);
+  });
+
+  it('keeps the first plan when the critic is satisfied (no refinement)', async () => {
+    const fake = new FakeModel();
+    const c = makeCounters();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    fake.setResponse(/Critique this plan/, JSON.stringify({
+      score: 5, issues: [], suggestions: [], summary: 'excellent',
+    }));
+
+    const critic = new PlanCritic({ gateway: fake, now: c.now, nextId: c.nextId });
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId, planCritic: critic });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+    const addTasks = mutation.operations.filter((op) => op.kind === 'ADD_TASK');
+    expect(addTasks).toHaveLength(3); // the good first plan, unchanged
+  });
+
+  it('single-shot (no critic) behaves exactly as before', async () => {
+    const fake = new FakeModel();
+    const c = makeCounters();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+    expect(fake.callCount).toBe(1); // one plan call, no critique
+  });
+});

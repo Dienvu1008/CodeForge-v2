@@ -54,6 +54,7 @@ import {
   SessionService,
   SessionOrchestrator,
   Planner,
+  PlanCritic,
   GraphCommitService,
   GraphService,
   ExecutionCoordinator,
@@ -165,7 +166,10 @@ async function main(): Promise<void> {
   const coordinator = new ExecutionCoordinator({ executions, now: rt.now });
   const runSvc     = new TaskRunService({ runs: taskRuns, events, reconciler: new NoopProcessReconciler(), now: rt.now, nextId: rt.nextId });
   const checkpointSvc = new CheckpointService({ checkpoints: checkpointRepo, events, now: rt.now, nextId: rt.nextId });
-  const planner    = new Planner({ gateway: model, now: rt.now, nextId: rt.nextId });
+  // P10.4: advisory PlanCritic drives one bounded refinement round so the Planner
+  // decomposes complex goals into a better multi-task graph (MG-006 — advisory only).
+  const planCritic = new PlanCritic({ gateway: model, now: rt.now, nextId: rt.nextId });
+  const planner    = new Planner({ gateway: model, now: rt.now, nextId: rt.nextId, planCritic });
   const ctxBuilder = new ContextBuilder({ now: rt.now, nextId: rt.nextId });
 
   // 5. Workspace + tool execution
