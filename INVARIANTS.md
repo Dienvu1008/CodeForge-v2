@@ -365,21 +365,20 @@ Phase gate:
 ### 3.23 Learning / Intelligence Plane (LE)
 
 Phase 11. Lớp learning quan sát lịch sử chạy và sinh đề xuất **advisory** — không bao giờ
-authority. Thêm theo từng sub-phase khi enforcement + test có mặt (invariants-first). P11.1
-ship SelfModel chỉ-đọc: LE-001, LE-004, LE-008. LE-002/003/005/006/007 land ở P11.2–P11.3.
+authority. Thêm theo từng sub-phase (invariants-first): P11.1 SelfModel chỉ-đọc (LE-001,
+LE-004, LE-008); P11.2 LearningStore (LE-005, LE-006); P11.3 AdviceGate (LE-002 flag-off
+parity, LE-003 clamp trong allowed-set, LE-007 no bypass). Toàn bộ 8 invariant LE đã ACTIVE.
 
 | ID | Statement | Enforcement | Phase | Severity |
 |---|---|---|---|---|
 | LE-001 | Output của lớp learning (advice/score/signal) không bao giờ là runtime authority — chỉ là input có trọng số cho một quyết định deterministic đã tồn tại. | AdviceGate / PolicyEngine | 11 | CRITICAL |
+| LE-002 | Tắt lớp learning (flag off) phải cho hành vi runtime y hệt khi không có learning (fail-safe = default Phase 10). | AdviceGate | 11 | CRITICAL |
+| LE-003 | Learning advice chỉ được sắp xếp lại / chấm điểm trong một allowed-set/ranking đã tất định; không được thêm action, nới budget, hay tạo quyền mới. | AdviceGate | 11 | CRITICAL |
 | LE-004 | SelfModel là total function của EventLog (đã redact) + failures + recovery actions; cùng input → cùng self-model (tái lập được). | SelfModelBuilder | 11 | CRITICAL |
 | LE-005 | Mọi lesson/advice có provenance (session/run nguồn) + reason + timestamp; append-only. | LearningStore / LessonWriter | 11 | CRITICAL |
 | LE-006 | Learning store có retention bound; không ghi không giới hạn. | LearningStore / LessonWriter | 11 | HIGH |
+| LE-007 | Lớp learning không bao giờ bypass Policy/ToolGateway/ModelGateway để lấy dữ liệu hay thực thi action. | AdviceGate | 11 | CRITICAL |
 | LE-008 | SelfModel/learning chỉ đọc dữ liệu đã redact; không có PII/secret rò rỉ từ event/failure sang advice/self-model. | Redactor / SelfModelBuilder | 11 | CRITICAL |
-
-> Các invariant LE còn lại (dự kiến, land theo sub-phase P11.3 AdviceGate): LE-002 (flag-off
-> parity = hành vi Phase 10), LE-003 (advice chỉ sắp xếp/chấm điểm trong allowed-set đã tất
-> định), LE-007 (learning không bypass Policy/ToolGateway/ModelGateway). Xem
-> `PHASE_11_ROADMAP.md §1`.
 
 ---
 

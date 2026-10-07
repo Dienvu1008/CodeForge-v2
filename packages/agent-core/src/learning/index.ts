@@ -14,3 +14,5 @@ export {
   type LessonWriterDeps,
   type LessonRetentionPolicy,
 } from './lesson-writer.js';
+// P11.3: AdviceGate (deterministic clamp between learning and policy).
+export { AdviceGate, DEFAULT_MAX_RERANK_DELTA } from './advice-gate.js';
