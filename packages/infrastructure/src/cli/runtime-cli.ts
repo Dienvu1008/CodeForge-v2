@@ -353,8 +353,18 @@ async function main(): Promise<void> {
     try {
       const result = await orchestrator.run({ sessionId: sid, goal, revision, graphVersion: 1 });
       console.log(`  < Result:   ${result.sessionState} | tasks ${result.taskRunCount}, passed ${result.passedTaskIds.length}, non-passed ${result.nonPassedTaskIds.length} (${(result.durationMs / 1000).toFixed(1)}s)`);
+      // P10.7: a goal that ended AWAITING_HUMAN (unresolved escalation) is NON-TERMINAL,
+      // so it still holds the workspace lock. In the goal-queue model each goal is its own
+      // session and the queue moves on, so abort the unresolved session to release the lock
+      // for the next goal (one agent per workspace — SS-001). COMPLETED/ABORTED already
+      // released it.
+      if (result.sessionState === 'AWAITING_HUMAN') {
+        try { await sessionSvc.transition(sid, 'ABORT'); } catch { /* best-effort */ }
+      }
     } catch (err) {
       console.error('    Agent error:', err instanceof Error ? err.message : err);
+      // Best-effort: release the workspace lock so a mid-run failure doesn't wedge the queue.
+      try { await sessionSvc.transition(sid, 'ABORT'); } catch { /* best-effort */ }
     }
   }
 
@@ -370,7 +380,12 @@ async function main(): Promise<void> {
       await new Promise((r) => setTimeout(r, idleSleepMs));
       continue;
     }
-    await runGoal(next);
+    // A single goal must never crash the worker — log and keep draining the queue.
+    try {
+      await runGoal(next);
+    } catch (err) {
+      console.error('    Goal failed:', err instanceof Error ? err.message : err);
+    }
   }
 }
 

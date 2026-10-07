@@ -30,6 +30,9 @@ describe('workspace vectors — cross-platform hash contract', () => {
   for (const vector of VECTORS) {
     const runsHere = !vector.platforms || vector.platforms.includes(platform);
 
+    // Some vectors (e.g. v018: 500 files) build + hash a lot of I/O; under full-suite
+    // parallel load the default 5s can flake. Give the contract a generous budget — this
+    // is about correctness of the hash, not latency.
     it(`${vector.id}: ${vector.notes}`, async () => {
       if (!runsHere) {
         // Not applicable on this OS (e.g. case-collision on Windows). Recorded, not asserted.
@@ -62,7 +65,7 @@ describe('workspace vectors — cross-platform hash contract', () => {
       } finally {
         await built.cleanup();
       }
-    });
+    }, 30_000);
   }
 });
 

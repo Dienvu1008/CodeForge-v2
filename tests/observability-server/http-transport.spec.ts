@@ -203,8 +203,11 @@ describe('P9.3 HttpTransport — SSE live tail (OB-009)', () => {
         buf += decoder.decode(value, { stream: true });
       }
     } finally {
+      // Cancel the reader first and AWAIT it so the body stream settles, then abort the
+      // fetch. Aborting while a read is still pending can surface an unhandled rejection
+      // from undici's response stream (the source of the flaky "unhandled errors" warning).
+      await reader.cancel().catch(() => undefined);
       controller.abort();
-      reader.cancel().catch(() => undefined);
     }
     expect(buf).toContain('TASK_STATE_CHANGED');
   });
