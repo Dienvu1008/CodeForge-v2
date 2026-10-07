@@ -10,6 +10,7 @@
 // No LLM, no wall-clock, no side effects.
 import type { FailureClass, RecoveryKind } from '../domain/failure.js';
 import type { Budget } from '../domain/budget.js';
+import type { SafeRecoveryOrderAdvice } from '../domain/advice.js';
 import { recoveryExhausted } from '../budget/budget-engine.js';
 
 // ── RecoveryRules ─────────────────────────────────────────────────────────────
@@ -79,6 +80,13 @@ export interface DecisionInput {
   readonly budget?: Budget | undefined;
   /** Override the default policy (for testing or per-session config). */
   readonly policy?: RecoveryPolicyConfig | undefined;
+  /**
+   * P11.4 — OPTIONAL learning advice (already clamped by AdviceGate). It can only REORDER the
+   * actions within this class's allowed-set; it never changes the set, the count, maxAttempts,
+   * or any budget/guard. When absent (the default), decide() behaves EXACTLY as before
+   * (LE-002 fail-safe). Advice is advisory, never authority (LE-001).
+   */
+  readonly advice?: SafeRecoveryOrderAdvice | undefined;
 }
 
 // ── DecisionResult ────────────────────────────────────────────────────────────
@@ -124,13 +132,19 @@ export function decide(input: DecisionInput): DecisionResult {
     };
   }
 
+  // P11.4 (LE-002/LE-003): apply OPTIONAL learning advice to the TRY-ORDER only. `actions`
+  // is a reordering of rule.actions — SAME set, SAME length — so maxAttempts and every guard
+  // below are unchanged. With no advice this equals rule.actions exactly (Phase 10 behavior).
+  const actions   = applyAdviceOrder(rule.actions, input.advice, input.failureClass);
+  const advised   = actions !== rule.actions; // reference-differs only when advice reordered
+
   // RC-001: pick the next action in the ordered list (by attemptsSoFar index).
-  const actionIndex = Math.min(input.attemptsSoFar, rule.actions.length - 1);
-  const action      = rule.actions[actionIndex] ?? 'ESCALATE';
+  const actionIndex = Math.min(input.attemptsSoFar, actions.length - 1);
+  const action      = actions[actionIndex] ?? 'ESCALATE';
 
   // RC-004: ROLLBACK guard — if policy says rollbackAllowed=false, skip to next.
   if (action === 'ROLLBACK' && !rule.rollbackAllowed) {
-    const fallback = rule.actions[actionIndex + 1] ?? 'ESCALATE';
+    const fallback = actions[actionIndex + 1] ?? 'ESCALATE';
     return {
       action: fallback,
       policyVersion,
@@ -141,6 +155,44 @@ export function decide(input: DecisionInput): DecisionResult {
   return {
     action,
     policyVersion,
-    reason: `Attempt ${input.attemptsSoFar + 1}/${rule.maxAttempts} for class ${input.failureClass}`,
+    reason: advised
+      ? `Attempt ${input.attemptsSoFar + 1}/${rule.maxAttempts} for class ${input.failureClass} (learning-advised order)`
+      : `Attempt ${input.attemptsSoFar + 1}/${rule.maxAttempts} for class ${input.failureClass}`,
   };
+}
+
+/**
+ * Reorder `ruleActions` according to clamped learning advice, returning a permutation of the
+ * SAME set (same elements, same length). Defense-in-depth: even though AdviceGate already
+ * intersected the advice with the allowed-set, we re-intersect here against rule.actions and
+ * append any rule actions the advice omitted, so the result can NEVER drop, add, or duplicate
+ * an action — advice can only move actions earlier in the try-order (LE-003). Returns the
+ * original array reference (not a copy) when there is no applicable advice, so the caller can
+ * cheaply detect "unadvised" and callers relying on identity see Phase 10 behavior (LE-002).
+ */
+function applyAdviceOrder(
+  ruleActions: readonly RecoveryKind[],
+  advice: SafeRecoveryOrderAdvice | undefined,
+  failureClass: FailureClass,
+): readonly RecoveryKind[] {
+  if (advice === undefined || advice.failureClass !== failureClass) return ruleActions;
+
+  const inRule = new Set(ruleActions);
+  const seen   = new Set<RecoveryKind>();
+  const head: RecoveryKind[] = [];
+  for (const a of advice.order) {
+    if (!inRule.has(a) || seen.has(a)) continue; // keep only real, non-duplicate rule actions
+    seen.add(a);
+    head.push(a);
+  }
+  if (head.length === 0) return ruleActions; // nothing applicable → unchanged
+
+  // Append the rule actions the advice did not mention, in their original order, so the set
+  // and length are preserved exactly.
+  const tail = ruleActions.filter((a) => !seen.has(a));
+  const reordered = [...head, ...tail];
+
+  // If the reordering is a no-op (identical to the rule order), return the original reference.
+  const identical = reordered.length === ruleActions.length && reordered.every((a, i) => a === ruleActions[i]);
+  return identical ? ruleActions : reordered;
 }

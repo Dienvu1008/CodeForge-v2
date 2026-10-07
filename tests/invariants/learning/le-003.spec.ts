@@ -6,8 +6,8 @@
 // candidate paths. This test feeds the gate deliberately out-of-bounds proposals and asserts
 // nothing escapes the deterministic bounds.
 import { describe, it, expect } from 'vitest';
-import { AdviceGate, DEFAULT_MAX_RERANK_DELTA } from '@codeforge/agent-core';
-import type { RecoveryKind } from '@codeforge/agent-core';
+import { AdviceGate, DEFAULT_MAX_RERANK_DELTA, decide, DEFAULT_RECOVERY_POLICY } from '@codeforge/agent-core';
+import type { RecoveryKind, SafeRecoveryOrderAdvice } from '@codeforge/agent-core';
 
 const ALLOWED: readonly RecoveryKind[] = ['FIX', 'RETRY', 'ESCALATE'];
 
@@ -71,5 +71,35 @@ describe('LE-003 — advice may only reorder/score within the allowed-set', () =
     if (safe !== null && safe.kind === 'context_rerank') {
       expect(safe.deltas['src/a.ts']).toBe(DEFAULT_MAX_RERANK_DELTA);
     }
+  });
+});
+
+// P11.4 — advice reaching decide() may reorder the try-order but NEVER the set, count, or
+// maxAttempts. The reachable action set over all attempts must equal the policy's own set.
+describe('LE-003 — advised decide() preserves the allowed-set and bounds', () => {
+  // SYNTAX default: ['FIX','REPLAN','ESCALATE'], maxAttempts 3.
+  const RULE = DEFAULT_RECOVERY_POLICY.SYNTAX;
+  // Advice reorders ESCALATE first — the clamp against rule.actions must still preserve the set.
+  const advice: SafeRecoveryOrderAdvice = { kind: 'recovery_order', failureClass: 'SYNTAX', order: ['ESCALATE', 'REPLAN', 'FIX'] };
+
+  it('the set of actions reachable with advice equals the default set (no add/drop)', () => {
+    const reachable = new Set<RecoveryKind>();
+    for (let i = 0; i < RULE.maxAttempts; i++) {
+      reachable.add(decide({ failureClass: 'SYNTAX', attemptsSoFar: i, advice }).action);
+    }
+    expect([...reachable].sort()).toEqual([...RULE.actions].sort());
+  });
+
+  it('maxAttempts is unchanged: past the bound still ESCALATEs even with advice', () => {
+    const r = decide({ failureClass: 'SYNTAX', attemptsSoFar: RULE.maxAttempts, advice });
+    expect(r.action).toBe('ESCALATE');
+    expect(r.reason).toContain('Max attempts');
+  });
+
+  it('advice that names only out-of-rule actions is ignored (set unchanged)', () => {
+    const bogus: SafeRecoveryOrderAdvice = { kind: 'recovery_order', failureClass: 'SYNTAX', order: ['ROLLBACK', 'ABORT'] as RecoveryKind[] };
+    const a0 = decide({ failureClass: 'SYNTAX', attemptsSoFar: 0, advice: bogus }).action;
+    // Falls back to the default first action (FIX) — bogus advice changed nothing.
+    expect(a0).toBe(RULE.actions[0]);
   });
 });

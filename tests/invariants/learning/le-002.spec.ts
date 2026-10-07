@@ -6,7 +6,7 @@
 // This test proves the gate produces null for every no-advice shape, and that a null result
 // applied to a reference recovery ordering leaves that ordering byte-identical.
 import { describe, it, expect } from 'vitest';
-import { AdviceGate } from '@codeforge/agent-core';
+import { AdviceGate, decide } from '@codeforge/agent-core';
 import type { AdviceGateContext, RecoveryKind, SafeAdvice } from '@codeforge/agent-core';
 
 const ALLOWED: readonly RecoveryKind[] = ['FIX', 'RETRY', 'ESCALATE'];
@@ -55,5 +55,21 @@ describe('LE-002 — no advice means unchanged (Phase 10) behavior', () => {
     const withNullAdvice = orderedActions(gate.sanitize(null, CTX));
     expect(withNullAdvice).toEqual(withoutLearning);
     expect(withNullAdvice).toEqual(ALLOWED);
+  });
+});
+
+// P11.4 — decide() parity: with no advice, decide() behaves EXACTLY as Phase 10.
+describe('LE-002 — decide() is unchanged when no advice is supplied', () => {
+  it('the action sequence across attempts is identical with and without an advice field', () => {
+    for (const cls of ['SYNTAX', 'LOGIC', 'TOOL', 'ENVIRONMENT', 'UNKNOWN'] as const) {
+      for (let i = 0; i < 4; i++) {
+        const base = decide({ failureClass: cls, attemptsSoFar: i });
+        const withUndefinedAdvice = decide({ failureClass: cls, attemptsSoFar: i, advice: undefined });
+        expect(withUndefinedAdvice.action).toBe(base.action);
+        expect(withUndefinedAdvice.reason).toBe(base.reason);
+        // No "learning-advised" marker leaks into the unadvised path.
+        expect(withUndefinedAdvice.reason).not.toContain('learning-advised');
+      }
+    }
   });
 });
