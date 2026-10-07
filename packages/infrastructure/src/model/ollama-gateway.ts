@@ -10,8 +10,13 @@
 //   SE-010 (structural): raw response is returned as-is — caller validates (MG-002/006).
 //
 // Uses Node built-in `fetch` (available Node 18+). No external HTTP deps.
-// Streaming is deferred to Phase 3; this impl uses the non-streaming `/api/generate`
-// endpoint with `"stream": false`.
+//
+// P10.6: streaming. The request now uses `"stream": true` and the gateway assembles the
+// NDJSON token chunks into the full response text. This is DISPLAY-ONLY streaming — the
+// decision path is unchanged: generate() still returns the COMPLETE assembled text, which
+// the StructuredOutputParser validates deterministically (temperature stays as supplied,
+// typically 0). An optional onToken callback lets a caller observe tokens as they arrive
+// (progress), but it never affects the returned value or any decision.
 
 import type { ModelGateway, ModelRequest, ModelResponse, ModelIdentity } from '@codeforge/agent-core';
 import { ModelError } from '@codeforge/agent-core';
@@ -30,6 +35,12 @@ export interface OllamaConfig {
    * (temperature, num_ctx, etc.). Never interpolated from model output (SE-003).
    */
   readonly options?: Readonly<Record<string, unknown>>;
+  /**
+   * P10.6: optional display-only token callback, invoked with each streamed chunk as it
+   * arrives. Purely observational — it does NOT affect the assembled result or any
+   * decision. Errors thrown here are swallowed so progress reporting can't break a call.
+   */
+  readonly onToken?: (chunk: string) => void;
 }
 
 // ── OllamaGenerateRequest / Response (Ollama REST API shape) ──────────────────
@@ -37,7 +48,7 @@ export interface OllamaConfig {
 interface OllamaGenerateRequest {
   readonly model: string;
   readonly prompt: string;
-  readonly stream: false;
+  readonly stream: boolean;
   readonly format?: 'json';
   readonly options?: Readonly<Record<string, unknown>>;
 }
@@ -58,6 +69,7 @@ export class OllamaModelGateway implements ModelGateway {
   private readonly _model: string;
   private readonly _timeoutMs: number;
   private readonly _options: Readonly<Record<string, unknown>>;
+  private readonly _onToken: ((chunk: string) => void) | undefined;
 
   readonly identity: ModelIdentity;
 
@@ -66,6 +78,7 @@ export class OllamaModelGateway implements ModelGateway {
     this._model    = config.model;
     this._timeoutMs = config.timeoutMs ?? 120_000;
     this._options  = config.options ?? {};
+    this._onToken  = config.onToken;
 
     this.identity = {
       name:     config.model,
@@ -88,7 +101,7 @@ export class OllamaModelGateway implements ModelGateway {
     const body: OllamaGenerateRequest = {
       model:   this._model,
       prompt,
-      stream:  false,
+      stream:  true, // P10.6: stream NDJSON chunks; assembled below (display-only).
       // Use JSON format hint when a responseSchema is provided.
       ...(request.responseSchema !== undefined ? { format: 'json' } : {}),
       options: {
@@ -119,9 +132,9 @@ export class OllamaModelGateway implements ModelGateway {
         'MODEL_UNAVAILABLE',
         `Ollama unreachable at ${url}: ${err instanceof Error ? err.message : String(err)}`,
       );
-    } finally {
-      clearTimeout(timer);
     }
+    // NOTE: the abort timer is intentionally left armed here — it is cleared inside
+    // readStreamText (success or abort), so a hung BODY stream still times out (SE-007).
 
     if (!raw.ok) {
       const text = await raw.text().catch(() => '');
@@ -131,23 +144,82 @@ export class OllamaModelGateway implements ModelGateway {
       );
     }
 
-    let parsed: OllamaGenerateResponse;
-    try {
-      parsed = (await raw.json()) as OllamaGenerateResponse;
-    } catch {
-      throw new ModelError('MODEL_OUTPUT_INVALID', 'Ollama response body is not valid JSON');
+    // P10.6: read the NDJSON stream and assemble the full response. Each line is one
+    // Ollama chunk: { response: "<token(s)>", done: bool, ... }. We concatenate the
+    // `response` fields (display-only onToken per chunk) and take the token counts from
+    // the final (done) chunk. The COMPLETE text is returned — determinism unchanged.
+    const bodyText = await this.readStreamText(raw, timer);
+    clearTimeout(timer);
+
+    let assembled = '';
+    let promptTokens: number | undefined;
+    let outputTokens: number | undefined;
+    let sawResponseField = false;
+
+    const lines = bodyText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+    if (lines.length === 0) {
+      throw new ModelError('MODEL_OUTPUT_INVALID', 'Ollama response body is empty');
+    }
+    for (const line of lines) {
+      let chunk: OllamaGenerateResponse;
+      try {
+        chunk = JSON.parse(line) as OllamaGenerateResponse;
+      } catch {
+        throw new ModelError('MODEL_OUTPUT_INVALID', 'Ollama stream line is not valid JSON');
+      }
+      if (typeof chunk.response === 'string') {
+        sawResponseField = true;
+        assembled += chunk.response;
+        if (chunk.response.length > 0 && this._onToken !== undefined) {
+          try { this._onToken(chunk.response); } catch { /* display-only — never fatal */ }
+        }
+      }
+      if (chunk.prompt_eval_count !== undefined) promptTokens = chunk.prompt_eval_count;
+      if (chunk.eval_count !== undefined) outputTokens = chunk.eval_count;
     }
 
-    if (typeof parsed.response !== 'string') {
+    if (!sawResponseField) {
       throw new ModelError('MODEL_OUTPUT_INVALID', 'Ollama response missing "response" field');
     }
 
     return {
-      raw:   parsed.response,     // SE-010: untrusted, validated by caller
+      raw:   assembled,           // SE-010: untrusted, validated by caller
       model: this.identity,       // MG-004: identity recorded
-      ...(parsed.prompt_eval_count !== undefined ? { promptTokens: parsed.prompt_eval_count } : {}),
-      ...(parsed.eval_count !== undefined ? { outputTokens: parsed.eval_count } : {}),
+      ...(promptTokens !== undefined ? { promptTokens } : {}),
+      ...(outputTokens !== undefined ? { outputTokens } : {}),
     };
+  }
+
+  /**
+   * Read the response body as text, honouring the abort timer. Prefers the streaming
+   * reader (so onToken sees chunks as they arrive) and falls back to text() when the body
+   * is not a readable stream (e.g. in tests). Maps an abort to MODEL_TIMEOUT.
+   */
+  private async readStreamText(raw: Response, timer: ReturnType<typeof setTimeout>): Promise<string> {
+    const stream = raw.body;
+    if (stream === null) {
+      return raw.text();
+    }
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value !== undefined) text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+      return text;
+    } catch (err) {
+      clearTimeout(timer);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new ModelError('MODEL_TIMEOUT', `Ollama stream timed out after ${this._timeoutMs}ms`);
+      }
+      throw new ModelError('MODEL_UNAVAILABLE', `Ollama stream error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   // ── prompt construction ───────────────────────────────────────────────────

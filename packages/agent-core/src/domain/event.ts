@@ -31,6 +31,10 @@ export type KnownEventType =
   | 'GRAPH_MUTATION_REJECTED'
   | 'TASK_RUN_STARTED'
   | 'TASK_RUN_ENDED'
+  // P10.6 progress events (display-only; emitted by the agent loop for live observability).
+  | 'MODEL_SELECTED'
+  | 'DECISION_REQUESTED'
+  | 'DECISION_COMPLETED'
   | 'TOOL_CALL_REQUESTED'
   | 'TOOL_CALL_APPROVED'
   | 'TOOL_CALL_DENIED'

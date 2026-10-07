@@ -166,3 +166,41 @@ describe('OllamaModelGateway — MG-001: implements ModelGateway', () => {
     expect(gw.identity).toBeDefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P10.6 streaming — NDJSON chunk assembly (display-only; determinism preserved)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('OllamaModelGateway — P10.6 streaming', () => {
+  it('assembles multi-chunk NDJSON into the full response', async () => {
+    const ndjson = [
+      JSON.stringify({ model: CONFIG.model, response: '{"ki', done: false }),
+      JSON.stringify({ model: CONFIG.model, response: 'nd":"gen', done: false }),
+      JSON.stringify({ model: CONFIG.model, response: 'erate"}', done: true, prompt_eval_count: 12, eval_count: 7 }),
+    ].join('\n');
+    stubFetch(200, ndjson);
+
+    const gw = new OllamaModelGateway(CONFIG);
+    const result = await gw.generate(req());
+
+    expect(result.raw).toBe('{"kind":"generate"}'); // assembled from 3 chunks
+    expect(result.promptTokens).toBe(12);            // from the final (done) chunk
+    expect(result.outputTokens).toBe(7);
+  });
+
+  it('invokes onToken for each streamed chunk (display-only)', async () => {
+    const ndjson = [
+      JSON.stringify({ model: CONFIG.model, response: 'a', done: false }),
+      JSON.stringify({ model: CONFIG.model, response: 'b', done: false }),
+      JSON.stringify({ model: CONFIG.model, response: 'c', done: true }),
+    ].join('\n');
+    stubFetch(200, ndjson);
+
+    const tokens: string[] = [];
+    const gw = new OllamaModelGateway({ ...CONFIG, onToken: (t) => tokens.push(t) });
+    const result = await gw.generate(req());
+
+    expect(result.raw).toBe('abc');
+    expect(tokens).toEqual(['a', 'b', 'c']);
+  });
+});

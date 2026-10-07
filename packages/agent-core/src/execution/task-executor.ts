@@ -202,8 +202,38 @@ export interface TaskExecutorDeps {
    * pendingApprovalToolCallId (pre-P10.5 behavior) so the caller can escalate.
    */
   readonly approvalCoordinator?: ApprovalCoordinator;
+  /**
+   * Optional P10.6: event log for DISPLAY-ONLY progress events (MODEL_SELECTED,
+   * DECISION_REQUESTED, DECISION_COMPLETED) emitted around each ReAct step so observers
+   * (dashboard/SSE) see the agent "thinking" live. Best-effort — never affects a decision.
+   */
+  readonly events?: ProgressEventSink;
+  /**
+   * Optional P10.6: cooperative control checkpoint polled at each ReAct step boundary
+   * (between model→tool→model), so pause/cancel is responsive WITHIN a task without
+   * interrupting a tool call already running (that has its own timeout, TG-010). Omitted
+   * → no in-loop checkpoint (orchestrator still checkpoints between tasks).
+   */
+  readonly loopControl?: LoopControl;
   readonly now:    () => string;
   readonly nextId: () => string;
+}
+
+// ── Progress + control ports (P10.6) ──────────────────────────────────────────
+
+/** Minimal append sink for progress events (EventLog satisfies this). */
+export interface ProgressEventSink {
+  append(event: {
+    eventId: string; sessionId: string; type: string;
+    aggregate: { kind: string; id: string };
+    payload: unknown; at: string; sequenceNumber: number;
+  }): Promise<void>;
+}
+
+/** Cooperative in-loop control signal (ControlGate satisfies this shape). */
+export interface LoopControl {
+  poll(sessionId: string): Promise<{ kind: 'none' | 'pause' | 'cancel' }>;
+  awaitResume(sessionId: string): Promise<'resume' | 'cancel'>;
 }
 
 // ── ApprovalCoordinator (P10.5) ───────────────────────────────────────────────
@@ -378,7 +408,29 @@ export class TaskExecutor {
     let summary: string | undefined;
     let pendingApprovalToolCallIdRef: string | undefined;
 
+    // P10.6: announce which model drives this run (display-only progress).
+    await this.emitProgress(req.sessionId, runId, 'MODEL_SELECTED', {
+      model: this.deps.gateway.identity.name,
+      endpoint: this.deps.gateway.identity.endpoint,
+      taskId: req.task.taskId,
+    });
+
     for (let i = 0; i < this.maxToolCalls && !loopDone; i++) {
+      // ── 3.0 Control checkpoint at the ReAct step boundary (P10.6) ────────────
+      // Responsive pause/cancel BETWEEN steps — never mid tool-call (TG-010 covers that).
+      if (this.deps.loopControl !== undefined) {
+        const signal = await this.deps.loopControl.poll(req.sessionId);
+        if (signal.kind === 'cancel') {
+          finalState = 'FAILED';
+          loopDone = true;
+          break;
+        }
+        if (signal.kind === 'pause') {
+          const outcome = await this.deps.loopControl.awaitResume(req.sessionId);
+          if (outcome === 'cancel') { finalState = 'FAILED'; loopDone = true; break; }
+        }
+      }
+
       // ── 3a. Build model request ─────────────────────────────────────────────
       const taskPrompt = this.buildTaskPrompt(req.task, transcript, req.priorFailureEvidence, contextSection);
       const modelReq = modelRequest(
@@ -392,6 +444,9 @@ export class TaskExecutor {
         },
       );
       const requestWithCtx = { ...modelReq, contextSnapshotId: snapshot.snapshotId };
+
+      // P10.6: the agent is about to ask the model for its next action (display-only).
+      await this.emitProgress(req.sessionId, runId, 'DECISION_REQUESTED', { step: i + 1 });
 
       // ── 3b. Call model + parse (MG-001/002/003, SE-010) ─────────────────────
       let output: RawExecuteOutput;
@@ -416,6 +471,13 @@ export class TaskExecutor {
         loopDone = true;
         break;
       }
+
+      // P10.6: the model decided (display-only). Report what, not the raw output.
+      await this.emitProgress(req.sessionId, runId, 'DECISION_COMPLETED', {
+        step: i + 1,
+        decision: output.type,
+        ...(output.type === 'tool_call' ? { toolName: (output as RawToolCallProposal).toolName } : {}),
+      });
 
       // ── 3c. Handle model response ───────────────────────────────────────────
       if (output.type === 'done') {
@@ -771,6 +833,25 @@ export class TaskExecutor {
       trust: 'trusted',
     });
     return buildPrompt(sections);
+  }
+
+  /**
+   * P10.6: emit a display-only progress event. Best-effort — swallows all errors so
+   * progress reporting can never break (or slow a decision in) the run.
+   */
+  private async emitProgress(sessionId: string, runId: string, type: string, payload: unknown): Promise<void> {
+    if (this.deps.events === undefined) return;
+    try {
+      await this.deps.events.append({
+        eventId: this.deps.nextId(),
+        sessionId,
+        type,
+        aggregate: { kind: 'task_run', id: runId },
+        payload,
+        at: this.deps.now(),
+        sequenceNumber: 0, // EventLog is the sequence authority (CP-008)
+      });
+    } catch { /* progress is non-fatal */ }
   }
 
   /**

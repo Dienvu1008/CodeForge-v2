@@ -241,6 +241,12 @@ async function main(): Promise<void> {
   //     instead of guessing. Excludes the .codeforge/ scratch zone (its own skip list).
   const contextCollector = new ContextCollector({ workspaceRoot });
 
+  // 6c. Control gate (reads authoritative session state). Shared by the orchestrator
+  //     (between tasks) and the TaskExecutor (P10.6: between ReAct steps).
+  const gate = new SessionStateControlGate({
+    sessions, pollIntervalMs: 200, maxWaitMs: 3_600_000,
+  });
+
   // 7. TaskExecutor
   const taskExec = new TaskExecutor({
     taskRunService: runSvc, executionCoordinator: coordinator,
@@ -254,13 +260,11 @@ async function main(): Promise<void> {
     // revisionProvider — same shape, scratch-aware, excludes .codeforge/.
     verificationRevisionProvider: { capture: (reason: string) => revisionProvider.capture(reason) },
     approvalCoordinator,
+    // P10.6: display-only progress events + responsive control at ReAct step boundaries.
+    events,
+    loopControl: gate,
     maxToolCalls: maxSteps * 2,
     now: rt.now, nextId: rt.nextId,
-  });
-
-  // 8. Control gate (reads authoritative session state)
-  const gate = new SessionStateControlGate({
-    sessions, pollIntervalMs: 200, maxWaitMs: 3_600_000,
   });
 
   // 8b. Recovery stack (P10.2): when a task does not reach PASSED (run FAILED/TIMEOUT or
