@@ -46,3 +46,5 @@ export * from './observability-server/index.js';
 export * from './telegram/index.js';
 // Phase 10 — P10.1: Verification runtime (project inspector + check supervisor)
 export * from './verification-runtime/index.js';
+// Phase 10 — P10.3: Context runtime (workspace → symbols/import-graph/files collector)
+export * from './context-runtime/index.js';

@@ -47,6 +47,7 @@ import { HttpTransport }                  from '../observability-server/http-tra
 import { SessionStateControlGate }        from '../observability-server/session-state-control-gate.js';
 import { inspectProject }                 from '../verification-runtime/index.js';
 import { WorkspaceProcessSupervisor }     from '../verification-runtime/index.js';
+import { ContextCollector }               from '../context-runtime/index.js';
 
 // Agent-core (pure domain)
 import {
@@ -207,6 +208,11 @@ async function main(): Promise<void> {
     now: rt.now, nextId: rt.nextId,
   });
 
+  // 6b. Context collector (P10.3): reads the workspace (files + symbols + import graph)
+  //     and feeds the signals to the ContextBuilder so the agent sees the real codebase
+  //     instead of guessing. Excludes the .codeforge/ scratch zone (its own skip list).
+  const contextCollector = new ContextCollector({ workspaceRoot });
+
   // 7. TaskExecutor
   const taskExec = new TaskExecutor({
     taskRunService: runSvc, executionCoordinator: coordinator,
@@ -214,6 +220,7 @@ async function main(): Promise<void> {
     toolGateway: tg, executor: toolExec,
     verificationEngine: verEngine, completionGate,
     verificationPolicy,
+    contextProvider: contextCollector,
     // P10.1: capture a FRESH revision right before verify so the agent's own file
     // edits (made during execute) are the baseline, not "drift" (VR-008). Reuses
     // revisionProvider — same shape, scratch-aware, excludes .codeforge/.
