@@ -64,3 +64,6 @@ export * from './coordination/index.js';
 export * from './observability/index.js';
 //   - control/ (P9.7: ControlPlane — OB-006)
 export * from './control/index.js';
+// Phase 11:
+//   - learning/ (P11.1: SelfModelBuilder — LE-004/008, read-only projection)
+export * from './learning/index.js';

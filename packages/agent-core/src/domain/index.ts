@@ -18,3 +18,5 @@ export * from './event.js';
 export * from './human-override.js';
 // Phase 7:
 export * from './memory.js';
+// Phase 11:
+export * from './self-model.js';

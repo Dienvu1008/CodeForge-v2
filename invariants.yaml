@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.4
+version: 1.5
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1363,5 +1363,35 @@ invariants:
     violation_class: SUBAGENT_AUTHORITY
     test: "tests/invariants/autonomy/au-007.spec.ts"
     phase: 8
+    severity: CRITICAL
+    status: ACTIVE
+
+  # ── Learning / Intelligence Plane (LE) ──────────────────────────
+  # Phase 11. Added per sub-phase as enforcement + tests land (invariants-first).
+  # P11.1 ships the read-only SelfModel: LE-001 (zero authority), LE-004 (deterministic
+  # projection), LE-008 (no secret leak). LE-002/003/005/006/007 land with the
+  # LearningStore (P11.2) and AdviceGate (P11.3).
+  - id: LE-001
+    statement: "Output của lớp learning (advice/score/signal) không bao giờ là runtime authority — chỉ là input có trọng số cho một quyết định deterministic đã tồn tại."
+    enforcement: ["AdviceGate", "PolicyEngine"]
+    violation_class: LEARNING_AS_AUTHORITY
+    test: "tests/invariants/learning/le-001.spec.ts"
+    phase: 11
+    severity: CRITICAL
+    status: ACTIVE
+  - id: LE-004
+    statement: "SelfModel là total function của EventLog (đã redact) + failures + recovery actions; cùng input → cùng self-model (tái lập được)."
+    enforcement: ["SelfModelBuilder"]
+    violation_class: NONDETERMINISTIC_SELF_MODEL
+    test: "tests/invariants/learning/le-004.spec.ts"
+    phase: 11
+    severity: CRITICAL
+    status: ACTIVE
+  - id: LE-008
+    statement: "SelfModel/learning chỉ đọc dữ liệu đã redact; không có PII/secret rò rỉ từ event/failure sang advice/self-model."
+    enforcement: ["Redactor", "SelfModelBuilder"]
+    violation_class: SELF_MODEL_SECRET_LEAK
+    test: "tests/invariants/learning/le-008.spec.ts"
+    phase: 11
     severity: CRITICAL
     status: ACTIVE

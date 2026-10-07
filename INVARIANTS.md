@@ -82,6 +82,7 @@ Phase gate:
 | `DC` | Dependency Direction (architecture) |
 | `ME` | Memory / RAG |
 | `AU` | Autonomy (parallel / multi-agent) |
+| `LE` | Learning / Intelligence Plane |
 
 ---
 
@@ -360,6 +361,23 @@ Phase gate:
 | AU-005 | Hai nhánh/agent không ghi đè workspace của nhau ngoài policy (isolation). | BranchIsolation / WorkspaceManager | 8 | CRITICAL |
 | AU-006 | Hủy một nhánh song song không để lại orphan. | ParallelExecutor / StateMachine | 8 | CRITICAL |
 | AU-007 | Sub-agent output là proposal, không phải authority. | PolicyEngine | 8 | CRITICAL |
+
+### 3.23 Learning / Intelligence Plane (LE)
+
+Phase 11. Lớp learning quan sát lịch sử chạy và sinh đề xuất **advisory** — không bao giờ
+authority. Thêm theo từng sub-phase khi enforcement + test có mặt (invariants-first). P11.1
+ship SelfModel chỉ-đọc: LE-001, LE-004, LE-008. LE-002/003/005/006/007 land ở P11.2–P11.3.
+
+| ID | Statement | Enforcement | Phase | Severity |
+|---|---|---|---|---|
+| LE-001 | Output của lớp learning (advice/score/signal) không bao giờ là runtime authority — chỉ là input có trọng số cho một quyết định deterministic đã tồn tại. | AdviceGate / PolicyEngine | 11 | CRITICAL |
+| LE-004 | SelfModel là total function của EventLog (đã redact) + failures + recovery actions; cùng input → cùng self-model (tái lập được). | SelfModelBuilder | 11 | CRITICAL |
+| LE-008 | SelfModel/learning chỉ đọc dữ liệu đã redact; không có PII/secret rò rỉ từ event/failure sang advice/self-model. | Redactor / SelfModelBuilder | 11 | CRITICAL |
+
+> Các invariant LE còn lại (dự kiến, land theo sub-phase): LE-002 (flag-off parity =
+> hành vi Phase 10), LE-003 (advice chỉ sắp xếp/chấm điểm trong allowed-set đã tất định),
+> LE-005 (lesson có provenance + append-only), LE-006 (learning store bounded), LE-007
+> (learning không bypass Policy/ToolGateway/ModelGateway). Xem `PHASE_11_ROADMAP.md §1`.
 
 ---
 
