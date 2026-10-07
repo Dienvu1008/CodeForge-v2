@@ -12,9 +12,10 @@ import { migration0002 } from './0002-phase15-tables.js';
 import { migration0003 } from './0003-context-tables.js';
 import { migration0004 } from './0004-artifacts.js';
 import { migration0005 } from './0005-memory-tables.js';
+import { migration0006 } from './0006-learning-tables.js';
 
 /** All migrations, ordered by toVersion. Append new migrations here. */
-export const MIGRATIONS: readonly Migration[] = [migration0001, migration0002, migration0003, migration0004, migration0005];
+export const MIGRATIONS: readonly Migration[] = [migration0001, migration0002, migration0003, migration0004, migration0005, migration0006];
 
 class DefaultMigrationRegistry implements MigrationRegistry {
   constructor(private readonly migrations: readonly Migration[]) {

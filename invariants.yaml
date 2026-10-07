@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.5
+version: 1.6
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1386,6 +1386,22 @@ invariants:
     test: "tests/invariants/learning/le-004.spec.ts"
     phase: 11
     severity: CRITICAL
+    status: ACTIVE
+  - id: LE-005
+    statement: "Mọi lesson/advice có provenance (session/run nguồn) + reason + timestamp; append-only."
+    enforcement: ["LearningStore", "LessonWriter"]
+    violation_class: LESSON_WITHOUT_PROVENANCE
+    test: "tests/invariants/learning/le-005.spec.ts"
+    phase: 11
+    severity: CRITICAL
+    status: ACTIVE
+  - id: LE-006
+    statement: "Learning store có retention bound; không ghi không giới hạn."
+    enforcement: ["LearningStore", "LessonWriter"]
+    violation_class: UNBOUNDED_LEARNING_STORE
+    test: "tests/invariants/learning/le-006.spec.ts"
+    phase: 11
+    severity: HIGH
     status: ACTIVE
   - id: LE-008
     statement: "SelfModel/learning chỉ đọc dữ liệu đã redact; không có PII/secret rò rỉ từ event/failure sang advice/self-model."

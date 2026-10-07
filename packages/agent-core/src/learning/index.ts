@@ -6,3 +6,11 @@
 //
 // P11.1: SelfModel + SelfModelBuilder (read-only projection).
 export { SelfModelBuilder, type SelfModelInput } from './self-model-builder.js';
+// P11.2: LessonWriter + distill (bounded, provenance; writes to a LearningStore).
+export {
+  LessonWriter,
+  distill,
+  DEFAULT_LESSON_RETENTION,
+  type LessonWriterDeps,
+  type LessonRetentionPolicy,
+} from './lesson-writer.js';

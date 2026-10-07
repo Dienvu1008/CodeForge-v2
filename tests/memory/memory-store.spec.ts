@@ -52,7 +52,7 @@ describe('P7-MS1 — migration', () => {
       .query<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table'")
       .map((r) => r.name);
     expect(names).toContain('memory_records');
-    expect(db.getSchemaVersion()).toBe(5);
+    expect(db.getSchemaVersion()).toBe(6);
   });
 });
 

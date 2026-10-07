@@ -12,6 +12,7 @@ import {
   migration0003,
   migration0004,
   migration0005,
+  migration0006,
 } from '@codeforge/infrastructure';
 
 let db: SqliteDatabaseAdapter;
@@ -57,15 +58,16 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
     expect(db.getSchemaVersion()).toBe(0);
     const result = runMigrations(db, createMigrationRegistry(), { now });
     expect(result.fromVersion).toBe(0);
-    expect(result.toVersion).toBe(5);
+    expect(result.toVersion).toBe(6);
     expect(result.applied).toEqual([
       '0001_create_initial_schema',
       '0002_phase15_approvals_failures_recovery',
       '0003_phase2_context_tables',
       '0004_phase3_artifacts',
       '0005_phase7_memory',
+      '0006_phase11_learning',
     ]);
-    expect(db.getSchemaVersion()).toBe(5);
+    expect(db.getSchemaVersion()).toBe(6);
   });
 
   it('creates every Phase 1 table', () => {
@@ -76,12 +78,13 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
     }
     expect(names).toContain('schema_versions');
     expect(names).toContain('memory_records'); // Phase 7 (v5)
+    expect(names).toContain('learning_lessons'); // Phase 11 (v6)
   });
 
   it('records the migration in schema_versions', () => {
     runMigrations(db, createMigrationRegistry(), { now, runtimeVersion: '0.1.0' });
     const history = readSchemaHistory(db);
-    expect(history).toHaveLength(5);
+    expect(history).toHaveLength(6);
     expect(history[0]).toMatchObject({
       schemaVersion: 1,
       migrationId: '0001_create_initial_schema',
@@ -114,6 +117,12 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
       forwardOnly: false,
       rollbackTo: 4,
     });
+    expect(history[5]).toMatchObject({
+      schemaVersion: 6,
+      migrationId: '0006_phase11_learning',
+      forwardOnly: false,
+      rollbackTo: 5,
+    });
   });
 });
 
@@ -121,10 +130,10 @@ describe('runMigrations — idempotent (MIGRATION_SPEC §1.3)', () => {
   it('is a no-op when already at target', () => {
     runMigrations(db, createMigrationRegistry(), { now });
     const second = runMigrations(db, createMigrationRegistry(), { now });
-    expect(second.fromVersion).toBe(5);
-    expect(second.toVersion).toBe(5);
+    expect(second.fromVersion).toBe(6);
+    expect(second.toVersion).toBe(6);
     expect(second.applied).toEqual([]);
-    expect(readSchemaHistory(db)).toHaveLength(5);
+    expect(readSchemaHistory(db)).toHaveLength(6);
   });
 
   it('fails fast if the db is newer than the runtime target', () => {
@@ -206,12 +215,13 @@ describe('schema v1 — structure', () => {
 describe('migration registry -- chain validation', () => {
   it('MIGRATIONS forms a contiguous chain from 0', () => {
     const reg = createMigrationRegistry(MIGRATIONS);
-    expect(reg.latestVersion()).toBe(5);
+    expect(reg.latestVersion()).toBe(6);
     expect(reg.getByToVersion(1)?.migrationId).toBe('0001_create_initial_schema');
     expect(reg.getByToVersion(2)?.migrationId).toBe('0002_phase15_approvals_failures_recovery');
     expect(reg.getByToVersion(3)?.migrationId).toBe('0003_phase2_context_tables');
     expect(reg.getByToVersion(4)?.migrationId).toBe('0004_phase3_artifacts');
     expect(reg.getByToVersion(5)?.migrationId).toBe('0005_phase7_memory');
+    expect(reg.getByToVersion(6)?.migrationId).toBe('0006_phase11_learning');
   });
 
   it('rejects a broken chain (gap)', () => {
@@ -241,6 +251,12 @@ describe('migration registry -- chain validation', () => {
     expect(migration0004.fromVersion).toBe(3);
     expect(migration0004.toVersion).toBe(4);
     expect(migration0004.reversible).toBe(true);
+  });
+
+  it('migration0006 is exported and has correct version bounds (P11.2)', () => {
+    expect(migration0006.fromVersion).toBe(5);
+    expect(migration0006.toVersion).toBe(6);
+    expect(migration0006.reversible).toBe(true);
   });
 });
 

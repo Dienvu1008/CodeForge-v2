@@ -14,7 +14,7 @@ function harness(): Phase0Harness {
 describe('Phase0Harness — loadInvariants', () => {
   it('parses invariants.yaml with the expected baseline counts', async () => {
     const reg = await harness().loadInvariants();
-    expect(reg.invariants.length).toBe(167); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 3 LE (P11.1)
+    expect(reg.invariants.length).toBe(169); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 5 LE (P11.1-P11.2)
     const critical = reg.invariants.filter((i) => i.severity === 'CRITICAL');
     expect(critical.length).toBeGreaterThanOrEqual(100); // MA-6
     // every entry has the required fields
@@ -57,7 +57,7 @@ describe('Phase0Harness — runWorkspaceVector', () => {
 describe('Phase0Harness — generateReport', () => {
   it('produces a report with all vectors passing (run or safely skipped)', async () => {
     const report = await harness().generateReport();
-    expect(report.invariantCount).toBe(167); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 3 LE (P11.1)
+    expect(report.invariantCount).toBe(169); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 5 LE (P11.1-P11.2)
     expect(report.criticalCount).toBeGreaterThanOrEqual(100);
     expect(report.vectorsRun + report.vectorsSkipped).toBe(20);
     // every run vector passed

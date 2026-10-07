@@ -161,7 +161,14 @@ export class HttpTransport {
 
     // Prime with any events already past the cursor, then poll for new ones.
     while (!closed && res.writable) {
-      const events = await this.opts.service.getEvents(session, cursor);
+      // The read can race with a teardown that closes the underlying DB (e.g. the server
+      // and DB are torn down together between poll iterations). A read failure here is a
+      // teardown signal, not an error to propagate — stop quietly, mirroring the write
+      // guard below (otherwise it surfaces as an unhandled rejection, e.g. DB_NOT_OPEN).
+      let events;
+      try {
+        events = await this.opts.service.getEvents(session, cursor);
+      } catch { break; }
       for (const e of events) {
         if (e.sequenceNumber <= cursor) continue;
         if (closed || !res.writable) break;

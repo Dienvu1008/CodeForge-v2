@@ -20,3 +20,4 @@ export * from './human-override.js';
 export * from './memory.js';
 // Phase 11:
 export * from './self-model.js';
+export * from './learning.js';

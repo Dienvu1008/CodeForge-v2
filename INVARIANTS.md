@@ -372,12 +372,14 @@ ship SelfModel chỉ-đọc: LE-001, LE-004, LE-008. LE-002/003/005/006/007 land
 |---|---|---|---|---|
 | LE-001 | Output của lớp learning (advice/score/signal) không bao giờ là runtime authority — chỉ là input có trọng số cho một quyết định deterministic đã tồn tại. | AdviceGate / PolicyEngine | 11 | CRITICAL |
 | LE-004 | SelfModel là total function của EventLog (đã redact) + failures + recovery actions; cùng input → cùng self-model (tái lập được). | SelfModelBuilder | 11 | CRITICAL |
+| LE-005 | Mọi lesson/advice có provenance (session/run nguồn) + reason + timestamp; append-only. | LearningStore / LessonWriter | 11 | CRITICAL |
+| LE-006 | Learning store có retention bound; không ghi không giới hạn. | LearningStore / LessonWriter | 11 | HIGH |
 | LE-008 | SelfModel/learning chỉ đọc dữ liệu đã redact; không có PII/secret rò rỉ từ event/failure sang advice/self-model. | Redactor / SelfModelBuilder | 11 | CRITICAL |
 
-> Các invariant LE còn lại (dự kiến, land theo sub-phase): LE-002 (flag-off parity =
-> hành vi Phase 10), LE-003 (advice chỉ sắp xếp/chấm điểm trong allowed-set đã tất định),
-> LE-005 (lesson có provenance + append-only), LE-006 (learning store bounded), LE-007
-> (learning không bypass Policy/ToolGateway/ModelGateway). Xem `PHASE_11_ROADMAP.md §1`.
+> Các invariant LE còn lại (dự kiến, land theo sub-phase P11.3 AdviceGate): LE-002 (flag-off
+> parity = hành vi Phase 10), LE-003 (advice chỉ sắp xếp/chấm điểm trong allowed-set đã tất
+> định), LE-007 (learning không bypass Policy/ToolGateway/ModelGateway). Xem
+> `PHASE_11_ROADMAP.md §1`.
 
 ---
 
