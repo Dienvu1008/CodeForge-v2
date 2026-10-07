@@ -79,6 +79,13 @@ export interface WorkspaceProcessSupervisorOptions {
 export class WorkspaceProcessSupervisor implements ProcessSupervisor {
   private readonly inner = new NodeProcessSupervisor();
   private readonly env: Record<string, string>;
+  /**
+   * P10.2: the output of the most recent FAILED/timed-out check spawn. The frozen
+   * VerificationEngine discards check stdout/stderr, so the recovery loop pulls the red
+   * output from here (via lastFailureOutput) to show the model WHAT to fix. Reset to ''
+   * on the next passing spawn so stale evidence never leaks into a later attempt.
+   */
+  private lastFailure = '';
 
   constructor(private readonly opts: WorkspaceProcessSupervisorOptions) {
     this.env = buildCheckEnv(opts.extraEnv);
@@ -88,12 +95,32 @@ export class WorkspaceProcessSupervisor implements ProcessSupervisor {
     // Override the engine's hardcoded cwd:'/' and env:{}; resolve the command for the OS
     // (on Windows, launch npm-family .cmd shims via cmd.exe — see resolveSpawn).
     const resolved = resolveSpawn(options.command, options.args);
-    return this.inner.spawn({
+    const result = await this.inner.spawn({
       ...options,
       command: resolved.command,
       args: resolved.args,
       cwd: this.opts.workspaceRoot,
       env: this.env,
     });
+
+    // P10.2: remember the output of a failing check (non-zero exit or timeout). Use the
+    // LOGICAL command (options.command/args), not the cmd.exe wrapper, so the evidence
+    // reads naturally. Keep the last failure only (the fail-fast policy stops at the
+    // first red check, which is the most relevant one to fix).
+    const failed = result.timedOut || (result.exitCode !== 0 && result.exitCode !== null);
+    if (failed) {
+      const header = `$ ${options.command} ${options.args.join(' ')}`;
+      const status = result.timedOut ? 'TIMED OUT' : `exit ${result.exitCode}`;
+      const body = [result.stdout, result.stderr].filter((s) => s.trim().length > 0).join('\n');
+      this.lastFailure = `${header}\n(${status})\n${body}`.slice(0, 4000);
+    } else {
+      this.lastFailure = '';
+    }
+    return result;
+  }
+
+  /** P10.2: the red output of the most recent failing check, or '' if the last run passed. */
+  lastFailureOutput(): string {
+    return this.lastFailure;
   }
 }

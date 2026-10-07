@@ -35,6 +35,8 @@ import { SqliteEventLog }                 from '../event-log/index.js';
 import { SqliteToolCallRepository }       from '../repositories/index.js';
 import { SqliteApprovalRepository }       from '../repositories/index.js';
 import { SqliteVerificationRepository }   from '../repositories/index.js';
+import { SqliteFailureRepository }        from '../repositories/index.js';
+import { SqliteRecoveryActionRepository } from '../repositories/index.js';
 import { Blake3GraphHasher }              from '../graph-hash/index.js';
 import { OllamaModelGateway }            from '../model/index.js';
 import { NodeWorkspaceManager }           from '../workspace/index.js';
@@ -65,6 +67,8 @@ import {
   CompletionGate,
   PERMISSIVE_TEST_POLICY,
   buildVerificationPolicy,
+  FailureAnalyzer,
+  RecoveryEngine,
   type Session,
   type Goal,
 } from '@codeforge/agent-core';
@@ -140,6 +144,8 @@ async function main(): Promise<void> {
   const toolCalls  = new SqliteToolCallRepository(db);
   const approvals  = new SqliteApprovalRepository(db);
   const verReports = new SqliteVerificationRepository(db);
+  const failures   = new SqliteFailureRepository(db);
+  const recoveryActions = new SqliteRecoveryActionRepository(db);
 
   // 3. Model gateway (Ollama)
   const model = new OllamaModelGateway({
@@ -221,6 +227,15 @@ async function main(): Promise<void> {
     sessions, pollIntervalMs: 200, maxWaitMs: 3_600_000,
   });
 
+  // 8b. Recovery stack (P10.2): when a task does not reach PASSED (run FAILED/TIMEOUT or
+  // verification red), the orchestrator classifies the failure and retries with the red
+  // output injected into the prompt — or escalates when stuck (no-progress / max attempts).
+  const failureAnalyzer = new FailureAnalyzer({ failures, events, now: rt.now, nextId: rt.nextId });
+  const recoveryEngine  = new RecoveryEngine({ recoveryActions, events, sessionService: sessionSvc, now: rt.now, nextId: rt.nextId });
+  // Detailed red-check output comes from the verification supervisor (the frozen engine
+  // discards it). This feeds both the classifier and the retry prompt.
+  const verificationEvidenceProvider = { lastFailureOutput: () => checkSupervisor.lastFailureOutput() };
+
   // 9. Orchestrator
   const orchestrator = new SessionOrchestrator({
     sessionService: sessionSvc, planner, graphCommitService: commitSvc,
@@ -229,6 +244,8 @@ async function main(): Promise<void> {
     checkpointService: checkpointSvc, maxIterations: maxSteps,
     controlGate: gate,
     taskRunRepository: taskRuns,
+    failureAnalyzer, recoveryEngine, failureRepository: failures,
+    verificationEvidenceProvider,
     now: rt.now, nextId: rt.nextId,
   });
 

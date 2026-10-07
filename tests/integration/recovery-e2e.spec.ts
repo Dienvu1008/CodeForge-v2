@@ -155,13 +155,13 @@ describe('P5-I1 — Recovery E2E', () => {
     });
 
     // Task failed → FailureAnalyzer → UNKNOWN → RecoveryPolicy → ESCALATE (maxAttempts=1)
-    // → RecoveryEngine → AWAITING_HUMAN
-    // Session is AWAITING_HUMAN, so SessionService.complete() fails → ABORTED
-    expect(['COMPLETED', 'ABORTED']).toContain(result.sessionState);
+    // → RecoveryEngine → session AWAITING_HUMAN. P10.2: the orchestrator leaves the
+    // session in AWAITING_HUMAN instead of clobbering it to ABORTED via complete().
+    expect(result.sessionState).toBe('AWAITING_HUMAN');
 
-    // Session state should be AWAITING_HUMAN (escalated) or ABORTED (complete failed)
+    // Session state is AWAITING_HUMAN (escalated for a human decision — RC-007/SS-005).
     const s = await sessions.getById('S-P5');
-    expect(['AWAITING_HUMAN', 'ABORTED', 'COMPLETED', 'CANCELLING']).toContain(s?.state);
+    expect(s?.state).toBe('AWAITING_HUMAN');
   });
 
   // ── Scenario 2: recovery actions are recorded (RC-006) ────────────────────

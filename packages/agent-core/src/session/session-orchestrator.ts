@@ -21,6 +21,7 @@ import type { RecoveryEngine }          from '../recovery/recovery-engine.js';
 import type { FailureRepository }       from '../repositories/index.js';
 import { decide, type RecoveryPolicyConfig } from '../recovery/recovery-policy.js';
 import { detectNoProgress }             from '../recovery/no-progress-detector.js';
+import type { VerificationReport }      from '../domain/verification.js';
 
 // P9.7: cooperative control signal polled once per loop iteration. A no-op gate (the
 // default) always returns 'none', so the loop behaves exactly as before. The real gate
@@ -82,6 +83,14 @@ export interface SessionOrchestratorDeps {
   /** Optional P5-SO2: custom recovery policy config. */
   readonly recoveryPolicy?:      RecoveryPolicyConfig;
   /**
+   * Optional P10.2: pull detailed evidence (the red check output) for the most recent
+   * verification run, so the recovery retry prompt shows the model WHAT failed. The
+   * VerificationEngine (frozen) does not persist check stdout/stderr, so the runtime
+   * supervies this out-of-band (e.g. WorkspaceProcessSupervisor buffers the last failing
+   * spawn). Returns '' when no detail is available — the report summary is still used.
+   */
+  readonly verificationEvidenceProvider?: { lastFailureOutput(): string };
+  /**
    * Optional P9.7: cooperative control gate polled once per loop iteration. When omitted,
    * NOOP_CONTROL_GATE is used and the loop behaves exactly as before (no pause/cancel
    * checkpoints). The gate only REPORTS signals; the orchestrator drives the session
@@ -101,7 +110,12 @@ export interface SessionOrchestratorRunInput {
 }
 
 export interface SessionOrchestratorResult {
-  readonly sessionState:     'COMPLETED' | 'ABORTED';
+  /**
+   * Terminal-for-this-run session state. 'AWAITING_HUMAN' (P10.2) is NOT terminal for the
+   * session machine — the run returns control to the caller/human, who resolves the
+   * approval and may resume. COMPLETED/ABORTED are terminal.
+   */
+  readonly sessionState:     'COMPLETED' | 'ABORTED' | 'AWAITING_HUMAN';
   readonly taskRunCount:     number;
   readonly passedTaskIds:    readonly string[];
   readonly nonPassedTaskIds: readonly string[];
@@ -162,6 +176,13 @@ export class SessionOrchestrator {
     // 5. Main execution loop
     let iterations = 0;
     let cancelledByControl = false;
+    // P10.2: set when recovery escalates a task to a human (session → AWAITING_HUMAN). The
+    // completion path must then leave the session in AWAITING_HUMAN, not drive it to
+    // COMPLETED/ABORTED (that would clobber the escalation).
+    let escalatedToHuman = false;
+    // P10.2: evidence from a task's prior failed attempt, injected into its retry prompt
+    // so the model fixes the specific failure instead of guessing. Keyed by taskId.
+    const priorFailureEvidence = new Map<string, string>();
     while (iterations < this.maxIterations) {
       iterations++;
 
@@ -200,6 +221,7 @@ export class SessionOrchestrator {
 
       const proj = await this.deps.executionRepository.getByTask(task.taskId);
       const defaultSummary = 'Graph v' + g.version + ': ' + g.nodes.length + ' task(s).';
+      const evidence = priorFailureEvidence.get(task.taskId);
       const req: TaskExecutorRequest = {
         sessionId: input.sessionId, task,
         attemptNumber:            (proj?.attempts ?? 0) + 1,
@@ -207,45 +229,74 @@ export class SessionOrchestrator {
         workspaceRevisionAtStart: input.revision,
         workspaceRevisionAtEnd:   input.revision,
         graphSummary:             input.graphSummary ?? defaultSummary,
+        ...(evidence !== undefined ? { priorFailureEvidence: evidence } : {}),
       };
       const result = await this.deps.taskExecutor.execute(req);
       taskRunCount++;
       if (result.taskPassed === true) passedIds.push(task.taskId);
 
-      // ── P5-SO2: Recovery loop after FAILED/TIMEOUT ──────────────────────
-      if ((result.finalState === 'FAILED' || result.finalState === 'TIMEOUT')
+      // ── P10.2: Recovery loop ────────────────────────────────────────────
+      // Trigger whenever the task did NOT reach PASSED and we can act on it. Two paths:
+      //   (1) run FAILED/TIMEOUT (pre-P10.1 behavior), or
+      //   (2) run SUCCEEDED but verification FAIL/INVALID/ERROR — the agent *thinks* it
+      //       is done but the checks are red (P10.1 made this real; P10.2 makes the agent
+      //       fix it). Without this, a red task silently settles in VERIFYING forever.
+      const verFailed = result.verificationStatus === 'FAIL'
+        || result.verificationStatus === 'INVALID'
+        || result.verificationStatus === 'ERROR';
+      const needsRecovery = result.taskPassed !== true
+        && (result.finalState === 'FAILED' || result.finalState === 'TIMEOUT' || verFailed);
+
+      if (needsRecovery
           && this.deps.failureAnalyzer !== undefined
           && this.deps.recoveryEngine  !== undefined) {
         try {
-          // Pass task info directly — FailureAnalyzer builds synthetic run if needed.
           const runState = result.finalState === 'TIMEOUT' ? 'TIMEOUT' as const : 'FAILED' as const;
-          {
-            const failure = await this.deps.failureAnalyzer.analyze({
-              sessionId: input.sessionId,
-              taskRun:   undefined,
-              taskId:    task.taskId,
-              runState,
-            });
-            // Check for no-progress before deciding action.
-            const history = this.deps.failureRepository !== undefined
-              ? await this.deps.failureRepository.getByTask(task.taskId)
-              : [];
-            const npResult = detectNoProgress([...history], 3);
-            const decision = npResult.noProgress
-              ? { action: 'ESCALATE' as const, policyVersion: 1, reason: 'No progress detected' }
-              : decide({ failureClass: failure.class, attemptsSoFar: history.length,
-                         policy: this.deps.recoveryPolicy });
-            const reResult = await this.deps.recoveryEngine.execute({
-              failure, action: decision.action,
-              reason: decision.reason,
-              policyVersion: decision.policyVersion,
-              sessionId: input.sessionId,
-            });
-            if (reResult.sessionEscalated) {
-              // Session is now AWAITING_HUMAN — exit loop.
-              break;
-            }
-            // shouldRetry=true: loop will pick the task up again on next iteration.
+          // P10.2: build failure evidence — the red check output (detailed, from the
+          // supervisor buffer when available) plus a report summary. Feeds BOTH the
+          // deterministic classifier (lastStderr) AND the retry prompt (priorFailureEvidence).
+          const detail = this.deps.verificationEvidenceProvider?.lastFailureOutput() ?? '';
+          const reportSummary = result.verificationReport !== undefined
+            ? summarizeFailingChecks(result.verificationReport)
+            : '';
+          const evidenceText = [reportSummary, detail].filter((s) => s.length > 0).join('\n\n');
+
+          // Pass the verification report + stderr to the analyzer so it classifies the
+          // failure precisely (test→LOGIC, build→SYNTAX, lint→TOOL) instead of UNKNOWN.
+          const failure = await this.deps.failureAnalyzer.analyze({
+            sessionId: input.sessionId,
+            taskRun:   undefined,
+            taskId:    task.taskId,
+            runState,
+            ...(result.verificationReport !== undefined ? { verificationReport: result.verificationReport } : {}),
+            ...(evidenceText.length > 0 ? { lastStderr: evidenceText } : {}),
+          });
+
+          // No-progress guard (RC-002/RC-003): same failure class repeating → ESCALATE.
+          const history = this.deps.failureRepository !== undefined
+            ? await this.deps.failureRepository.getByTask(task.taskId)
+            : [];
+          const npResult = detectNoProgress([...history], 3);
+          const decision = npResult.noProgress
+            ? { action: 'ESCALATE' as const, policyVersion: 1, reason: `No progress: ${npResult.reason}` }
+            : decide({ failureClass: failure.class, attemptsSoFar: history.length,
+                       policy: this.deps.recoveryPolicy });
+          const reResult = await this.deps.recoveryEngine.execute({
+            failure, action: decision.action,
+            reason: decision.reason,
+            policyVersion: decision.policyVersion,
+            sessionId: input.sessionId,
+          });
+          if (reResult.sessionEscalated) {
+            // Session is now AWAITING_HUMAN — exit loop and leave it there (P10.2).
+            escalatedToHuman = true;
+            break;
+          }
+          if (reResult.shouldRetry) {
+            // RETRY/FIX: reset the task projection to READY so the scheduler picks it up
+            // again next iteration, and stash the evidence for the retry prompt (P10.2).
+            if (evidenceText.length > 0) priorFailureEvidence.set(task.taskId, evidenceText);
+            await this.deps.executionCoordinator.setState(task.taskId, 'READY');
           }
         } catch { /* recovery failure is non-fatal — continue */ }
       }
@@ -270,8 +321,13 @@ export class SessionOrchestrator {
 
     // 7. Complete session (SS-003) — unless control cancelled the run, in which case the
     // session has already been driven to CANCELLING; finish the abort to ABORTED.
-    let sessionState: 'COMPLETED' | 'ABORTED';
-    if (cancelledByControl) {
+    let sessionState: 'COMPLETED' | 'ABORTED' | 'AWAITING_HUMAN';
+    if (escalatedToHuman) {
+      // P10.2: recovery escalated a task to a human. The session is already in
+      // AWAITING_HUMAN; leave it there (do NOT complete/abort, which would clobber it).
+      // The run hands control back; a human decision resumes or aborts later (SS-005).
+      sessionState = 'AWAITING_HUMAN';
+    } else if (cancelledByControl) {
       await this.finishCancel(input.sessionId);
       sessionState = 'ABORTED';
     } else {
@@ -369,4 +425,23 @@ export class SessionOrchestrator {
     if (match !== undefined) return match;
     return null;
   }
+}
+
+/**
+ * P10.2: build a short, deterministic summary of the FAILED/ERROR checks in a
+ * verification report. The VerificationEngine does not persist check stdout/stderr, so
+ * this is the always-available fallback evidence (the supervisor buffer adds detail when
+ * wired). Used both to classify the failure and to tell the model what to fix.
+ */
+function summarizeFailingChecks(report: VerificationReport): string {
+  const failing = report.checks.filter((c) => c.status === 'FAIL' || c.status === 'ERROR');
+  if (failing.length === 0) {
+    return report.status === 'INVALID'
+      ? 'Verification INVALID: the workspace changed during verification (non-deterministic or external mutation).'
+      : `Verification ${report.status} with no failing checks reported.`;
+  }
+  const lines = failing.map((c) =>
+    `- [${c.kind}] "${c.name}": \`${c.command} ${c.args.join(' ')}\` exited ${c.exitCode} (${c.status}).`,
+  );
+  return [`Verification FAILED — ${failing.length} check(s) failed:`, ...lines].join('\n');
 }
