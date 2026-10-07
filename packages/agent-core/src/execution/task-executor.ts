@@ -87,7 +87,18 @@ Response format (pick ONE):
   When done:      {"type":"done","summary":"<what was accomplished>"}
 
 Strategy: first explore the workspace (list_dir, read_file), then make changes (write_file),
-then verify your work (read_file, run_command). When everything is complete, respond with done.`;
+then verify by running the project's checks (e.g. run_command {"command":"npm test"}). When
+the checks pass and the task is satisfied, respond with done.
+
+RULES (follow strictly):
+  1. SCOPE: change ONLY what the task asks for. Do NOT edit test files (test.js, *.test.*,
+     *.spec.*) or change the acceptance criteria unless the task explicitly says so. To make
+     a failing test pass, fix the SOURCE CODE — never rewrite the test to match the bug.
+  2. CONTENT: write_file must include the complete, real file content. Never write an empty
+     file or a placeholder/TODO stub.
+  3. STOP: as soon as the task is done (and the checks pass), respond with done on the very
+     next turn. Do NOT keep exploring or re-reading files after the change is complete.
+  4. NO REPEATS: do not repeat a tool call you already made with the same arguments.`;
 
 // ── TaskExecutorError ─────────────────────────────────────────────────────────
 
@@ -781,6 +792,14 @@ export class TaskExecutor {
         ].join('\n')
       : '\n(No tool calls made yet — this is the first step.)\n';
 
+    // P10.7: if the project's checks have already been run and passed (a test/build/lint
+    // command that exited 0), tell the model to STOP — the biggest waste observed in
+    // dogfood was a model that kept exploring after the work was already green. This is a
+    // deterministic read of the transcript, not model output.
+    const checksPassedHint = this.looksLikeChecksPassed(transcript)
+      ? '\nThe project checks have already run and PASSED. The task is complete — respond with {"type":"done","summary":"..."} NOW. Do not run more tools.\n'
+      : '';
+
     // P10.2: when a prior attempt failed verification, inject the failure evidence
     // (red test / build output) as an UNTRUSTED section (CX-005) so the model fixes the
     // specific problem rather than redoing the same thing. The boundary preamble tells
@@ -824,15 +843,40 @@ export class TaskExecutor {
         '',
         `Progress: ${transcript.length} step(s) completed.`,
         transcriptText,
+        checksPassedHint,
         'Decide the next action. Respond with JSON only.',
         'To use a tool: {"type":"tool_call","toolName":"<name>","arguments":{...}}',
         'When the task is complete: {"type":"done","summary":"<what was accomplished>"}',
         '',
-        'Think step by step: first explore the workspace, then make changes, then verify.',
+        'Reminder: change only what the task asks; never edit test files to make them pass;',
+        'write_file needs real content; respond with done as soon as the checks pass.',
       ].join('\n'),
       trust: 'trusted',
     });
     return buildPrompt(sections);
+  }
+
+  /**
+   * P10.7: heuristically detect from the transcript that the project's checks already ran
+   * and passed — i.e. the most recent run_command that looks like a test/build/lint command
+   * exited 0 with no obvious failure text. Used only to nudge the model to STOP (it never
+   * decides completion — the deterministic verification gate does that, TI-005).
+   */
+  private looksLikeChecksPassed(
+    transcript: ReadonlyArray<{ toolName: string; arguments: Record<string, unknown>; result: string; exitCode: number | null }>,
+  ): boolean {
+    const CHECK_RE = /\b(test|build|lint|typecheck|tsc|vitest|jest|npm (run )?(test|build|lint))\b/i;
+    const FAIL_RE = /\b(fail|failed|error|not ok|assertion|✗|×)\b/i;
+    // Scan most-recent-first; the latest check result is what matters.
+    for (let i = transcript.length - 1; i >= 0; i--) {
+      const t = transcript[i]!;
+      if (t.toolName !== 'run_command') continue;
+      const cmd = typeof t.arguments['command'] === 'string' ? t.arguments['command'] : '';
+      if (!CHECK_RE.test(cmd)) continue;
+      // First (latest) check command found: passed only if it exited 0 and output is clean.
+      return t.exitCode === 0 && !FAIL_RE.test(t.result);
+    }
+    return false;
   }
 
   /**

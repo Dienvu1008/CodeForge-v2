@@ -65,3 +65,112 @@ goal ingress, streaming/progress — is working together end-to-end against a re
 The remaining gap to a high task-success rate is **model capability at execution time**,
 which the architecture already accommodates (swap in a stronger model; the kernel,
 gating, and observability are unchanged). Measured, not claimed.
+
+---
+
+## Addendum — model comparison: `deepseek-r1:14b` (post-sign-off probe)
+
+To decide whether a stronger model closes the task-success gap before building a UI, the
+bugfix task (`multiply` returns `a+b`, test expects `a*b`) was re-run with `deepseek-r1:14b`
+(a 14B reasoning model) under the same runtime, autonomy `full`.
+
+| Dimension | `qwen2.5-coder` (7B) | `deepseek-r1:14b` |
+|-----------|----------------------|-------------------|
+| Fixed the actual bug? | ❌ left `multiply` as `a+b` | ✅ changed `multiply` to `a*b` (correct) |
+| Reached a green test / PASSED? | ❌ | ❌ (see failure mode) |
+| Latency per ReAct decision | ~2–3 s | ~90 s (14B + reasoning tokens) |
+| Behaviour | under-performs: gives up / escalates | over-reaches: rewrites `test.js` to assert a `square` function that does not exist, breaking the suite it was supposed to make pass |
+| Time on a one-line fix | ~8–17 s total | still looping after ~11 min (8 decisions of a 28-step budget) |
+
+**Correctness signal (good):** the stronger model DID fix the real bug that the 7B model
+could not — direct evidence that model capability is the lever, and that the runtime
+machinery (planning, context, tool execution, the `<think>`-block parse) works unchanged with
+a reasoning model.
+
+**New failure mode (important):** `deepseek-r1` went off-task — after fixing `multiply` it
+rewrote `test.js` to test an unrelated `square()` (undefined), so `npm test` stayed red by its
+own doing. This is not a model-is-weak problem; it is an **under-specified instruction +
+unconstrained tool scope** problem: nothing told the agent "make the EXISTING test pass; do
+not change the test." A stronger model with more initiative is more likely to "improve" things
+it was not asked to touch.
+
+**Latency signal (operational):** at ~90 s per decision, a 14B reasoning model on this
+hardware is too slow for an interactive UI loop. It is viable for background/batch autonomy,
+not for a live chat where a user waits.
+
+### What this tells us about building the UI now
+
+- Raising model capability alone does **not** yield a reliable task-success rate — the 14B
+  model failed the same task a different way. The next, cheapest lever is **executor-prompt
+  constraints** (e.g. "satisfy the existing tests; do not modify test files unless asked";
+  "stop once verification is green"), not a bigger model and not a UI.
+- Therefore: **still too early for a full chat UI.** A thin read-only observability dashboard
+  (consume `/stream` + `/state` + `/metrics`) is useful now for diagnosing exactly these
+  behaviours; a goal-submitting chat UI should wait until the executor prompt + a small
+  regression dogfood show a dependable task-PASSED rate.
+
+---
+
+## Addendum 2 — after tightening the executor prompt (P10.7+)
+
+The two failure modes above (7B under-performs / leaves the pre-existing failing test
+unfixed; 14B over-reaches and rewrites `test.js`) were addressed with a **prompt-only**
+change to `TASK_EXECUTOR_SYSTEM_PROMPT` + `buildTaskPrompt` in `task-executor.ts`. No
+kernel, verification, policy, or invariant was touched; determinism is preserved (temp=0).
+"Don't edit test files" is model *guidance*; the CompletionGate still requires a real green
+test (TI-005), so the change cannot let a false PASS through.
+
+What changed:
+
+- A short, strict RULES block: (1) SCOPE — change only what the task asks, don't edit
+  `test.js`/`*.test.*`/`*.spec.*` or acceptance criteria, fix the SOURCE not the test;
+  (2) CONTENT — `write_file` needs complete real content, no empty/stub; (3) STOP — once the
+  checks pass, respond `done` on the next turn, stop exploring; (4) NO REPEATS.
+- A deterministic, transcript-derived nudge (`looksLikeChecksPassed`): when the latest
+  check command in the transcript exited 0 with clean output, the next prompt tells the agent
+  the checks have PASSED and to emit `done` now. This is a read of the transcript, not model
+  output — it does not decide completion, it only reduces post-green looping.
+- The verify hint now points at the project's own checks (`run_command {"command":"npm test"}`).
+
+### Re-run (same 3 tasks, workspace reset to clean baseline between runs)
+
+| Task | Model | Fixed/added correctly? | Touched test files it shouldn't? | `npm test` green on disk? | Run outcome | Wall time |
+|------|-------|------------------------|----------------------------------|---------------------------|-------------|-----------|
+| bugfix: `multiply` a+b→a*b, don't edit test.js | qwen2.5-coder 7B | ✅ fixed source to `a*b` | ✅ no — `test.js` untouched | ✅ green | COMPLETED, 3/4 tasks PASSED | 33.4 s |
+| feature: add `square` reusing `multiply` | qwen2.5-coder 7B | ✅ `square(n)=multiply(n,n)`, exported | ✅ only added `square` asserts (task asked for it) | ✅ green | COMPLETED, 2/2 PASSED | 37.0 s |
+| docs: README for the two exports | qwen2.5-coder 7B | ✅ README matches real exports; code/test untouched | ✅ no | ✅ green | COMPLETED, 4/4 PASSED | 15.0 s |
+| bugfix (confirm) | deepseek-r1:14b | ✅ fixed source to `a*b` | ✅ **no — `test.js` untouched (was the old failure)** | ✅ green | did **not** emit `done` (still looping at step budget) | >14 min, stopped manually |
+
+### Honest read
+
+- **qwen2.5-coder went from 0/3 → 3/3** task-PASSED on the same tasks after the prompt
+  tightening. The bugfix the 7B model previously could not land now lands and reaches a green
+  `npm test`; the feature and docs tasks are correct and in-scope; no empty files; no stray
+  edits to test files. Each run finished in 15–37 s.
+- **deepseek-r1:14b's over-reach failure mode is fixed**: it no longer rewrites `test.js`,
+  and it produced the correct source fix (green on disk). This is the specific behaviour the
+  SCOPE rule targeted.
+- **deepseek-r1:14b's convergence/latency problem is NOT fixed by the prompt.** The correct
+  fix sat green on disk for >10 min while the model kept reasoning and never emitted `done`;
+  the run was stopped manually. At ~90 s/decision this model remains unsuitable for an
+  interactive loop regardless of prompt. Prompt wording cannot make a slow reasoning model
+  converge quickly.
+- One cosmetic nit: in the docs task the README duplicated the `## square(n)` heading (two
+  usage examples under repeated headers). Content is correct and in-scope; purely stylistic.
+
+### Caveat on the numbers
+
+This is a 3-task smoke suite on a tiny single-file project, not a benchmark. "3/3" means the
+tightened prompt removed the *specific* dogfood-observed failure modes on *these* tasks with
+qwen2.5-coder; it is not a general success-rate claim. A larger, varied task set is still
+needed before trusting the agent broadly.
+
+### Revised UI stance
+
+With a fast 7B model now landing all three tasks green and in-scope, the substrate is closer
+to "valuable", not just "ready". A **thin read-only observability dashboard** (`/stream` +
+`/state` + `/metrics`) is clearly worth building now. A **goal-submitting chat UI** is more
+defensible than before but should still be gated on a broader regression dogfood — and should
+pair with a fast model (7B), since the 14B reasoning model's latency makes a live chat loop
+painful. Determinism and the strict completion gate are unchanged, so the UI only ever
+observes/triggers; it never decides success.
