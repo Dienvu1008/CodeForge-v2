@@ -18,10 +18,21 @@ import { computeSchedule }              from '../scheduler/scheduler.js';
 import { isTerminalTaskState }          from '../state-machine/states.js';
 import type { FailureAnalyzer }          from '../recovery/failure-analyzer.js';
 import type { RecoveryEngine }          from '../recovery/recovery-engine.js';
-import type { FailureRepository }       from '../repositories/index.js';
-import { decide, type RecoveryPolicyConfig } from '../recovery/recovery-policy.js';
+import type { FailureRepository, RecoveryActionRepository } from '../repositories/index.js';
+import { decide, DEFAULT_RECOVERY_POLICY, type RecoveryPolicyConfig } from '../recovery/recovery-policy.js';
 import { detectNoProgress }             from '../recovery/no-progress-detector.js';
 import type { VerificationReport }      from '../domain/verification.js';
+// P11.6: OPTIONAL learning plane. When all three are wired, the orchestrator builds a
+// read-only SelfModel from this task's failure/recovery history and asks the RecoveryAdvisor
+// for a try-order, clamped by the AdviceGate into decide()'s own allowed-set. When ANY is
+// absent, no advice is produced and recovery behaves EXACTLY as before (LE-002 fail-safe).
+import type { SelfModelBuilder }        from '../learning/self-model-builder.js';
+import type { RecoveryAdvisor }         from '../learning/recovery-advisor.js';
+import { selfModelFromLessons }         from '../learning/recovery-advisor.js';
+import type { AdviceGate }              from '../learning/advice-gate.js';
+import type { SafeRecoveryOrderAdvice } from '../domain/advice.js';
+import type { Failure, RecoveryAction } from '../domain/failure.js';
+import type { LearningStore }           from '../domain/learning.js';
 
 // P9.7: cooperative control signal polled once per loop iteration. A no-op gate (the
 // default) always returns 'none', so the loop behaves exactly as before. The real gate
@@ -82,6 +93,24 @@ export interface SessionOrchestratorDeps {
   readonly failureRepository?:   FailureRepository;
   /** Optional P5-SO2: custom recovery policy config. */
   readonly recoveryPolicy?:      RecoveryPolicyConfig;
+  /**
+   * Optional P11.6 — the learning plane for recovery ordering. ALL THREE must be wired for
+   * any advice to be produced; otherwise recovery is byte-identical to Phase 10 (LE-002).
+   * The advisor only PROPOSES a try-order; the AdviceGate clamps it into decide()'s current
+   * allowed-set; decide() stays the authority (set/count/maxAttempts/budget unchanged).
+   */
+  readonly selfModelBuilder?:        SelfModelBuilder;
+  readonly recoveryAdvisor?:         RecoveryAdvisor;
+  readonly adviceGate?:              AdviceGate;
+  /** Needed by the learning plane to read recovery outcomes for the SelfModel. */
+  readonly recoveryActionRepository?: RecoveryActionRepository;
+  /**
+   * Optional cross-session accumulated lessons. When present, the recovery advisor is seeded
+   * from persisted lessons (prior sessions) MERGED with the current task's live history — this
+   * is where learning gains real value, since a single short task rarely has enough signal.
+   * Read-only here; still clamped by the AdviceGate (LE-001/003). Absent → current-task only.
+   */
+  readonly learningStore?:           LearningStore;
   /**
    * Optional P10.2: pull detailed evidence (the red check output) for the most recent
    * verification run, so the recovery retry prompt shows the model WHAT failed. The
@@ -277,10 +306,13 @@ export class SessionOrchestrator {
             ? await this.deps.failureRepository.getByTask(task.taskId)
             : [];
           const npResult = detectNoProgress([...history], 3);
+          // P11.6: optional learning advice (clamped). undefined when the plane is not wired
+          // or yields nothing → decide() behaves exactly as Phase 10 (LE-002).
+          const advice = await this.buildRecoveryAdvice(input.sessionId, failure.class, history);
           const decision = npResult.noProgress
             ? { action: 'ESCALATE' as const, policyVersion: 1, reason: `No progress: ${npResult.reason}` }
             : decide({ failureClass: failure.class, attemptsSoFar: history.length,
-                       policy: this.deps.recoveryPolicy });
+                       policy: this.deps.recoveryPolicy, advice });
           const reResult = await this.deps.recoveryEngine.execute({
             failure, action: decision.action,
             reason: decision.reason,
@@ -341,6 +373,56 @@ export class SessionOrchestrator {
     }
 
     return { sessionState, taskRunCount, passedTaskIds: passedIds, nonPassedTaskIds: nonPassedIds, durationMs: Date.now() - t0 };
+  }
+
+  /**
+   * P11.6 — produce an AdviceGate-clamped recovery try-order from this task's history, or
+   * undefined when the learning plane is not fully wired or yields nothing (LE-002). The
+   * SelfModel is built from the SAME failure history already fetched plus the recovery actions
+   * for those failures; the advisor proposes an order, the gate intersects it with decide()'s
+   * current allowed-set. decide() stays the authority — this only reorders within that set.
+   */
+  private async buildRecoveryAdvice(
+    _sessionId: string,
+    failureClass: Failure['class'],
+    history: readonly Failure[],
+  ): Promise<SafeRecoveryOrderAdvice | undefined> {
+    const builder = this.deps.selfModelBuilder;
+    const advisor = this.deps.recoveryAdvisor;
+    const gate    = this.deps.adviceGate;
+    const recRepo = this.deps.recoveryActionRepository;
+    if (builder === undefined || advisor === undefined || gate === undefined || recRepo === undefined) {
+      return undefined; // plane not wired → no advice (Phase 10 behavior)
+    }
+
+    try {
+      // Gather the recovery actions for the failures we have in THIS task (read-only).
+      const recoveryActions: RecoveryAction[] = [];
+      for (const f of history) {
+        const actions = await recRepo.getByFailure(f.failureId);
+        recoveryActions.push(...actions);
+      }
+      const liveModel = builder.build({ events: [], failures: [...history], recoveryActions });
+
+      // Prefer CROSS-SESSION accumulated lessons when a LearningStore is wired — a single
+      // short task rarely has enough signal. The lessons model carries recovery outcomes
+      // distilled from prior sessions; fall back to the live (current-task) model.
+      let raw = null;
+      if (this.deps.learningStore !== undefined) {
+        const lessons = await this.deps.learningStore.query({ kinds: ['recovery_outcome'], limit: 500 });
+        const lessonModel = selfModelFromLessons(lessons);
+        raw = advisor.advise(lessonModel, failureClass);
+      }
+      if (raw === null) raw = advisor.advise(liveModel, failureClass);
+      if (raw === null) return undefined;
+
+      const allowed = (this.deps.recoveryPolicy ?? DEFAULT_RECOVERY_POLICY)[failureClass].actions;
+      const safe = gate.sanitize(raw, { allowedActions: allowed });
+      return safe !== null && safe.kind === 'recovery_order' ? safe : undefined;
+    } catch {
+      // Advisory path must never break recovery — on any error, fall back to no advice.
+      return undefined;
+    }
   }
 
   private async buildStatesMap(g: TaskGraph): Promise<Map<string, TaskState>> {

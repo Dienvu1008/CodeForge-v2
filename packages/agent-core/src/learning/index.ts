@@ -17,7 +17,7 @@ export {
 // P11.3: AdviceGate (deterministic clamp between learning and policy).
 export { AdviceGate, DEFAULT_MAX_RERANK_DELTA } from './advice-gate.js';
 // P11.4: RecoveryAdvisor (proposes a recovery try-order from the SelfModel; advisory only).
-export { RecoveryAdvisor, type RecoveryAdvisorOptions } from './recovery-advisor.js';
+export { RecoveryAdvisor, selfModelFromLessons, type RecoveryAdvisorOptions } from './recovery-advisor.js';
 // P11.5: ContextReranker + NoProgressAdvisor (advisory re-rank / early-stuck nudge).
 export { ContextReranker } from './context-reranker.js';
 export {

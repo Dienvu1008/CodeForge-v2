@@ -18,6 +18,8 @@
 //   --max-steps <n>      Max orchestrator iterations (default: 40)
 //   --autonomy <level>   full | edits | readonly (default: edits). Controls which tool
 //                        risk classes auto-approve vs require a human decision.
+//   --learning <on|off>  P11.6 learning plane for recovery ordering (default: off). When on,
+//                        recovery reorders its try-order from history (advisory; LE-002).
 import { resolve, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -40,6 +42,7 @@ import { SqliteApprovalRepository }       from '../repositories/index.js';
 import { SqliteVerificationRepository }   from '../repositories/index.js';
 import { SqliteFailureRepository }        from '../repositories/index.js';
 import { SqliteRecoveryActionRepository } from '../repositories/index.js';
+import { SqliteLearningStore }            from '../learning/index.js';
 import { Blake3GraphHasher }              from '../graph-hash/index.js';
 import { OllamaModelGateway }            from '../model/index.js';
 import { NodeWorkspaceManager }           from '../workspace/index.js';
@@ -77,6 +80,10 @@ import {
   buildVerificationPolicy,
   FailureAnalyzer,
   RecoveryEngine,
+  SelfModelBuilder,
+  RecoveryAdvisor,
+  AdviceGate,
+  LessonWriter,
   type Session,
   type Goal,
 } from '@codeforge/agent-core';
@@ -120,6 +127,9 @@ async function main(): Promise<void> {
   const autonomyArg   = (args['autonomy'] ?? 'edits').toLowerCase();
   const autonomy: AutonomyLevel =
     autonomyArg === 'full' || autonomyArg === 'readonly' ? autonomyArg : 'edits';
+  // P11.6: optional learning plane for recovery ordering. OFF by default — when off, the
+  // orchestrator is byte-identical to Phase 10 (LE-002). `--learning on` wires the advisors.
+  const learningOn = (args['learning'] ?? 'off').toLowerCase() === 'on';
 
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║         CodeForge v2 Runtime              ║');
@@ -223,6 +233,7 @@ async function main(): Promise<void> {
     .filter((r) => r.action === 'require_approval')
     .map((r) => r.riskClass);
   console.log(`  Autonomy:   ${autonomy} (auto-approve reads${autonomy !== 'readonly' ? ' + edits' : ''}; ask: ${askClasses.join(', ') || 'none'})`);
+  console.log(`  Learning:   ${learningOn ? 'ON (recovery-order advice; advisory only)' : 'off (Phase 10 behavior)'}`);
   const tg = new ToolGateway({
     calls: toolCalls, approvals, events,
     policy: toolPolicy,
@@ -276,6 +287,24 @@ async function main(): Promise<void> {
   // discards it). This feeds both the classifier and the retry prompt.
   const verificationEvidenceProvider = { lastFailureOutput: () => checkSupervisor.lastFailureOutput() };
 
+  // 8c. P11.6 learning plane (optional). When `--learning on`, wire the SelfModel builder,
+  // RecoveryAdvisor, and AdviceGate so the orchestrator can reorder the recovery try-order
+  // from this task's history. When off, these are undefined → Phase 10 behavior (LE-002).
+  const learningStore = learningOn ? new SqliteLearningStore(db) : undefined;
+  const learningBuilder = new SelfModelBuilder();
+  const lessonWriter = learningOn
+    ? new LessonWriter({ store: learningStore!, now: rt.now, nextId: rt.nextId })
+    : undefined;
+  const learningDeps = learningOn
+    ? {
+        selfModelBuilder:         learningBuilder,
+        recoveryAdvisor:          new RecoveryAdvisor(),
+        adviceGate:               new AdviceGate(),
+        recoveryActionRepository: recoveryActions,
+        learningStore:            learningStore!,
+      }
+    : {};
+
   // 9. Orchestrator
   const orchestrator = new SessionOrchestrator({
     sessionService: sessionSvc, planner, graphCommitService: commitSvc,
@@ -286,6 +315,7 @@ async function main(): Promise<void> {
     taskRunRepository: taskRuns,
     failureAnalyzer, recoveryEngine, failureRepository: failures,
     verificationEvidenceProvider,
+    ...learningDeps,
     now: rt.now, nextId: rt.nextId,
   });
 
@@ -353,6 +383,20 @@ async function main(): Promise<void> {
     try {
       const result = await orchestrator.run({ sessionId: sid, goal, revision, graphVersion: 1 });
       console.log(`  < Result:   ${result.sessionState} | tasks ${result.taskRunCount}, passed ${result.passedTaskIds.length}, non-passed ${result.nonPassedTaskIds.length} (${(result.durationMs / 1000).toFixed(1)}s)`);
+
+      // P11.6: when learning is on, distill this session's recovery history into persisted
+      // lessons so FUTURE sessions can be advised (cross-session value). Read-only w.r.t. the
+      // run; purely additive; bounded + provenance via LessonWriter (LE-005/006).
+      if (lessonWriter !== undefined) {
+        try {
+          const sFailures = await failures.getBySession(sid);
+          const recActions = [];
+          for (const f of sFailures) recActions.push(...await recoveryActions.getByFailure(f.failureId));
+          const model = learningBuilder.build({ events: [], failures: sFailures, recoveryActions: recActions });
+          const lessons = await lessonWriter.writeFromModel(model, 'project');
+          if (lessons.length > 0) console.log(`    Learning:   persisted ${lessons.length} lesson(s) from this session`);
+        } catch { /* learning write is non-fatal */ }
+      }
       // P10.7: a goal that ended AWAITING_HUMAN (unresolved escalation) is NON-TERMINAL,
       // so it still holds the workspace lock. In the goal-queue model each goal is its own
       // session and the queue moves on, so abort the unresolved session to release the lock

@@ -9,6 +9,7 @@
 // Pure + deterministic: advise() is a total function of the SelfModel (LE-004 lineage) — no
 // I/O, no clock, no randomness. Stable sort so equal inputs give equal advice.
 import type { SelfModel, RecoveryOutcomeStat } from '../domain/self-model.js';
+import { SELF_MODEL_VERSION } from '../domain/self-model.js';
 import type { RawRecoveryOrderAdvice } from '../domain/advice.js';
 import type { FailureClass, RecoveryKind } from '../domain/failure.js';
 
@@ -58,4 +59,43 @@ function compareStat(a: RecoveryOutcomeStat, b: RecoveryOutcomeStat): number {
   if (a.successRate !== b.successRate) return b.successRate - a.successRate;
   if (a.total !== b.total) return b.total - a.total;
   return a.action < b.action ? -1 : a.action > b.action ? 1 : 0;
+}
+
+/**
+ * Reconstruct the `recoveryOutcomes` slice of a SelfModel from persisted `recovery_outcome`
+ * lessons (across prior sessions). This lets the advisor benefit from accumulated history that
+ * is no longer in the live failure repository. Pure + deterministic; non-recovery_outcome
+ * lessons are ignored. Returns a minimal SelfModel (only recoveryOutcomes populated) suitable
+ * for `advise()`. Lessons for the same (class, action) are collapsed to the NEWEST by taking
+ * the first occurrence (the store returns recency-desc), matching lesson supersession.
+ */
+export function selfModelFromLessons(
+  lessons: ReadonlyArray<import('../domain/learning.js').Lesson>,
+): SelfModel {
+  const seen = new Set<string>();
+  const recoveryOutcomes: RecoveryOutcomeStat[] = [];
+  for (const l of lessons) {
+    if (l.payload.kind !== 'recovery_outcome') continue;
+    const key = `${l.payload.failureClass}\u0001${l.payload.action}`;
+    if (seen.has(key)) continue; // keep newest (store is recency-desc)
+    seen.add(key);
+    const { failureClass, action, total, succeeded, failed, aborted } = l.payload;
+    recoveryOutcomes.push({
+      failureClass, action, total, succeeded, failed, aborted,
+      successRate: total > 0 ? succeeded / total : 0,
+    });
+  }
+  recoveryOutcomes.sort((a, b) =>
+    a.failureClass < b.failureClass ? -1 : a.failureClass > b.failureClass ? 1
+      : a.action < b.action ? -1 : a.action > b.action ? 1 : 0,
+  );
+  return {
+    version: SELF_MODEL_VERSION,
+    sessionIds: [],
+    totals: { events: 0, failures: 0, recoveryActions: recoveryOutcomes.length, sessions: 0 },
+    recoveryOutcomes,
+    failureClasses: [],
+    failureSignatures: [],
+    convergence: [],
+  };
 }

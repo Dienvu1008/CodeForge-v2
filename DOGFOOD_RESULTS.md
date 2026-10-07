@@ -230,3 +230,57 @@ Still a 3-task smoke suite on a one-file project, not a benchmark. The result sh
 specific dogfood failure modes (silent-duplicate loops, over-reach into test files,
 non-convergence) are addressed on these tasks; it is not a general success-rate claim. A
 broader, varied task set is the right next measurement before trusting the agent widely.
+
+---
+
+## Addendum 4 — Phase 11 learning plane wired into the live runtime (P11.6)
+
+The learning plane (SelfModel → LearningStore → RecoveryAdvisor → AdviceGate) was wired into
+the `SessionOrchestrator` and exposed via a `--learning on|off` CLI flag (default off). When on,
+the orchestrator asks the RecoveryAdvisor (seeded from persisted cross-session lessons merged
+with the current task's history) for a recovery try-order, clamps it through the AdviceGate, and
+passes it to `decide()`. After each goal the CLI distills the session's recovery history into
+persisted lessons for future sessions. When off (or any advisor dep unwired), the orchestrator
+is byte-identical to Phase 10 (LE-002).
+
+### What was verified live (qwen2.5-coder, `--learning on`)
+
+- **The plane wires end-to-end.** Startup banner shows `Learning: ON`; a run that hit recovery
+  persisted a lesson (`Learning: persisted 1 lesson(s)`), and the `learning_lessons` row is
+  correct: `(UNKNOWN, ESCALATE) → 1/1` with provenance.
+- **Flag-off safety holds.** A clean run (`COMPLETED 3/3`) was identical to the Phase 10 path;
+  the learning write only happens post-run and never altered the decision.
+
+### Honest result: 0 advised decisions — and WHY (this is the valuable finding)
+
+Across the dogfood sessions, the advisor produced **zero** actual reorderings. The reasons are
+structural, not bugs, and they tell us what the advisor needs to be useful:
+
+1. **Single-element allowed-sets can't be reordered.** The failing session's class was `UNKNOWN`,
+   whose policy allowed-set is `['ESCALATE']`. There is nothing to reorder, so the gate correctly
+   collapses any advice to null (LE-003). The one lesson learned — `(UNKNOWN, ESCALATE)` — is
+   therefore inert by construction.
+2. **A single short task has too little signal.** The advisor needs ≥2 terminal samples for a
+   given (class, action) before it trusts a success rate (minSamples), and it needs *different*
+   actions to compare. One bugfix task produces 1–2 recovery actions of the *same* action — never
+   enough to rank one action above another within a session.
+3. **The recovery success signal is NOISY (the real blocker).** `RecoveryEngine` records
+   `outcome = SUCCEEDED` for RETRY/FIX as soon as the attempt is *authorized*, NOT based on
+   whether the retried run ultimately passed verification. So a lesson says "RETRY succeeded"
+   even when the retry later failed. Learning from this signal would be learning from noise.
+
+### What this means (measured, not claimed)
+
+- The architecture integrates cleanly and safely — zero-authority held, flag-off parity held,
+  lessons persist with provenance and bounds. The wiring is correct.
+- But the advisor cannot yet add measurable task-success value, because the **outcome signal it
+  learns from does not reflect real recovery success**, and the local-model dogfood tasks are too
+  short/one-shot to accumulate comparative history. These are the next things to fix BEFORE
+  claiming learning improves outcomes:
+  1. Make `RecoveryAction.outcome` reflect the *verified* result of the retried run (did the next
+     verification pass?), not merely "attempt authorized". This is the highest-value change.
+  2. Accumulate lessons across many varied sessions (a real benchmark/fixture suite), so the
+     advisor has comparative (class, action) history with enough samples.
+- Until then, `--learning on` is safe to ship (it cannot hurt — worst case it is a no-op) but
+  should not be presented as improving success rates. Honest status: **integrated and safe,
+  value not yet demonstrated.**
