@@ -174,6 +174,15 @@ export interface TaskExecutorDeps {
    * Default: 25. Must be > 0.
    */
   readonly maxToolCalls?: number;
+  /**
+   * Optional P10.1: capture the CURRENT workspace revision right before verification, so
+   * verification's R_before reflects the files THIS task's tool calls produced (its own
+   * edits are the baseline, not "drift"). Check commands (npm test, tsc) must not mutate
+   * the workspace, so a clean run stays fresh → PASS. When omitted, the request's
+   * workspaceRevisionAtEnd is used as-is (pre-P10.1 behavior — correct for fake executors
+   * that don't change files).
+   */
+  readonly verificationRevisionProvider?: { capture(reason: string): Promise<WorkspaceRevision> };
   readonly now:    () => string;
   readonly nextId: () => string;
 }
@@ -528,11 +537,17 @@ export class TaskExecutor {
     if (finalState === 'SUCCEEDED' && this.deps.verificationEngine !== undefined) {
       try {
         const policy   = this.deps.verificationPolicy ?? DEFAULT_VERIFICATION_POLICY;
+        // P10.1: R_before = the workspace AS IT IS NOW (after this task's tool calls), so
+        // the agent's own edits are the baseline. Falls back to the request revision when
+        // no provider is wired (fake executors don't change files).
+        const targetRevision = this.deps.verificationRevisionProvider !== undefined
+          ? await this.deps.verificationRevisionProvider.capture('pre_verify')
+          : req.workspaceRevisionAtEnd;
         const report   = await this.deps.verificationEngine.verify({
           sessionId:       req.sessionId,
           taskId:          req.task.taskId,
           taskRunId:       runId,
-          targetRevision:  req.workspaceRevisionAtEnd,
+          targetRevision,
           policy,
           reason:          'task_completion',
         });
@@ -544,7 +559,7 @@ export class TaskExecutor {
         if (report.status === 'PASS' && this.deps.completionGate !== undefined) {
           const gate = await this.deps.completionGate.canComplete(
             req.task.taskId,
-            req.workspaceRevisionAtEnd,
+            targetRevision,
             policy.requiredScope,
           );
           if (gate.canComplete) {

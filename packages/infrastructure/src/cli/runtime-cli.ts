@@ -43,6 +43,8 @@ import { NodeToolExecutor }               from '../tools/index.js';
 import { ObservabilityService }           from '../observability-server/observability-service.js';
 import { HttpTransport }                  from '../observability-server/http-transport.js';
 import { SessionStateControlGate }        from '../observability-server/session-state-control-gate.js';
+import { inspectProject }                 from '../verification-runtime/index.js';
+import { WorkspaceProcessSupervisor }     from '../verification-runtime/index.js';
 
 // Agent-core (pure domain)
 import {
@@ -62,7 +64,7 @@ import {
   VerificationEngine,
   CompletionGate,
   PERMISSIVE_TEST_POLICY,
-  DEFAULT_VERIFICATION_POLICY,
+  buildVerificationPolicy,
   type Session,
   type Goal,
 } from '@codeforge/agent-core';
@@ -169,20 +171,33 @@ async function main(): Promise<void> {
   });
 
   // 6. Verification + ToolGateway
+  //    P10.1: real verification. Checks run in the workspace via a dedicated supervisor
+  //    (forces cwd + env + resolves npm/npx on Windows), and the policy is DERIVED from
+  //    the project (build/test/lint). Task PASSED only when checks are green (TI-005).
+  // The runtime DB lives at .codeforge/ INSIDE the workspace; its writes must not count
+  // as workspace mutations (else verification sees drift → INVALID). Exclude it as a
+  // scratch zone from the revision hash (WS/VR-003 scratch spirit).
+  const SCRATCH_PREFIXES = ['.codeforge/'];
   const revisionProvider = {
     capture: async (_label: string) => computeWorkspaceRevision({
       root: workspaceRoot,
+      scratchPrefixes: SCRATCH_PREFIXES,
       createdBy: { sessionId, reason: 'pre_verify' },
     }),
   };
+  const checkSupervisor = new WorkspaceProcessSupervisor({ workspaceRoot });
   const verEngine = new VerificationEngine({
-    reports: verReports, events, supervisor, revisionProvider,
+    reports: verReports, events, supervisor: checkSupervisor, revisionProvider,
     now: rt.now, nextId: rt.nextId,
   });
   const completionGate = new CompletionGate({ reports: verReports });
+  const verificationPolicy = buildVerificationPolicy(inspectProject(workspaceRoot));
+  const checkNames = verificationPolicy.checks.map((c) => c.name);
+  console.log(`  Verification: ${checkNames.length > 0 ? checkNames.join(', ') : '(no checks — tasks cannot be verified-PASSED)'}`);
+
   const tg = new ToolGateway({
     calls: toolCalls, approvals, events,
-    policy: PERMISSIVE_TEST_POLICY, // TODO: real policy for production
+    policy: PERMISSIVE_TEST_POLICY, // TODO (P10.5): real risk policy + approval
     now: rt.now, nextId: rt.nextId,
   });
 
@@ -192,7 +207,11 @@ async function main(): Promise<void> {
     contextBuilder: ctxBuilder, gateway: model,
     toolGateway: tg, executor: toolExec,
     verificationEngine: verEngine, completionGate,
-    verificationPolicy: DEFAULT_VERIFICATION_POLICY,
+    verificationPolicy,
+    // P10.1: capture a FRESH revision right before verify so the agent's own file
+    // edits (made during execute) are the baseline, not "drift" (VR-008). Reuses
+    // revisionProvider — same shape, scratch-aware, excludes .codeforge/.
+    verificationRevisionProvider: { capture: (reason: string) => revisionProvider.capture(reason) },
     maxToolCalls: maxSteps * 2,
     now: rt.now, nextId: rt.nextId,
   });
@@ -257,6 +276,7 @@ async function main(): Promise<void> {
 
   const revision = await computeWorkspaceRevision({
     root: workspaceRoot,
+    scratchPrefixes: SCRATCH_PREFIXES,
     createdBy: { sessionId, reason: 'session_start' },
   });
   console.log(`  Session:    ${sessionId}`);

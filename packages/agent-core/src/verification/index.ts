@@ -43,3 +43,8 @@ export {
   CompletionGateError,
   type CompletionGateDeps,
 } from './completion-gate.js';
+
+export {
+  buildVerificationPolicy,
+  type ProjectSignals,
+} from './verification-policy-builder.js';

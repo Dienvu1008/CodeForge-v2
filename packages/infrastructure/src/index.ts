@@ -44,3 +44,5 @@ export * from './memory/index.js';
 export * from './observability-server/index.js';
 // Phase 9 — P9.8: Telegram adapter (another transport over ObservabilityService)
 export * from './telegram/index.js';
+// Phase 10 — P10.1: Verification runtime (project inspector + check supervisor)
+export * from './verification-runtime/index.js';
