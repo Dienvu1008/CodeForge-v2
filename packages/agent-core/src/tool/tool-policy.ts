@@ -93,6 +93,51 @@ export const PERMISSIVE_TEST_POLICY: ToolPolicy = {
   defaultAction: 'allow',
 };
 
+// ── Autonomy-level policies (P10.5) ───────────────────────────────────────────
+
+/**
+ * Autonomy level for an autonomous session — how much the agent may do without asking.
+ * Mirrors the familiar all/edits/none model, mapped onto the risk-class policy:
+ *   'full'     — auto-approve everything the runtime permits (DESTRUCTIVE still asks,
+ *                PRIVILEGED still denied — TG-007/SE-009 cannot be configured away).
+ *   'edits'    — auto-approve reads + workspace edits; ASK before running commands,
+ *                network, or package installs; ASK for destructive; deny privileged.
+ *                The usable default: the agent writes code freely but a human gates
+ *                shell/network/destructive actions.
+ *   'readonly' — auto-approve reads only; ASK for everything else; deny privileged.
+ */
+export type AutonomyLevel = 'full' | 'edits' | 'readonly';
+
+/**
+ * Build a ToolPolicy for an autonomy level. The TG-007/SE-009 hard overrides
+ * (DESTRUCTIVE never auto-approves, PRIVILEGED always denied) are also encoded in
+ * determineAction, so even a mis-specified rule here cannot bypass them.
+ */
+export function buildToolPolicy(level: AutonomyLevel): ToolPolicy {
+  // action for the "medium" risk classes (workspace edits, shell, net, pkg install)
+  const editAction: PolicyAction      = level === 'full' ? 'allow'
+    : level === 'edits' ? 'allow' : 'require_approval';
+  const commandAction: PolicyAction   = level === 'full' ? 'allow' : 'require_approval';
+
+  return {
+    policyId: `autonomy-${level}-v1`,
+    version:  1,
+    rules: [
+      { toolName: '*', riskClass: 'READ_ONLY',        action: 'allow' },
+      { toolName: '*', riskClass: 'LOW_RISK',         action: 'allow' },
+      { toolName: '*', riskClass: 'MODIFY_WORKSPACE', action: editAction },
+      { toolName: '*', riskClass: 'NETWORK',          action: commandAction },
+      { toolName: '*', riskClass: 'PACKAGE_INSTALL',  action: commandAction },
+      { toolName: '*', riskClass: 'SYSTEM',           action: commandAction },
+      // TG-007: DESTRUCTIVE always asks a human (determineAction coerces 'allow' → ask).
+      { toolName: '*', riskClass: 'DESTRUCTIVE',      action: 'require_approval' },
+      // SE-009: PRIVILEGED never runs.
+      { toolName: '*', riskClass: 'PRIVILEGED',       action: 'deny' },
+    ],
+    defaultAction: 'require_approval',
+  };
+}
+
 // ── determineAction ───────────────────────────────────────────────────────────
 
 /**

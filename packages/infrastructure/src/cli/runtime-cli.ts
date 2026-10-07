@@ -15,6 +15,8 @@
 //   --port <number>      HTTP server port for the dashboard (default: 9500)
 //   --db <path>          SQLite database file (default: .codeforge/runtime.db)
 //   --max-steps <n>      Max orchestrator iterations (default: 40)
+//   --autonomy <level>   full | edits | readonly (default: edits). Controls which tool
+//                        risk classes auto-approve vs require a human decision.
 import { resolve, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -48,6 +50,7 @@ import { SessionStateControlGate }        from '../observability-server/session-
 import { inspectProject }                 from '../verification-runtime/index.js';
 import { WorkspaceProcessSupervisor }     from '../verification-runtime/index.js';
 import { ContextCollector }               from '../context-runtime/index.js';
+import { NodeApprovalCoordinator }         from '../approval-runtime/index.js';
 
 // Agent-core (pure domain)
 import {
@@ -67,7 +70,8 @@ import {
   ControlPlane,
   VerificationEngine,
   CompletionGate,
-  PERMISSIVE_TEST_POLICY,
+  buildToolPolicy,
+  type AutonomyLevel,
   buildVerificationPolicy,
   FailureAnalyzer,
   RecoveryEngine,
@@ -110,6 +114,10 @@ async function main(): Promise<void> {
   const port          = parseInt(args['port'] ?? '9500', 10);
   const maxSteps      = parseInt(args['max-steps'] ?? '40', 10);
   const dbPath        = args['db'] ?? join(workspaceRoot, '.codeforge', 'runtime.db');
+  // P10.5: autonomy level controls which tool risk classes auto-approve vs ask a human.
+  const autonomyArg   = (args['autonomy'] ?? 'edits').toLowerCase();
+  const autonomy: AutonomyLevel =
+    autonomyArg === 'full' || autonomyArg === 'readonly' ? autonomyArg : 'edits';
 
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║         CodeForge v2 Runtime              ║');
@@ -206,10 +214,23 @@ async function main(): Promise<void> {
   const checkNames = verificationPolicy.checks.map((c) => c.name);
   console.log(`  Verification: ${checkNames.length > 0 ? checkNames.join(', ') : '(no checks — tasks cannot be verified-PASSED)'}`);
 
+  // P10.5: real risk policy by autonomy level. DESTRUCTIVE always asks; PRIVILEGED denied.
+  const toolPolicy = buildToolPolicy(autonomy);
+  const askClasses = toolPolicy.rules
+    .filter((r) => r.action === 'require_approval')
+    .map((r) => r.riskClass);
+  console.log(`  Autonomy:   ${autonomy} (auto-approve reads${autonomy !== 'readonly' ? ' + edits' : ''}; ask: ${askClasses.join(', ') || 'none'})`);
   const tg = new ToolGateway({
     calls: toolCalls, approvals, events,
-    policy: PERMISSIVE_TEST_POLICY, // TODO (P10.5): real risk policy + approval
+    policy: toolPolicy,
     now: rt.now, nextId: rt.nextId,
+  });
+
+  // P10.5: human-in-the-loop coordinator — pauses the session to AWAITING_HUMAN and waits
+  // for a dashboard/Telegram/API approve/deny when a tool call needs it. The decision is
+  // applied by ObservabilityService.toolControl → ToolGateway.approve/deny (already wired).
+  const approvalCoordinator = new NodeApprovalCoordinator({
+    toolCalls, sessionService: { transition: (id, ev, ctx) => sessionSvc.transition(id, ev as never, ctx as never) },
   });
 
   // 6b. Context collector (P10.3): reads the workspace (files + symbols + import graph)
@@ -229,6 +250,7 @@ async function main(): Promise<void> {
     // edits (made during execute) are the baseline, not "drift" (VR-008). Reuses
     // revisionProvider — same shape, scratch-aware, excludes .codeforge/.
     verificationRevisionProvider: { capture: (reason: string) => revisionProvider.capture(reason) },
+    approvalCoordinator,
     maxToolCalls: maxSteps * 2,
     now: rt.now, nextId: rt.nextId,
   });
@@ -266,6 +288,9 @@ async function main(): Promise<void> {
     controlPlane: new ControlPlane(),
     sessionControl: { transition: (id, ev) => sessionSvc.transition(id, ev as never) },
     toolControl: { approve: (id, by) => tg.approve(id, by), deny: (id, by, reason) => tg.deny(id, by, reason) },
+    // P10.5: lets the ControlPlane admit approve/deny only for a call that is actually
+    // APPROVAL_PENDING (gate against stray decisions).
+    toolStateReader: { getState: async (id) => (await toolCalls.getById(id))?.state ?? null },
     now: rt.now, nextId: rt.nextId,
   });
   const http = new HttpTransport({ service: obService, streamPollMs: 300 });

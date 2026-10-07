@@ -193,8 +193,31 @@ export interface TaskExecutorDeps {
    * When omitted, context is built from task/graph only (pre-P10.3 behavior).
    */
   readonly contextProvider?: ContextProvider;
+  /**
+   * Optional P10.5: coordinates human approval of a tool call that policy flagged as
+   * APPROVAL_PENDING (e.g. run_command under autonomy='edits'). When wired, the executor
+   * drives the session to AWAITING_HUMAN, waits for the human decision IN-LOOP, and then
+   * either executes the now-APPROVED call or treats a denial as a non-fatal failed step
+   * (the agent sees it and adapts). When omitted, the run ends and surfaces
+   * pendingApprovalToolCallId (pre-P10.5 behavior) so the caller can escalate.
+   */
+  readonly approvalCoordinator?: ApprovalCoordinator;
   readonly now:    () => string;
   readonly nextId: () => string;
+}
+
+// ── ApprovalCoordinator (P10.5) ───────────────────────────────────────────────
+
+/** Outcome of waiting for a human decision on an APPROVAL_PENDING tool call. */
+export type ApprovalDecision = 'approved' | 'denied' | 'timeout';
+
+export interface ApprovalCoordinator {
+  /**
+   * Drive the session to AWAITING_HUMAN, wait for a human to approve/deny the tool call
+   * via the ControlPlane (which calls ToolGateway.approve/deny), then return the session
+   * to RUNNING. Resolves with the decision. Must not throw — 'timeout' on expiry.
+   */
+  awaitDecision(sessionId: string, toolCallId: string): Promise<ApprovalDecision>;
 }
 
 // ── ContextProvider (P10.3) ───────────────────────────────────────────────────
@@ -489,14 +512,32 @@ export class TaskExecutor {
       }
 
       if (requestedCall.state === 'APPROVAL_PENDING') {
-        // P5-AH1: surface to caller — do NOT finalize as FAILED.
-        // Finalize run as FAILED (best we can do without suspending the loop),
-        // but signal SUSPENDED so SessionOrchestrator can escalate properly.
-        finalState = 'FAILED';
-        loopDone   = true;
-        // Record the pending approval ID for the caller to surface.
-        pendingApprovalToolCallIdRef = toolCallId;
-        break;
+        // P10.5: policy flagged this call for human approval (e.g. run_command under
+        // autonomy='edits'). If an ApprovalCoordinator is wired, pause for a human
+        // decision IN-LOOP (session → AWAITING_HUMAN → wait → RUNNING) and continue;
+        // otherwise fall back to the pre-P10.5 behavior (end the run + surface the id).
+        if (this.deps.approvalCoordinator === undefined) {
+          finalState = 'FAILED';
+          loopDone   = true;
+          pendingApprovalToolCallIdRef = toolCallId;
+          break;
+        }
+        const decision = await this.deps.approvalCoordinator.awaitDecision(req.sessionId, toolCallId);
+        if (decision !== 'approved') {
+          // Denied or timed out: NON-FATAL. The agent sees it in the transcript and can
+          // choose a different approach (TG-005: a denied call never executes).
+          transcript.push({
+            step: transcript.length + 1,
+            toolName: proposal.toolName,
+            arguments: proposal.arguments,
+            result: decision === 'denied'
+              ? 'DENIED by human: this action was not approved. Do not retry it; try another approach or finish.'
+              : 'APPROVAL TIMED OUT: no human decision. Avoid this action; try another approach or finish.',
+            exitCode: null,
+          });
+          continue;
+        }
+        // Approved: the call is now APPROVED — fall through to execute it below.
       }
 
       // ── 3f. ToolGateway.execute() — run the tool ────────────────────────────

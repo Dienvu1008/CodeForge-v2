@@ -10,6 +10,8 @@ export {
 
 export {
   determineAction,
+  buildToolPolicy,
+  type AutonomyLevel,
   DEFAULT_TOOL_POLICY,
   PERMISSIVE_TEST_POLICY,
   PolicyError,

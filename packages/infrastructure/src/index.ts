@@ -48,3 +48,5 @@ export * from './telegram/index.js';
 export * from './verification-runtime/index.js';
 // Phase 10 — P10.3: Context runtime (workspace → symbols/import-graph/files collector)
 export * from './context-runtime/index.js';
+// Phase 10 — P10.5: Approval runtime (human-in-the-loop tool approval coordinator)
+export * from './approval-runtime/index.js';
