@@ -11,7 +11,8 @@
 //   --workspace <path>   Project root (default: cwd)
 //   --model <name>       Ollama model name (default: qwen2.5-coder)
 //   --endpoint <url>     Ollama server URL (default: http://localhost:11434)
-//   --goal <description> What the agent should do
+//   --goal <description> The FIRST goal. The runtime stays alive after it; POST /goal
+//                        {"description":"..."} enqueues more goals (P10.9).
 //   --port <number>      HTTP server port for the dashboard (default: 9500)
 //   --db <path>          SQLite database file (default: .codeforge/runtime.db)
 //   --max-steps <n>      Max orchestrator iterations (default: 40)
@@ -58,6 +59,7 @@ import {
   SessionOrchestrator,
   Planner,
   PlanCritic,
+  GoalIngressService,
   GraphCommitService,
   GraphService,
   ExecutionCoordinator,
@@ -138,8 +140,9 @@ async function main(): Promise<void> {
   runMigrations(db, createMigrationRegistry(), { now: () => new Date().toISOString() });
 
   const rt = makeRuntime();
-  const sessionId = randomUUID();
-  const goalId    = randomUUID();
+  // P10.9: one runtime now serves a QUEUE of goals. Each goal gets its own session; the
+  // active session id is tracked here so shared helpers (revision provider) can tag it.
+  let activeSessionId = randomUUID();
 
   // 2. Repositories
   const sessions   = new SqliteSessionRepository(db);
@@ -201,7 +204,7 @@ async function main(): Promise<void> {
     capture: async (_label: string) => computeWorkspaceRevision({
       root: workspaceRoot,
       scratchPrefixes: SCRATCH_PREFIXES,
-      createdBy: { sessionId, reason: 'pre_verify' },
+      createdBy: { sessionId: activeSessionId, reason: 'pre_verify' },
     }),
   };
   const checkSupervisor = new WorkspaceProcessSupervisor({ workspaceRoot });
@@ -282,7 +285,10 @@ async function main(): Promise<void> {
     now: rt.now, nextId: rt.nextId,
   });
 
-  // 10. Observability server
+  // 10. Goal ingress (P10.9) — a FIFO queue of goals submitted at runtime via POST /goal.
+  const goalIngress = new GoalIngressService({ now: rt.now, nextId: rt.nextId });
+
+  // 11. Observability server
   const obService = new ObservabilityService({
     sessions, graphs, executions, taskRuns, events,
     controlPlane: new ControlPlane(),
@@ -291,6 +297,8 @@ async function main(): Promise<void> {
     // P10.5: lets the ControlPlane admit approve/deny only for a call that is actually
     // APPROVAL_PENDING (gate against stray decisions).
     toolStateReader: { getState: async (id) => (await toolCalls.getById(id))?.state ?? null },
+    // P10.9: POST /goal enqueues work while the runtime is already running.
+    goalIngress,
     now: rt.now, nextId: rt.nextId,
   });
   const http = new HttpTransport({ service: obService, streamPollMs: 300 });
@@ -298,71 +306,68 @@ async function main(): Promise<void> {
   console.log(`  Dashboard:  http://localhost:${actualPort}/`);
   console.log('');
 
-  // 11. Create session + seed graph
-  const session: Session = {
-    sessionId, workspaceId: 'ws-' + workspaceRoot, workspaceRoot,
-    goalId, graphVersion: 1, state: 'CREATED',
-    createdAt: rt.now(), updatedAt: rt.now(),
-    runtimeVersion: '0.9.0', schemaVersion: 1,
-    budgetId: 'B-' + sessionId, lockId: 'L-' + sessionId,
-    metadata: { hostname: hostname(), processId: process.pid,
-      ollamaEndpoint: endpoint,
-      ollamaModels: { planner: modelName, critic: modelName, executor: modelName, analyzer: modelName } },
-  };
-  const goal: Goal = {
-    goalId, version: 1, description: goalDesc, constraints: [],
-    acceptanceCriteria: [{ criterionId: 'AC1', description: goalDesc, mandatory: true }],
-    createdAt: rt.now(), createdBy: 'user',
-  };
-
-  await sessionSvc.create({ session, hostname: session.metadata.hostname, processId: session.metadata.processId });
-  await graphs.commit({
-    graphId: 'GR-' + sessionId, sessionId, version: 1, nodes: [], edges: [],
-    createdAt: rt.now(), createdBy: 'planner', canonicalHash: 'seed',
-    schemaVersion: 1, canonicalFormVersion: 'v1',
-  }, {
-    mutationId: 'M0-' + sessionId, sessionId, baseVersion: 0, operations: [],
-    proposedBy: 'planner', reason: 'seed',
-    provenance: { provenanceId: rt.nextId(), source: { kind: 'runtime', id: 'init' }, inputs: [], reason: 'init', at: rt.now() },
-    createdAt: rt.now(), status: 'COMMITTED',
-  });
-
-  const revision = await computeWorkspaceRevision({
-    root: workspaceRoot,
-    scratchPrefixes: SCRATCH_PREFIXES,
-    createdBy: { sessionId, reason: 'session_start' },
-  });
-  console.log(`  Session:    ${sessionId}`);
-  console.log(`  Goal:       ${goalDesc}`);
-  console.log(`  Workspace:  ${revision.fileCount} files, ${revision.hash.slice(0, 12)}...`);
-  console.log('');
-  console.log('  Running agent...');
-  console.log('  Open the dashboard to observe:');
-  console.log(`    http://localhost:${actualPort}/?session=${sessionId}`);
-  console.log('');
-
-  // 12. Run the agent
-  try {
-    const result = await orchestrator.run({
-      sessionId, goal, revision, graphVersion: 1,
+  // 12. Per-goal runner: a goal → a fresh session → seed graph → orchestrator.run().
+  //     Each goal still goes through Planner → GraphCommit → orchestrator (GI-009) — the
+  //     queue is only a Decision Gate for "what to do next", never a bypass.
+  async function runGoal(goal: Goal): Promise<void> {
+    const sid = randomUUID();
+    activeSessionId = sid;
+    const session: Session = {
+      sessionId: sid, workspaceId: 'ws-' + workspaceRoot, workspaceRoot,
+      goalId: goal.goalId, graphVersion: 1, state: 'CREATED',
+      createdAt: rt.now(), updatedAt: rt.now(),
+      runtimeVersion: '0.10.0', schemaVersion: 1,
+      budgetId: 'B-' + sid, lockId: 'L-' + sid,
+      metadata: { hostname: hostname(), processId: process.pid,
+        ollamaEndpoint: endpoint,
+        ollamaModels: { planner: modelName, critic: modelName, executor: modelName, analyzer: modelName } },
+    };
+    await sessionSvc.create({ session, hostname: session.metadata.hostname, processId: session.metadata.processId });
+    await graphs.commit({
+      graphId: 'GR-' + sid, sessionId: sid, version: 1, nodes: [], edges: [],
+      createdAt: rt.now(), createdBy: 'planner', canonicalHash: 'seed',
+      schemaVersion: 1, canonicalFormVersion: 'v1',
+    }, {
+      mutationId: 'M0-' + sid, sessionId: sid, baseVersion: 0, operations: [],
+      proposedBy: 'planner', reason: 'seed',
+      provenance: { provenanceId: rt.nextId(), source: { kind: 'runtime', id: 'init' }, inputs: [], reason: 'init', at: rt.now() },
+      createdAt: rt.now(), status: 'COMMITTED',
     });
+
+    const revision = await computeWorkspaceRevision({
+      root: workspaceRoot,
+      scratchPrefixes: SCRATCH_PREFIXES,
+      createdBy: { sessionId: sid, reason: 'session_start' },
+    });
+
     console.log('');
-    console.log('╔═══════════════════════════════════════════╗');
-    console.log(`║  Result: ${result.sessionState.padEnd(33)}║`);
-    console.log('╚═══════════════════════════════════════════╝');
-    console.log(`  Tasks run:    ${result.taskRunCount}`);
-    console.log(`  Passed:       ${result.passedTaskIds.length}`);
-    console.log(`  Non-passed:   ${result.nonPassedTaskIds.length}`);
-    console.log(`  Duration:     ${(result.durationMs / 1000).toFixed(1)}s`);
-    console.log(`  Metrics:      http://localhost:${actualPort}/metrics?session=${sessionId}`);
-    console.log(`  Audit:        http://localhost:${actualPort}/audit?session=${sessionId}`);
-  } catch (err) {
-    console.error('  Agent error:', err instanceof Error ? err.message : err);
+    console.log(`  > Goal:     ${goal.description}`);
+    console.log(`    Session:  ${sid}`);
+    console.log(`    Workspace: ${revision.fileCount} files, ${revision.hash.slice(0, 12)}...`);
+    console.log(`    Observe:  http://localhost:${actualPort}/?session=${sid}`);
+
+    try {
+      const result = await orchestrator.run({ sessionId: sid, goal, revision, graphVersion: 1 });
+      console.log(`  < Result:   ${result.sessionState} | tasks ${result.taskRunCount}, passed ${result.passedTaskIds.length}, non-passed ${result.nonPassedTaskIds.length} (${(result.durationMs / 1000).toFixed(1)}s)`);
+    } catch (err) {
+      console.error('    Agent error:', err instanceof Error ? err.message : err);
+    }
   }
 
-  console.log('');
-  console.log('  Server still running — press Ctrl+C to stop.');
-  // Keep process alive for the HTTP server.
+  // 13. Seed the first goal from --goal, then run the queue worker (stays alive).
+  goalIngress.submitGoal({ description: goalDesc });
+  console.log('  Goal queue worker running. POST /goal {"description":"..."} to enqueue more.');
+  console.log('  Press Ctrl+C to stop.');
+
+  const idleSleepMs = 500;
+  for (;;) {
+    const next = goalIngress.dequeue();
+    if (next === undefined) {
+      await new Promise((r) => setTimeout(r, idleSleepMs));
+      continue;
+    }
+    await runGoal(next);
+  }
 }
 
 main().catch((err) => {

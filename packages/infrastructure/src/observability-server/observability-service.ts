@@ -55,6 +55,11 @@ export interface ToolControlPort {
 export interface ToolStateReader {
   getState(toolCallId: string): Promise<ToolCallState | null>;
 }
+/** Accepts a new goal submitted at runtime (P10.9). Optional. */
+export interface GoalIngressPort {
+  submitGoal(input: { description: string; acceptanceCriteria?: readonly string[] }):
+    { goalId: string; position: number };
+}
 
 export interface ObservabilityServiceDeps {
   readonly sessions: SessionRepository;
@@ -69,6 +74,8 @@ export interface ObservabilityServiceDeps {
   readonly toolControl?: ToolControlPort;
   /** Reads tool-call state for approve/deny admission. Optional. */
   readonly toolStateReader?: ToolStateReader;
+  /** P10.9: accepts goals submitted at runtime (POST /goal). Optional. */
+  readonly goalIngress?: GoalIngressPort;
   readonly now: () => string;
   readonly nextId: () => string;
 }
@@ -79,7 +86,7 @@ export interface SubmitControlResult {
 }
 
 export class ObservabilityServiceError extends Error {
-  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED';
+  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED' | 'GOAL_INGRESS_UNSUPPORTED';
   constructor(code: ObservabilityServiceError['code'], message?: string) {
     super(message ?? code);
     this.name = 'ObservabilityServiceError';
@@ -201,6 +208,19 @@ export class ObservabilityService {
       admission,
       record: buildInterventionRecord({ interventionId, request, admission, at: this.deps.now(), executionOutcome: outcome }),
     };
+  }
+
+  /**
+   * P10.9: submit a NEW goal at runtime. Delegates to the GoalIngressService (which builds
+   * a user-origin Goal and queues it). This is a Decision Gate — it only records intent;
+   * the runtime worker still routes the goal through Planner → GraphCommit → orchestrator
+   * (GI-009), so no authority is bypassed. Throws if goal ingress is not wired.
+   */
+  submitGoal(input: { description: string; acceptanceCriteria?: readonly string[] }): { goalId: string; position: number } {
+    if (this.deps.goalIngress === undefined) {
+      throw new ObservabilityServiceError('GOAL_INGRESS_UNSUPPORTED', 'goal ingress not wired');
+    }
+    return this.deps.goalIngress.submitGoal(input);
   }
 
   // ── internals ────────────────────────────────────────────────────────────────

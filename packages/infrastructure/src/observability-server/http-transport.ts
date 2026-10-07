@@ -9,6 +9,7 @@
 //   GET  /events?session=<id>&from= -> DomainEvent[] (replay, OB-004)
 //   GET  /stream?session=<id>&from= -> text/event-stream live tail (OB-009)
 //   POST /control  {ControlRequest} -> { admission, record } (OB-006)
+//   POST /goal     {description, acceptanceCriteria?} -> { goalId, position } (P10.9)
 //   GET  /                          -> dashboard HTML (static client)
 //   GET  /app.js                    -> dashboard script (static client)
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
@@ -111,6 +112,30 @@ export class HttpTransport {
         catch { return this.sendJson(res, 400, { error: 'invalid JSON body' }); }
         const result = await this.opts.service.submitControl(request);
         return this.sendJson(res, result.admission.admitted ? 200 : 409, result);
+      }
+      if (method === 'POST' && path === '/goal') {
+        // P10.9: enqueue a NEW goal at runtime. Transport only — the service/ingress
+        // builds the Goal and queues it; the runtime worker routes it through the kernel.
+        const body = await readBody(req);
+        let payload: { description?: unknown; acceptanceCriteria?: unknown };
+        try { payload = JSON.parse(body) as typeof payload; }
+        catch { return this.sendJson(res, 400, { error: 'invalid JSON body' }); }
+        if (typeof payload.description !== 'string' || payload.description.trim() === '') {
+          return this.sendJson(res, 400, { error: 'description required' });
+        }
+        const acceptanceCriteria = Array.isArray(payload.acceptanceCriteria)
+          ? payload.acceptanceCriteria.filter((c): c is string => typeof c === 'string')
+          : undefined;
+        try {
+          const result = this.opts.service.submitGoal({
+            description: payload.description,
+            ...(acceptanceCriteria !== undefined ? { acceptanceCriteria } : {}),
+          });
+          return this.sendJson(res, 202, result);
+        } catch (err) {
+          // Goal ingress not wired, or an empty-description guard tripped.
+          return this.sendJson(res, 501, { error: err instanceof Error ? err.message : 'goal ingress unavailable' });
+        }
       }
 
       this.sendJson(res, 404, { error: 'not found' });
