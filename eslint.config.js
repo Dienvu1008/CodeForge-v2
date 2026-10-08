@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'tests/workspace/vectors/**', 'packages/vscode-extension/**'],
+    ignores: ['**/dist/**', '**/dist-cli/**', '**/node_modules/**', 'tests/workspace/vectors/**', 'packages/vscode-extension/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
