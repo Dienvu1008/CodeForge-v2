@@ -33,3 +33,6 @@ export {
 // P12.5: planning strategy router + expert profiles (advisory; MI-001, MI-008).
 export { decidePlanningMode, type PlanningDecision } from './planning-router.js';
 export { selectExpertProfile, renderExpertProfile } from './expert-profile.js';
+// P12.6: Mission Architect (LLM blueprint) + Architecture Gate (deterministic; MI-007).
+export { MissionArchitect, type MissionArchitectDeps } from './mission-architect.js';
+export { evaluateArchitecture } from './architecture-gate.js';

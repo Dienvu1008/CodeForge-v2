@@ -219,5 +219,80 @@ export interface Mission {
   readonly createdAt: string;
 }
 
+// ── Architecture blueprint (§16) — Phase 12 (P12.6) ─────────────────────────────
+
+/**
+ * A proposed module boundary in the architecture (§16). Describes a cohesive unit of the
+ * system and what it is responsible for. Advisory: the Planner still decides the actual Tasks.
+ */
+export interface ModuleBoundary {
+  readonly name: string;
+  readonly responsibility: string;
+  /** Names of other modules this one is allowed to depend on (dependency direction). */
+  readonly dependsOn: readonly string[];
+}
+
+/**
+ * A roadmap phase (§16). The architecture proposes an ORDER of work; it never creates Tasks or
+ * Graph (MI-004) — the Planner remains the only authority that produces the Graph (GI-009).
+ */
+export interface RoadmapPhase {
+  readonly name: string;
+  readonly outcome: string;
+  /** Capability names this phase depends on being VERIFIED (checked by the gate). */
+  readonly requiresCapabilities: readonly string[];
+}
+
+/**
+ * The architecture blueprint produced by the MissionArchitect for complex missions (§16).
+ *
+ * This is an UNTRUSTED LLM PROPOSAL (SE-010) that has passed structured validation (MG-002).
+ * It is EVIDENCE for the ArchitectureGate and prompt context for planning — never authority
+ * (MI-001). It does not mutate the Goal and does not create Tasks/Graph (MI-004).
+ */
+export interface Architecture {
+  readonly missionId: string;
+  /** One-paragraph summary of the chosen approach. */
+  readonly summary: string;
+  /** Requirements the architecture claims to address (traced against the mission's acceptance). */
+  readonly requirements: readonly string[];
+  /** Explicit assumptions the architect made (surfaced so the gate/human can check them). */
+  readonly assumptions: readonly string[];
+  /** Technology choices (e.g. 'TypeScript', 'Postgres') — advisory. */
+  readonly techChoices: readonly string[];
+  readonly moduleBoundaries: readonly ModuleBoundary[];
+  /** Proposed top-level folder layout (strings like 'src/domain', 'src/adapters'). */
+  readonly folderHierarchy: readonly string[];
+  /** Ordered roadmap of phases (advisory ordering, not Tasks). */
+  readonly roadmap: readonly RoadmapPhase[];
+  /** How the result will be verified (maps toward acceptance criteria). */
+  readonly verificationStrategy: readonly string[];
+  /** Known risks the architect flagged. */
+  readonly risks: readonly string[];
+  /** Open questions the architect could not resolve (drives the gate's uncertainty check). */
+  readonly openQuestions: readonly string[];
+  /** Capability names the architecture requires to exist (gate checks these are VERIFIED). */
+  readonly requiredCapabilities: readonly string[];
+  readonly provenance: Provenance;
+  readonly createdAt: string;
+}
+
+// ── Architecture gate result (§16/§18) — Phase 12 (P12.6) ────────────────────────
+
+export type ArchitectureVerdict = 'PASS' | 'BLOCK';
+
+/**
+ * The deterministic outcome of evaluating an Architecture against the mission + preflight.
+ * BLOCK means the caller must stop and move the session to AWAITING_HUMAN (MI-007); the gate
+ * itself never transitions state — it only returns a verdict (DC-* / pure).
+ */
+export interface ArchitectureGateResult {
+  readonly verdict: ArchitectureVerdict;
+  /** Concrete blockers (empty iff PASS). Human-readable, stable order. */
+  readonly blockers: readonly string[];
+  /** Deterministic reasons the gate reached this verdict (both PASS and BLOCK). */
+  readonly reasons: readonly string[];
+}
+
 /** Current Mission schema version (bump when the shape changes). */
 export const MISSION_VERSION = 1;

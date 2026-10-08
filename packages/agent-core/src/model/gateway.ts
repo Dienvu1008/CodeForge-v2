@@ -12,7 +12,9 @@ export type ModelPurpose =
   | 'replan'
   | 'execute'
   | 'analyze_failure'
-  | 'summarize';
+  | 'summarize'
+  // Phase 12: Mission Architect produces an architecture blueprint for complex missions.
+  | 'architect';
 
 // Failure classes for model calls (§20, SECURITY_MODEL §4.3).
 export type ModelErrorCode =

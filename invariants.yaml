@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.8
+version: 1.9
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1460,6 +1460,14 @@ invariants:
     enforcement: ["ModelRouter"]
     violation_class: ROUTE_TO_NONEXISTENT_MODEL
     test: "tests/invariants/mission/mi-006.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
+  - id: MI-007
+    statement: "ArchitectureGate deterministic BLOCK trước planning khi capability yêu cầu chưa VERIFIED, open question chưa giải (uncertainty UNKNOWN/CONFLICTING/BLOCKED), hoặc thiếu verification coverage; BLOCK → caller dừng AWAITING_HUMAN. Gate không bao giờ tự chuyển state."
+    enforcement: ["ArchitectureGate"]
+    violation_class: ARCHITECTURE_GATE_BYPASS
+    test: "tests/invariants/mission/mi-007.spec.ts"
     phase: 12
     severity: CRITICAL
     status: ACTIVE

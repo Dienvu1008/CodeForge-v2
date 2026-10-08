@@ -14,7 +14,7 @@ function harness(): Phase0Harness {
 describe('Phase0Harness — loadInvariants', () => {
   it('parses invariants.yaml with the expected baseline counts', async () => {
     const reg = await harness().loadInvariants();
-    expect(reg.invariants.length).toBe(176); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 8 LE (P11) + 4 MI (P12.2-P12.5)
+    expect(reg.invariants.length).toBe(177); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 8 LE (P11) + 5 MI (P12.2-P12.6)
     const critical = reg.invariants.filter((i) => i.severity === 'CRITICAL');
     expect(critical.length).toBeGreaterThanOrEqual(100); // MA-6
     // every entry has the required fields
@@ -60,7 +60,7 @@ describe('Phase0Harness — generateReport', () => {
   // latest). Generous budget — correctness, not latency. See ws-001 / workspace-vectors.
   it('produces a report with all vectors passing (run or safely skipped)', async () => {
     const report = await harness().generateReport();
-    expect(report.invariantCount).toBe(176); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 8 LE (P11) + 4 MI (P12.2-P12.5)
+    expect(report.invariantCount).toBe(177); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 8 LE (P11) + 5 MI (P12.2-P12.6)
     expect(report.criticalCount).toBeGreaterThanOrEqual(100);
     expect(report.vectorsRun + report.vectorsSkipped).toBe(20);
     // every run vector passed
