@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.9
+version: 1.10
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1437,13 +1437,36 @@ invariants:
 
   # ── Mission Intelligence (MI) ───────────────────────────────────
   # Phase 12. Pre-execution intelligence layer; advisory, kernel stays authoritative.
-  # Added per sub-phase (invariants-first). P12.2: MI-005 (deterministic classification).
-  # MI-001/002/003/004/006/007/008 land in later sub-phases.
+  # Full set MI-001..008 ACTIVE after P12.7 (orchestrator/CLI wiring complete).
+  - id: MI-001
+    statement: "Mission Intelligence output (type/complexity/risk/model/architecture/context) không bao giờ là runtime authority — chỉ là đề xuất; chỉ ArchitectureGate BLOCK mới ảnh hưởng control-flow (→ AWAITING_HUMAN). Stage không mutate filesystem/policy/approval/state."
+    enforcement: ["MissionIntelligence", "SessionOrchestrator"]
+    violation_class: MISSION_OUTPUT_AS_AUTHORITY
+    test: "tests/invariants/mission/mi-001.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
+  - id: MI-002
+    statement: "Khi stage không được wire (`--mission off`), orchestrator hành xử byte-identical Phase 11: không MISSION_* event, không đổi plan/graph/state."
+    enforcement: ["SessionOrchestrator"]
+    violation_class: MISSION_FLAG_OFF_PARITY_BROKEN
+    test: "tests/invariants/mission/mi-002.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
   - id: MI-003
     statement: "Một capability chỉ được coi là tiền-điều-kiện khi VERIFIED bằng evidence từ ProcessSupervisor; lời LLM về tool existence không bao giờ đủ."
     enforcement: ["CapabilityVerifier", "ProcessSupervisor"]
     violation_class: UNVERIFIED_CAPABILITY
     test: "tests/invariants/mission/mi-003.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
+  - id: MI-004
+    statement: "MissionIntelligence stage KHÔNG mutate Goal (GL-*) và KHÔNG tạo Task/Graph (chỉ Planner + GraphCommit làm, GI-009); nó chỉ đọc Goal và emit event advisory."
+    enforcement: ["MissionIntelligence"]
+    violation_class: MISSION_MUTATES_GOAL_OR_GRAPH
+    test: "tests/invariants/mission/mi-004.spec.ts"
     phase: 12
     severity: CRITICAL
     status: ACTIVE

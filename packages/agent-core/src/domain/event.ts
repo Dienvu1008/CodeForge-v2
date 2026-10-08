@@ -11,7 +11,9 @@ export type EventAggregateKind =
   | 'budget'
   | 'workspace'
   | 'failure'
-  | 'recovery';
+  | 'recovery'
+  // Phase 12: Mission Intelligence (advisory stage before planning).
+  | 'mission';
 
 // Known event types (§18.2). Not exhaustive; kept as a union of common types plus string
 // for forward-compatibility with new event kinds added in later phases.
@@ -59,7 +61,21 @@ export type KnownEventType =
   | 'HUMAN_APPROVAL_DENIED'
   | 'HUMAN_OVERRIDE_COMPLETED'
   | 'TRANSITION_REJECTED'
-  | 'EFFECT_FAILED';
+  | 'EFFECT_FAILED'
+  // Phase 12 Mission Intelligence (advisory; emitted by the optional pre-planning stage).
+  // All are observability/audit only — none is a runtime authority (MI-001).
+  | 'MISSION_RECEIVED'
+  | 'MISSION_CLASSIFIED'
+  | 'MISSION_COMPLEXITY_ESTIMATED'
+  | 'MISSION_RISK_ASSESSED'
+  | 'MISSION_ENVIRONMENT_DISCOVERED'
+  | 'MISSION_CAPABILITY_VERIFIED'
+  | 'MISSION_MODEL_SELECTED'
+  | 'MISSION_PLANNING_MODE_SELECTED'
+  | 'MISSION_ARCHITECTURE_PROPOSED'
+  | 'MISSION_ARCHITECTURE_GATE_PASSED'
+  | 'MISSION_ARCHITECTURE_GATE_BLOCKED'
+  | 'MISSION_USER_CONFIRMATION_REQUIRED';
 
 export type EventType = KnownEventType | (string & {});
 

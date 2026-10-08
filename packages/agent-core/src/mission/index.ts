@@ -36,3 +36,10 @@ export { selectExpertProfile, renderExpertProfile } from './expert-profile.js';
 // P12.6: Mission Architect (LLM blueprint) + Architecture Gate (deterministic; MI-007).
 export { MissionArchitect, type MissionArchitectDeps } from './mission-architect.js';
 export { evaluateArchitecture } from './architecture-gate.js';
+// P12.7: context strategy + the optional pre-planning MissionIntelligence stage (MI-001/002/004).
+export { decideContextStrategy, type ContextStrategy } from './mission-context-strategy.js';
+export {
+  MissionIntelligence,
+  type MissionIntelligenceDeps,
+  type MissionStageOutcome,
+} from './mission-intelligence.js';

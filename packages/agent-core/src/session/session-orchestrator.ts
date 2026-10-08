@@ -60,6 +60,24 @@ export const NOOP_CONTROL_GATE: ControlGate = {
   async awaitResume(): Promise<'resume' | 'cancel'> { return 'resume'; },
 };
 
+// ── P12.7: optional Mission Intelligence stage (advisory; MI-001/002/004) ─────────
+// Structural contract only — the orchestrator never hard-depends on the concrete
+// MissionIntelligence class (DC-002). When the dep is absent (`--mission off`), the stage never
+// runs and the orchestrator behaves EXACTLY as Phase 11 (MI-002 fail-safe parity). When present,
+// it runs ONCE between RUNNING and planning: it emits advisory MISSION_* events and may report
+// `proceed:false` (ArchitectureGate BLOCK) — the ONLY way the stage affects control flow, and
+// even then it only causes the orchestrator to drive the session to AWAITING_HUMAN (MI-007). The
+// stage never mutates the Goal and never creates Tasks/Graph (MI-004).
+export interface MissionStageDecision {
+  /** false ONLY on an ArchitectureGate BLOCK → orchestrator stops before planning (MI-007). */
+  readonly proceed: boolean;
+  readonly blockers: readonly string[];
+}
+export interface MissionStage {
+  /** Analyze the goal for a specific session (sessionId scopes the MISSION_* audit events). */
+  analyze(sessionId: string, goal: Goal): Promise<MissionStageDecision>;
+}
+
 export class SessionOrchestratorError extends Error {
   public readonly code: 'PLAN_FAILED' | 'COMMIT_FAILED' | 'DEADLOCK' | 'SESSION_FAILED';
   constructor(code: SessionOrchestratorError['code'], message?: string) {
@@ -126,6 +144,14 @@ export interface SessionOrchestratorDeps {
    * machine through SessionService, so no new authority path is introduced (OB-006).
    */
   readonly controlGate?:         ControlGate;
+  /**
+   * Optional P12.7: the advisory Mission Intelligence stage, run ONCE between RUNNING and
+   * planning. When omitted (`--mission off`), the orchestrator behaves byte-identically to
+   * Phase 11 (MI-002 fail-safe). When present, it emits MISSION_* events and may BLOCK before
+   * planning (ArchitectureGate), in which case the session goes to AWAITING_HUMAN (MI-007). It
+   * is advisory only — it never mutates the Goal and never creates Tasks/Graph (MI-004).
+   */
+  readonly missionStage?:        MissionStage;
   readonly now:    () => string;
   readonly nextId: () => string;
 }
@@ -168,6 +194,36 @@ export class SessionOrchestrator {
     // 1. CREATED -> RUNNING
     await this.deps.sessionService.transition(input.sessionId, 'SESSION_INITIALIZED');
     await this.deps.sessionService.transition(input.sessionId, 'SESSION_READY');
+
+    // 1b. P12.7: OPTIONAL Mission Intelligence stage (advisory). Runs ONCE between RUNNING and
+    // planning. Absent → skipped entirely (MI-002 parity: no events, no behavior change). The
+    // stage is advisory (MI-001/MI-004): the ONLY control-flow effect it can have is reporting
+    // proceed:false on an ArchitectureGate BLOCK, which drives the session to AWAITING_HUMAN
+    // (MI-007) and returns BEFORE any planning/commit. It never mutates the Goal or the Graph.
+    if (this.deps.missionStage !== undefined) {
+      let decision: MissionStageDecision | undefined;
+      try {
+        decision = await this.deps.missionStage.analyze(input.sessionId, input.goal);
+      } catch {
+        // The advisory stage must never break the run (MI-002 spirit). On any error, fall
+        // through to normal planning as if the stage were not wired.
+        decision = undefined;
+      }
+      if (decision !== undefined && decision.proceed === false) {
+        // ArchitectureGate BLOCKed: stop before planning and hand control to a human (MI-007).
+        // The session leaves RUNNING for AWAITING_HUMAN; no Graph is created (MI-004). A human
+        // decision resumes or aborts later (SS-007), exactly like a recovery escalation (P10.2).
+        try { await this.deps.sessionService.transition(input.sessionId, 'HUMAN_REQUIRED'); }
+        catch { /* best-effort: if not RUNNING, leave state as-is */ }
+        return {
+          sessionState: 'AWAITING_HUMAN',
+          taskRunCount: 0,
+          passedTaskIds: [],
+          nonPassedTaskIds: [],
+          durationMs: Date.now() - t0,
+        };
+      }
+    }
 
     // 2. Plan
     const baseGraph = await this.deps.graphRepository.getCurrent(input.sessionId);

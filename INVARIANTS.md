@@ -386,20 +386,19 @@ parity, LE-003 clamp trong allowed-set, LE-007 no bypass). Toàn bộ 8 invarian
 Phase 12. Lớp intelligence TRƯỚC thực thi: phân loại/ước lượng/đánh giá mission, khám phá +
 **xác minh** năng lực môi trường, chọn model + planning mode, (mission phức tạp) dựng kiến
 trúc và dừng ở Architecture Gate — tất cả **advisory**, kernel deterministic vẫn authoritative.
-Thêm theo từng sub-phase (invariants-first): P12.2 ship MI-005 (classification deterministic);
-MI-001/002/003/004/006/007/008 land ở các sub-phase sau (intake/capability/router/gate/wiring).
+Toàn bộ nhóm MI (MI-001..008) đã ACTIVE sau P12.7 (wiring hoàn tất): intake/classification,
+capability verification, model routing, architecture gate, và lớp advisory + flag-off parity.
 
 | ID | Statement | Enforcement | Phase | Severity |
 |---|---|---|---|---|
+| MI-001 | Mission Intelligence output (type/complexity/risk/model/architecture/context) không bao giờ là runtime authority — chỉ là đề xuất; chỉ ArchitectureGate BLOCK mới ảnh hưởng control-flow (→ AWAITING_HUMAN). Stage không mutate filesystem/policy/approval/state. | MissionIntelligence / SessionOrchestrator | 12 | CRITICAL |
+| MI-002 | Khi stage không được wire (`--mission off`), orchestrator hành xử byte-identical Phase 11: không MISSION_* event, không đổi plan/graph/state. | SessionOrchestrator | 12 | CRITICAL |
 | MI-003 | Một capability chỉ được coi là tiền-điều-kiện khi VERIFIED bằng evidence từ ProcessSupervisor; lời LLM về tool existence không bao giờ đủ. | CapabilityVerifier / ProcessSupervisor | 12 | CRITICAL |
+| MI-004 | MissionIntelligence stage KHÔNG mutate Goal (GL-*) và KHÔNG tạo Task/Graph (chỉ Planner + GraphCommit làm, GI-009); nó chỉ đọc Goal và emit event advisory. | MissionIntelligence | 12 | CRITICAL |
 | MI-005 | Complexity/risk/type classification deterministic trên cùng tín hiệu khách quan (+ advisory LLM đã clamp); cùng input → cùng phân loại. | MissionIntake / ComplexityAnalyzer / RiskAnalyzer | 12 | HIGH |
 | MI-006 | ModelRouter chỉ chọn trong các model THỰC SỰ có trong registry; đề xuất model không tồn tại → fallback/escalate, không bao giờ chọn bừa. | ModelRouter | 12 | CRITICAL |
 | MI-007 | ArchitectureGate deterministic BLOCK trước planning khi capability yêu cầu chưa VERIFIED, open question chưa giải (uncertainty UNKNOWN/CONFLICTING/BLOCKED), hoặc thiếu verification coverage; BLOCK → caller dừng AWAITING_HUMAN. Gate không bao giờ tự chuyển state. | ArchitectureGate | 12 | CRITICAL |
 | MI-008 | ExpertProfile và mọi nội dung do LLM sinh là prompt-context untrusted (SE-010); không mang authority. | PromptBoundary / ExpertProfile | 12 | HIGH |
-
-> Các invariant MI còn lại (land theo sub-phase): MI-001 (output advisory, không authority —
-> qua MissionGate), MI-002 (flag-off parity = hành vi Phase 11), MI-004 (Mission không mutate
-> Goal / không tạo Task). Xem `PHASE_12_ROADMAP.md §1`.
 
 ---
 

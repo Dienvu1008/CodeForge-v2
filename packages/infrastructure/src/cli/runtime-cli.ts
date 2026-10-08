@@ -20,6 +20,10 @@
 //                        risk classes auto-approve vs require a human decision.
 //   --learning <on|off>  P11.6 learning plane for recovery ordering (default: off). When on,
 //                        recovery reorders its try-order from history (advisory; LE-002).
+//   --mission <on|off>   P12.7 Mission Intelligence stage before planning (default: off). When
+//                        on, an advisory stage verifies capabilities, routes the model, and
+//                        (for complex goals) proposes an architecture + runs a gate. Off =
+//                        byte-identical to Phase 11 (MI-002 fail-safe parity).
 import { resolve, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -84,9 +88,15 @@ import {
   RecoveryAdvisor,
   AdviceGate,
   LessonWriter,
+  // Phase 12 (P12.7): optional Mission Intelligence stage (advisory; MI-001/002/004).
+  MissionIntelligence,
+  MissionArchitect,
+  CapabilityDiscovery,
+  ModelRegistry,
   type Session,
   type Goal,
 } from '@codeforge/agent-core';
+import { NodeCapabilityProber } from '../mission/index.js';
 import { computeWorkspaceRevision } from '../workspace-revision/index.js';
 
 // ── Argument parsing (minimal, no external deps) ────────────────────────────
@@ -130,6 +140,10 @@ async function main(): Promise<void> {
   // P11.6: optional learning plane for recovery ordering. OFF by default — when off, the
   // orchestrator is byte-identical to Phase 10 (LE-002). `--learning on` wires the advisors.
   const learningOn = (args['learning'] ?? 'off').toLowerCase() === 'on';
+  // P12.7: optional Mission Intelligence stage before planning. OFF by default — when off, the
+  // orchestrator is byte-identical to Phase 11 (MI-002 fail-safe parity). `--mission on` wires an
+  // advisory analysis + verified preflight + architecture gate that runs ONCE before planning.
+  const missionOn = (args['mission'] ?? 'off').toLowerCase() === 'on';
 
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║         CodeForge v2 Runtime              ║');
@@ -304,6 +318,38 @@ async function main(): Promise<void> {
       }
     : {};
 
+  // 8d. P12.7 Mission Intelligence stage (optional). When `--mission on`, build an advisory
+  // stage that runs ONCE before planning: verify machine capabilities via the ProcessSupervisor
+  // (MI-003), route the model within a REAL registry seeded from the configured Ollama model
+  // (MI-006), and (for complex missions) propose an architecture + run the deterministic gate
+  // (MI-007). When off, missionStage is undefined → Phase 11 behavior (MI-002 parity).
+  const missionStage = missionOn
+    ? new MissionIntelligence({
+        events,
+        now: rt.now,
+        newId: rt.nextId,
+        capabilityDiscovery: new CapabilityDiscovery({
+          prober: new NodeCapabilityProber({ supervisor, cwd: workspaceRoot }),
+          now: rt.now,
+          nowMs: () => Date.now(),
+        }),
+        // The configured Ollama model is the one model we KNOW is available (injected list,
+        // not /api/tags — P12.4 decision). Tagged with mid-tier capabilities as a safe default.
+        modelRegistry: new ModelRegistry([
+          {
+            id: modelName, tier: 'MEDIUM',
+            capabilities: {
+              reasoning: 'MEDIUM', coding: 'MEDIUM', architecture: 'MEDIUM',
+              context: 'MEDIUM', toolUse: 'MEDIUM', speed: 'MEDIUM',
+            },
+          },
+        ]),
+        preferredModelId: modelName,
+        architect: new MissionArchitect({ gateway: model, now: rt.now, newProvenanceId: rt.nextId }),
+      })
+    : undefined;
+  console.log(`  Mission:    ${missionOn ? 'ON (advisory pre-planning: preflight + model routing + architecture gate)' : 'off (Phase 11 behavior)'}`);
+
   // 9. Orchestrator
   const orchestrator = new SessionOrchestrator({
     sessionService: sessionSvc, planner, graphCommitService: commitSvc,
@@ -318,6 +364,7 @@ async function main(): Promise<void> {
     recoveryActionRepository: recoveryActions,
     verificationEvidenceProvider,
     ...learningDeps,
+    ...(missionStage !== undefined ? { missionStage } : {}),
     now: rt.now, nextId: rt.nextId,
   });
 
