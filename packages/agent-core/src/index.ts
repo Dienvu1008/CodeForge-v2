@@ -70,3 +70,5 @@ export * from './learning/index.js';
 // Phase 12:
 //   - mission/ (P12.2: Mission Intake + Complexity/Risk analyzers — MI-001/005, advisory)
 export * from './mission/index.js';
+// Evaluation / Benchmark (Task Correctness axis): pure loader/evaluator/metrics/baseline/report.
+export * from './evaluation/index.js';

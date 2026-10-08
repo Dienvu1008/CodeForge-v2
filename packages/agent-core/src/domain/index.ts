@@ -24,3 +24,5 @@ export * from './learning.js';
 export * from './advice.js';
 // Phase 12:
 export * from './mission.js';
+// Evaluation / Benchmark (Task Correctness axis):
+export * from './evaluation.js';
