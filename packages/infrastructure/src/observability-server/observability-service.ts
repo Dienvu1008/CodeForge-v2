@@ -61,6 +61,21 @@ export interface GoalIngressPort {
     { goalId: string; position: number };
 }
 
+/** Progress update for a model pull (mirrors OllamaModelAdmin.PullProgress structurally). */
+export interface ModelPullProgress {
+  readonly status: string;
+  readonly total?: number;
+  readonly completed?: number;
+  readonly percent?: number;
+  readonly done: boolean;
+  readonly error?: string;
+}
+/** Model management port (list installed models + pull a new one). Optional, no authority. */
+export interface ModelAdminPort {
+  listModels(): Promise<readonly { readonly name: string; readonly sizeBytes?: number; readonly parameterSize?: string; readonly quantization?: string }[]>;
+  pullModel(name: string, onProgress: (p: ModelPullProgress) => void): Promise<void>;
+}
+
 export interface ObservabilityServiceDeps {
   readonly sessions: SessionRepository;
   readonly graphs: TaskGraphRepository;
@@ -76,6 +91,8 @@ export interface ObservabilityServiceDeps {
   readonly toolStateReader?: ToolStateReader;
   /** P10.9: accepts goals submitted at runtime (POST /goal). Optional. */
   readonly goalIngress?: GoalIngressPort;
+  /** Model management (list + pull local Ollama models). Optional; no runtime authority. */
+  readonly modelAdmin?: ModelAdminPort;
   readonly now: () => string;
   readonly nextId: () => string;
 }
@@ -86,7 +103,7 @@ export interface SubmitControlResult {
 }
 
 export class ObservabilityServiceError extends Error {
-  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED' | 'GOAL_INGRESS_UNSUPPORTED';
+  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED' | 'GOAL_INGRESS_UNSUPPORTED' | 'MODEL_ADMIN_UNSUPPORTED';
   constructor(code: ObservabilityServiceError['code'], message?: string) {
     super(message ?? code);
     this.name = 'ObservabilityServiceError';
@@ -221,6 +238,24 @@ export class ObservabilityService {
       throw new ObservabilityServiceError('GOAL_INGRESS_UNSUPPORTED', 'goal ingress not wired');
     }
     return this.deps.goalIngress.submitGoal(input);
+  }
+
+  // ── Model management (optional; list + pull local models) ──────────────────────
+
+  /** List locally-installed models. Throws MODEL_ADMIN_UNSUPPORTED when not wired. */
+  async listModels(): Promise<readonly { name: string; sizeBytes?: number; parameterSize?: string; quantization?: string }[]> {
+    if (this.deps.modelAdmin === undefined) {
+      throw new ObservabilityServiceError('MODEL_ADMIN_UNSUPPORTED', 'model admin not wired');
+    }
+    return this.deps.modelAdmin.listModels();
+  }
+
+  /** Pull (download) a model, reporting progress. Throws MODEL_ADMIN_UNSUPPORTED when not wired. */
+  async pullModel(name: string, onProgress: (p: ModelPullProgress) => void): Promise<void> {
+    if (this.deps.modelAdmin === undefined) {
+      throw new ObservabilityServiceError('MODEL_ADMIN_UNSUPPORTED', 'model admin not wired');
+    }
+    return this.deps.modelAdmin.pullModel(name, onProgress);
   }
 
   // ── internals ────────────────────────────────────────────────────────────────

@@ -68,6 +68,25 @@ export const DASHBOARD_HTML = `<!doctype html>
     <h2>Live Activity</h2>
     <ul id="activity"></ul>
   </section>
+  <section>
+    <h2>Submit Goal</h2>
+    <div class="controls">
+      <input id="goalInput" placeholder="describe a goal for the runtime" size="40" />
+      <button id="submitGoal">Submit</button>
+    </div>
+    <div id="goalResult"></div>
+  </section>
+  <section>
+    <h2>Models</h2>
+    <div class="controls">
+      <input id="pullInput" placeholder="model to download, e.g. qwen2.5-coder:7b" size="34" />
+      <button id="pullBtn">Download</button>
+      <button id="refreshModels">Refresh</button>
+    </div>
+    <div class="bar"><span id="pullBar" style="width:0%"></span></div>
+    <div id="pullStatus"></div>
+    <ul id="models"></ul>
+  </section>
 </main>
 <script src="/app.js"></script>
 </body>
@@ -160,8 +179,99 @@ export const DASHBOARD_JS = `"use strict";
       .catch(function (e) { $("controlResult").textContent = intent + ": error " + e; });
   }
 
+  function submitGoal() {
+    var desc = $("goalInput").value.trim();
+    if (!desc) return;
+    fetch("/goal", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ description: desc })
+    })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        $("goalResult").textContent = res.ok
+          ? ("queued goal " + res.body.goalId + " at position " + res.body.position)
+          : ("error: " + (res.body && res.body.error));
+        if (res.ok) $("goalInput").value = "";
+      })
+      .catch(function (e) { $("goalResult").textContent = "error " + e; });
+  }
+
+  function humanBytes(n) {
+    if (!n && n !== 0) return "";
+    var u = ["B", "KB", "MB", "GB", "TB"]; var i = 0; var v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return v.toFixed(1) + " " + u[i];
+  }
+
+  function refreshModels() {
+    fetch("/models")
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) { $("models").innerHTML = "<li>" + (res.body && res.body.error || "model admin unavailable") + "</li>"; return; }
+        var models = (res.body && res.body.models) || [];
+        $("models").innerHTML = models.length
+          ? models.map(function (m) {
+              var meta = [m.parameterSize, m.quantization, humanBytes(m.sizeBytes)].filter(Boolean).join(" · ");
+              return "<li>" + m.name + (meta ? " <span class='cat'>" + meta + "</span>" : "") + "</li>";
+            }).join("")
+          : "<li>(no models installed)</li>";
+      })
+      .catch(function (e) { $("models").innerHTML = "<li>error " + e + "</li>"; });
+  }
+
+  var pullSource = null;
+  function pullModel() {
+    var name = $("pullInput").value.trim();
+    if (!name) return;
+    if (pullSource) { pullSource.close(); pullSource = null; }
+    $("pullStatus").textContent = "starting download of " + name + " ...";
+    $("pullBar").style.width = "0%";
+    // POST that returns an SSE stream: use fetch + manual reader (EventSource is GET-only).
+    fetch("/models/pull", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: name })
+    }).then(function (res) {
+      if (!res.ok || !res.body) { $("pullStatus").textContent = "pull failed to start"; return; }
+      var reader = res.body.getReader();
+      var dec = new TextDecoder();
+      var buf = "";
+      function pump() {
+        return reader.read().then(function (r) {
+          if (r.done) { refreshModels(); return; }
+          buf += dec.decode(r.value, { stream: true });
+          var idx = buf.indexOf("\\n\\n");
+          while (idx >= 0) {
+            var frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+            var line = frame.replace(/^data: /, "").trim();
+            if (line) {
+              try {
+                var p = JSON.parse(line);
+                if (p.error) { $("pullStatus").textContent = "error: " + p.error; }
+                else {
+                  var pct = (typeof p.percent === "number") ? p.percent : null;
+                  if (pct !== null) $("pullBar").style.width = pct + "%";
+                  $("pullStatus").textContent = p.status + (pct !== null ? " (" + pct + "%)" : "");
+                }
+                if (p.done) { $("pullBar").style.width = "100%"; refreshModels(); }
+              } catch (_e) {}
+            }
+            idx = buf.indexOf("\\n\\n");
+          }
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function (e) { $("pullStatus").textContent = "error " + e; });
+  }
+
   $("connect").addEventListener("click", connect);
-  Array.prototype.forEach.call(document.querySelectorAll(".controls button"), function (b) {
+  Array.prototype.forEach.call(document.querySelectorAll(".controls button[data-intent]"), function (b) {
     b.addEventListener("click", function () { sendControl(b.getAttribute("data-intent")); });
   });
+  $("submitGoal").addEventListener("click", submitGoal);
+  $("pullBtn").addEventListener("click", pullModel);
+  $("refreshModels").addEventListener("click", refreshModels);
+  refreshModels();
 })();`;

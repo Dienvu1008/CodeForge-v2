@@ -48,7 +48,7 @@ import { SqliteFailureRepository }        from '../repositories/index.js';
 import { SqliteRecoveryActionRepository } from '../repositories/index.js';
 import { SqliteLearningStore }            from '../learning/index.js';
 import { Blake3GraphHasher }              from '../graph-hash/index.js';
-import { OllamaModelGateway }            from '../model/index.js';
+import { OllamaModelGateway, OllamaModelAdmin } from '../model/index.js';
 import { NodeWorkspaceManager }           from '../workspace/index.js';
 import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
@@ -382,6 +382,8 @@ async function main(): Promise<void> {
     toolStateReader: { getState: async (id) => (await toolCalls.getById(id))?.state ?? null },
     // P10.9: POST /goal enqueues work while the runtime is already running.
     goalIngress,
+    // Model management (GET /models, POST /models/pull): list + download Ollama models.
+    modelAdmin: new OllamaModelAdmin({ endpoint }),
     now: rt.now, nextId: rt.nextId,
   });
   const http = new HttpTransport({ service: obService, streamPollMs: 300 });

@@ -10,6 +10,8 @@
 //   GET  /stream?session=<id>&from= -> text/event-stream live tail (OB-009)
 //   POST /control  {ControlRequest} -> { admission, record } (OB-006)
 //   POST /goal     {description, acceptanceCriteria?} -> { goalId, position } (P10.9)
+//   GET  /models                    -> { models: OllamaModelInfo[] } (model management)
+//   POST /models/pull {name}        -> text/event-stream pull progress (model download)
 //   GET  /                          -> dashboard HTML (static client)
 //   GET  /app.js                    -> dashboard script (static client)
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
@@ -138,6 +140,25 @@ export class HttpTransport {
         }
       }
 
+      // Model management: list installed models + stream a pull (download) with progress.
+      if (method === 'GET' && path === '/models') {
+        try {
+          return this.sendJson(res, 200, { models: await this.opts.service.listModels() });
+        } catch (err) {
+          return this.sendJson(res, 501, { error: err instanceof Error ? err.message : 'model admin unavailable' });
+        }
+      }
+      if (method === 'POST' && path === '/models/pull') {
+        const body = await readBody(req);
+        let payload: { name?: unknown };
+        try { payload = JSON.parse(body) as typeof payload; }
+        catch { return this.sendJson(res, 400, { error: 'invalid JSON body' }); }
+        if (typeof payload.name !== 'string' || payload.name.trim() === '') {
+          return this.sendJson(res, 400, { error: 'model name required' });
+        }
+        return this.streamModelPull(req, res, payload.name);
+      }
+
       this.sendJson(res, 404, { error: 'not found' });
     } catch (err) {
       this.sendJson(res, 500, { error: err instanceof Error ? err.message : 'internal error' });
@@ -181,6 +202,33 @@ export class HttpTransport {
       }
       if (closed) break;
       await sleep(this.streamPollMs);
+    }
+    try { res.end(); } catch { /* already torn down */ }
+  }
+
+  // ── model pull (SSE progress; download is a long-running operation) ─────────────
+
+  private async streamModelPull(req: IncomingMessage, res: ServerResponse, name: string): Promise<void> {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    let closed = false;
+    const stop = (): void => { closed = true; };
+    req.on('close', stop);
+    res.on('error', stop);
+
+    const write = (payload: unknown): void => {
+      if (closed || !res.writable) return;
+      try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch { closed = true; }
+    };
+
+    try {
+      await this.opts.service.pullModel(name, (p) => write(p));
+      write({ status: 'done', done: true });
+    } catch (err) {
+      write({ status: 'error', done: true, error: err instanceof Error ? err.message : 'pull failed' });
     }
     try { res.end(); } catch { /* already torn down */ }
   }
