@@ -3,8 +3,7 @@
 // the injected AgentRunner (in production, the real orchestrator → ToolGateway → ProcessSupervisor).
 // The check runner only runs the task's DECLARED checks, and only through an injected supervisor.
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import {
   BenchmarkRunner,
@@ -13,7 +12,7 @@ import {
   BenchmarkCheckRunner,
   type AgentRunner,
 } from '@codeforge/infrastructure';
-import type { ProcessSupervisor, SpawnOptions, SpawnResult, BenchmarkTask, RunProvenance } from '@codeforge/agent-core';
+import type { ProcessSupervisor, SpawnOptions, SpawnResult, RunProvenance } from '@codeforge/agent-core';
 
 const PROV: RunProvenance = {
   agentName: 'codeforge', agentVersion: 't', gitCommit: 't', model: 'fake-model', runtimeConfig: {}, environment: 'test',

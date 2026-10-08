@@ -124,12 +124,16 @@ next investment.
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| Benchmark domain model | PLANNED → in progress | Being built now (`evaluation/`). |
-| Isolated benchmark runner | PLANNED → in progress | Must drive the real runtime; no parallel unsafe path. |
-| Deterministic evaluator + metrics | PLANNED → in progress | Agent is NOT authority on its own success. |
-| Native seed dataset (CF-001..010) | PLANNED → in progress | Small, representative. |
-| Baseline + regression detection | PLANNED → in progress | — |
-| External benchmark adapters (SWE-bench, …) | DEFERRED | Interface designed; integration later. |
+| Benchmark domain model | DONE | `agent-core/domain/evaluation.ts`. |
+| Benchmark loader + validator | DONE | `agent-core/evaluation/benchmark-loader.ts`. |
+| Isolated benchmark runner | DONE | `infrastructure/evaluation/` — temp-dir isolation, real runtime via injected `AgentRunner`, no parallel unsafe path. |
+| Deterministic evaluator + metrics + trace integration | DONE | `agent-core/evaluation/{evaluator,metrics}.ts`; agent is NOT the authority; failure classification from the trace. |
+| Native seed dataset (CF-001..010) | DONE | `benchmarks/codeforge-native/benchmark.json`, 10 tasks across 10 categories. |
+| Level-1 component eval | DONE | `tests/evaluation/component-eval-level1.spec.ts` (classifier/complexity accuracy over labeled fixtures). |
+| Baseline + regression detection + report | DONE | `agent-core/evaluation/regression.ts` + `infrastructure/evaluation/baseline-store.ts`. First baseline recorded (see ROADMAP). |
+| Real-runtime E2E run | DONE | `tests/evaluation/real-runtime-e2e.spec.ts` — 3/10 FakeModel baseline through the real kernel. |
+| External benchmark adapters (SWE-bench, …) | DEFERRED | Interface shape designed; integration later. |
+| Real-Ollama evaluation run | PLANNED | Harness ready; needs a local model + a measured run. |
 
 ### Documentation / continuity
 

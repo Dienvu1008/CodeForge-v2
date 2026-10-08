@@ -2,7 +2,7 @@
 // against real `node`, baseline persistence, dataset loading of the real seed benchmark, and the
 // end-to-end BenchmarkRunner with a scripted AgentRunner. Uses real temp dirs; cleans up.
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {

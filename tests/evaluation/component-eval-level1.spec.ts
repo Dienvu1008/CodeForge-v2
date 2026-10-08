@@ -37,7 +37,6 @@ describe('Level-1 component eval — mission classifier', () => {
       else misses.push(`"${f.goal}" → ${type} (expected ${f.expectedType})`);
     }
     const accuracy = correct / FIXTURES.length;
-    // eslint-disable-next-line no-console
     if (misses.length > 0) console.log('classifier misses:\n' + misses.join('\n'));
     // A deterministic keyword classifier should get the clear cases; require a strong majority.
     expect(accuracy).toBeGreaterThanOrEqual(0.8);

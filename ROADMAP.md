@@ -64,20 +64,21 @@ Law (never weakened): **LLM proposes, the deterministic runtime decides and enfo
 
 ---
 
-## Current (in progress)
+## Current (DONE this cycle)
 
 **Evaluation / Benchmark infrastructure** — the mechanism that lets CodeForge measure whether its
-own evolution actually works. Builds the missing *Task Correctness* axis:
+own evolution actually works. The *Task Correctness* axis now exists end-to-end:
 
-- Benchmark domain model (pure types in agent-core).
-- Benchmark task format + loader + small native seed dataset (CF-001..010).
-- Isolated runner driving the **real** runtime (ToolGateway/ProcessSupervisor/policy) — no unsafe path.
-- Deterministic evaluator (external to the agent) + extensible metrics + failure classification.
-- Trace integration (consume existing EventLog / `MISSION_*` events).
-- Baseline recording + regression detection + machine- and human-readable reports.
+- Benchmark domain model (pure types in agent-core). ✓
+- Benchmark task format + loader/validator + native seed dataset (CF-001..010, 10 categories). ✓
+- Isolated runner driving the **real** runtime through an injected `AgentRunner` (ToolGateway/
+  ProcessSupervisor/policy reused) — temp-dir isolation, no parallel unsafe path. ✓
+- Deterministic evaluator (external to the agent — §11) + extensible metrics + failure
+  classification; trace integration over the existing EventLog. ✓
+- Baseline recording + regression detection (incl. cost regression) + reports. ✓
+- First baseline recorded via a real-kernel E2E (see Evaluation baseline below). ✓
 
-Rationale: the kernel is stable and Phase 11/12 added decision logic whose value is **unproven
-without measurement**. Evaluation is the correct next investment before more intelligence.
+Next cycle must build on this: every subsequent change is gated by a before/after benchmark run.
 
 ---
 
@@ -124,14 +125,26 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
 
 ## Evaluation baseline
 
+First baseline recorded by `tests/evaluation/real-runtime-e2e.spec.ts` — a real end-to-end run of
+the native benchmark through the actual kernel (SessionOrchestrator → Planner → TaskExecutor →
+ToolGateway → NodeToolExecutor → VerificationEngine), driven by a deterministic FakeModel.
+
 | Field | Value |
 |---|---|
-| First baseline recorded | _pending — set by the initial benchmark run_ |
-| Benchmark | CodeForge native seed (CF-001..010) |
-| Agent version / commit | to be stamped at run time |
-| Model | FakeModel (CI-deterministic) + real Ollama if available |
-| Success rate | _pending_ |
-| Largest failure class | _pending — drives the "Next" re-ranking_ |
+| Baseline label | `codeforge-0.12-fakemodel` |
+| Benchmark | CodeForge native seed `codeforge-native` v0.1.0 (CF-001..010) |
+| Agent / model | codeforge 0.12.0 · FakeModel (CI-deterministic, no network) |
+| Success rate | **3 / 10** (CF-002, CF-004, CF-007 — the scripted-solvable cases) |
+| Largest failure class | `VERIFICATION_FAILURE` (7/7 failures) |
 
-Once the first run completes, this table and the "Next" section are updated from evidence, and the
-result is also recorded in the eval system's own baseline store.
+### What this baseline means (honest reading)
+
+This is a **harness baseline, not an intelligence baseline.** The FakeModel was scripted to solve
+only 3 of the 10 tasks through the governed `write_file` tool path; for the other 7 it claimed
+"done" without a real fix, and the deterministic checks correctly caught every one
+(`VERIFICATION_FAILURE`). That the agent could NOT mark those 7 as passed is the system working as
+designed — *the agent is not the authority on its own success* (§11). The number proves the loop
+end-to-end: isolation → real governed execution → external verification → verdict → metrics →
+baseline. A real Ollama model would replace the 3/10 with a genuine task-correctness figure; the
+harness is now ready to measure it. The `VERIFICATION_FAILURE` concentration is expected for a
+scripted model and will become informative only against a real model.
