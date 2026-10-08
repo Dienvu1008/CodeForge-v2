@@ -300,7 +300,6 @@ async function main(): Promise<void> {
         selfModelBuilder:         learningBuilder,
         recoveryAdvisor:          new RecoveryAdvisor(),
         adviceGate:               new AdviceGate(),
-        recoveryActionRepository: recoveryActions,
         learningStore:            learningStore!,
       }
     : {};
@@ -314,6 +313,9 @@ async function main(): Promise<void> {
     controlGate: gate,
     taskRunRepository: taskRuns,
     failureAnalyzer, recoveryEngine, failureRepository: failures,
+    // P11.6+: always wire the recovery-action repo so RETRY/FIX outcomes are finalized
+    // truthfully (SUCCEEDED/FAILED) after the next run — independent of the learning flag.
+    recoveryActionRepository: recoveryActions,
     verificationEvidenceProvider,
     ...learningDeps,
     now: rt.now, nextId: rt.nextId,

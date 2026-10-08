@@ -284,3 +284,51 @@ structural, not bugs, and they tell us what the advisor needs to be useful:
 - Until then, `--learning on` is safe to ship (it cannot hurt — worst case it is a no-op) but
   should not be presented as improving success rates. Honest status: **integrated and safe,
   value not yet demonstrated.**
+
+---
+
+## Addendum 5 — truthful recovery outcome signal (P11.6++ / Approach A)
+
+The P11.6 dogfood (Addendum 4) found the real blocker: `RecoveryAction.outcome` was set to
+`SUCCEEDED` the moment a RETRY/FIX was *authorized*, not when the retried run actually passed —
+so the learning layer would learn from noise. Fixed per the STATE_MACHINE_SPEC lifecycle
+(PENDING → RUNNING → SUCCEEDED/FAILED), which was always the intended design but short-circuited.
+
+### Change (evidence-only; no new authority, no invariant touched)
+
+- `RecoveryEngine` now records RETRY/FIX as **PENDING** (success unknown at authorization time).
+  ESCALATE/ABORT stay SUCCEEDED (the state transition is the action and it completed).
+- The `SessionOrchestrator` tracks the pending RETRY/FIX action per task and **finalizes** its
+  outcome once the verdict is known: **SUCCEEDED** when the task's next run reaches PASSED,
+  **FAILED** when it fails again (the new failure confirms the retry did not work). This uses the
+  existing `RecoveryActionRepository.setOutcome` — a bookkeeping write, never a decision.
+- The runtime-cli now always wires the recovery-action repo (independent of `--learning`), so the
+  truthful signal is recorded for everyone; it is swallowed on error so recovery can never break.
+
+### Verified live (qwen2.5-coder, `--learning on`, 5 bugfix sessions sharing one DB)
+
+Querying the run DB after the sessions:
+
+```
+recovery_actions (action/outcome):  RETRY → SUCCEEDED (1),  ESCALATE → SUCCEEDED (1)
+PENDING left:                       0
+learning_lessons:                   (LOGIC, RETRY) → 1/1 succeeded
+                                    (UNKNOWN, ESCALATE) → 1/1 succeeded
+```
+
+- **The RETRY→SUCCEEDED is now EARNED**: that RETRY was followed by a run that actually passed
+  verification (a real "red → retry → green" session). Before the fix it would have been marked
+  SUCCEEDED even on a retry that later failed.
+- **No action is left PENDING** — every RETRY/FIX is finalized once its verdict is known.
+- The `(LOGIC, RETRY) → 1/1` lesson is therefore a TRUTHFUL success signal the advisor can trust.
+
+### Honest status
+
+- **The signal is now correct.** The learning layer records what actually happened, verified by
+  the end-to-end orchestrator test (`recovery-loop-e2e`: red→green ⇒ RETRY SUCCEEDED;
+  always-red ⇒ RETRY/FIX FAILED + ESCALATE SUCCEEDED) and by the live DB above.
+- **Value still not demonstrated at scale.** One success sample per (class, action) is not yet
+  enough for the advisor to prefer one action over another (it needs ≥2 comparative samples), and
+  these short bugfix tasks rarely produce comparative history. The remaining lever is breadth:
+  accumulate lessons across a varied benchmark so the advisor has real comparative data. The
+  substrate is now sound — the outcome it learns from reflects verified reality.

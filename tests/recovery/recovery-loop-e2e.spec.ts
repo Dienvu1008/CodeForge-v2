@@ -191,18 +191,20 @@ async function wire(c: ReturnType<typeof makeCounters>, checkExitCodes: readonly
     taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 20,
     taskRunRepository: taskRuns,
     failureAnalyzer, recoveryEngine, failureRepository: failures,
+    // P11.6+: wire the recovery-action repo so RETRY/FIX outcomes are finalized truthfully.
+    recoveryActionRepository: recoveryActions,
     verificationEvidenceProvider: { lastFailureOutput: () => checkSupervisor.lastFailureOutput() },
     now: c.now, nextId: c.nextId,
   });
 
-  return { orchestrator, sessions, executions, failures };
+  return { orchestrator, sessions, executions, failures, recoveryActions };
 }
 
 describe('P10.2 recovery loop — verification FAIL drives self-fix', () => {
   it('red test on attempt 1, green on attempt 2 → task eventually PASSED', async () => {
     const c = makeCounters();
     // First check spawn exits 1 (red), subsequent spawns exit 0 (fixed).
-    const { orchestrator, executions, failures } = await wire(c, [1, 0]);
+    const { orchestrator, executions, failures, recoveryActions } = await wire(c, [1, 0]);
 
     const result = await orchestrator.run({ sessionId: 'S', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
 
@@ -218,12 +220,21 @@ describe('P10.2 recovery loop — verification FAIL drives self-fix', () => {
     const proj = await executions.getByTask(taskId);
     expect(proj?.currentState).toBe('PASSED');
     expect(result.passedTaskIds).toContain(taskId);
+
+    // P11.6+: the RETRY/FIX that preceded the green run is finalized SUCCEEDED — a TRUTHFUL
+    // signal (it was recorded PENDING at authorization and resolved once the retry passed).
+    const allRecs = [];
+    for (const f of await failures.getByTask(taskId)) {
+      allRecs.push(...await recoveryActions.getByFailure(f.failureId));
+    }
+    expect(allRecs.length).toBeGreaterThanOrEqual(1);
+    expect(allRecs.some((r) => (r.action === 'RETRY' || r.action === 'FIX') && r.outcome === 'SUCCEEDED')).toBe(true);
   });
 
   it('always-red test → no-progress → ESCALATE (session AWAITING_HUMAN), bounded', async () => {
     const c = makeCounters();
     // Every check exits 1 — the agent can never make it green.
-    const { orchestrator, sessions, failures } = await wire(c, [1]);
+    const { orchestrator, sessions, failures, recoveryActions } = await wire(c, [1]);
 
     const result = await orchestrator.run({ sessionId: 'S', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
 
@@ -239,5 +250,17 @@ describe('P10.2 recovery loop — verification FAIL drives self-fix', () => {
 
     // Not PASSED.
     expect(result.passedTaskIds.length).toBe(0);
+
+    // P11.6+: each RETRY/FIX that was followed by another red run is finalized FAILED (a
+    // truthful signal). The final action is ESCALATE (SUCCEEDED — the transition completed).
+    const taskId = all[0]!.taskId;
+    const everyRec = [];
+    for (const f of await failures.getByTask(taskId)) {
+      everyRec.push(...await recoveryActions.getByFailure(f.failureId));
+    }
+    const retriesOrFixes = everyRec.filter((r) => r.action === 'RETRY' || r.action === 'FIX');
+    // Any RETRY/FIX that preceded a subsequent failure must be FAILED (not left PENDING).
+    expect(retriesOrFixes.some((r) => r.outcome === 'FAILED')).toBe(true);
+    expect(everyRec.some((r) => r.action === 'ESCALATE' && r.outcome === 'SUCCEEDED')).toBe(true);
   });
 });

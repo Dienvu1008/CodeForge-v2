@@ -15,7 +15,10 @@
 //   ABORT    — session → ABORTED via CANCEL_REQUESTED.
 //
 // REPLAN and ROLLBACK return PENDING outcome — callers must implement the action
-// themselves (Phase 5.5). RETRY and FIX return SUCCEEDED (the attempt was started).
+// themselves (Phase 5.5). RETRY and FIX also return PENDING: the attempt is authorised but
+// its success is unknown until the retried run is verified — the orchestrator retroactively
+// finalizes the outcome (SUCCEEDED/FAILED) then (P11.6+). ESCALATE/ABORT return SUCCEEDED
+// (the state transition itself is the action and it completed).
 import type { Failure, RecoveryAction, RecoveryKind, RecoveryOutcome } from '../domain/failure.js';
 import type { DomainEvent, EventType } from '../domain/event.js';
 import type { EventLog, RecoveryActionRepository } from '../repositories/index.js';
@@ -91,10 +94,13 @@ export class RecoveryEngine {
     switch (input.action) {
       case 'RETRY':
       case 'FIX':
-        // Caller will re-run the task with or without fix context.
-        // Engine just records the intent — outcome becomes SUCCEEDED
-        // (the attempt was authorised; actual success is measured by next run).
-        outcome = 'SUCCEEDED';
+        // The caller will re-run the task (with or without fix context). We only AUTHORISE
+        // the attempt here — we do NOT yet know whether it will pass. So the outcome stays
+        // PENDING; the orchestrator retroactively sets it to SUCCEEDED or FAILED once the
+        // retried run's verification is known (P11.6+). This makes RecoveryAction.outcome a
+        // TRUTHFUL signal the learning layer can trust (previously it was eagerly SUCCEEDED,
+        // which taught the advisor from noise). PENDING is excluded from success-rate stats.
+        outcome = 'PENDING';
         shouldRetry = true;
         break;
 

@@ -212,6 +212,12 @@ export class SessionOrchestrator {
     // P10.2: evidence from a task's prior failed attempt, injected into its retry prompt
     // so the model fixes the specific failure instead of guessing. Keyed by taskId.
     const priorFailureEvidence = new Map<string, string>();
+    // P11.6+: a RETRY/FIX recovery action is recorded PENDING (its success is unknown until
+    // the retried run is verified). We remember the actionId per task and finalize its outcome
+    // once we see the next result: SUCCEEDED if the retried run PASSED, FAILED if it failed
+    // again. This makes RecoveryAction.outcome a truthful signal for the learning layer.
+    // Evidence-only: setOutcome records what happened; it never changes a decision.
+    const pendingRecoveryAction = new Map<string, string>();
     while (iterations < this.maxIterations) {
       iterations++;
 
@@ -262,7 +268,12 @@ export class SessionOrchestrator {
       };
       const result = await this.deps.taskExecutor.execute(req);
       taskRunCount++;
-      if (result.taskPassed === true) passedIds.push(task.taskId);
+      if (result.taskPassed === true) {
+        passedIds.push(task.taskId);
+        // P11.6+: this run PASSED. If a prior RETRY/FIX for this task was awaiting its verdict,
+        // the retry WORKED → finalize that recovery action as SUCCEEDED (truthful signal).
+        await this.finalizePendingRecovery(task.taskId, pendingRecoveryAction, 'SUCCEEDED');
+      }
 
       // ── P10.2: Recovery loop ────────────────────────────────────────────
       // Trigger whenever the task did NOT reach PASSED and we can act on it. Two paths:
@@ -301,6 +312,11 @@ export class SessionOrchestrator {
             ...(evidenceText.length > 0 ? { lastStderr: evidenceText } : {}),
           });
 
+          // P11.6+: this NEW failure confirms the PRIOR RETRY/FIX for this task did not work →
+          // finalize that pending recovery action as FAILED, linking this failure as its
+          // nextFailureId (truthful signal for learning; evidence-only, no decision changed).
+          await this.finalizePendingRecovery(task.taskId, pendingRecoveryAction, 'FAILED', failure.failureId);
+
           // No-progress guard (RC-002/RC-003): same failure class repeating → ESCALATE.
           const history = this.deps.failureRepository !== undefined
             ? await this.deps.failureRepository.getByTask(task.taskId)
@@ -329,6 +345,10 @@ export class SessionOrchestrator {
             // again next iteration, and stash the evidence for the retry prompt (P10.2).
             if (evidenceText.length > 0) priorFailureEvidence.set(task.taskId, evidenceText);
             await this.deps.executionCoordinator.setState(task.taskId, 'READY');
+            // P11.6+: remember this RETRY/FIX action (recorded PENDING) so its outcome is
+            // finalized when the next run of this task is known (PASSED → SUCCEEDED;
+            // failed again → FAILED above).
+            pendingRecoveryAction.set(task.taskId, reResult.recoveryAction.actionId);
           }
         } catch { /* recovery failure is non-fatal — continue */ }
       }
@@ -423,6 +443,29 @@ export class SessionOrchestrator {
       // Advisory path must never break recovery — on any error, fall back to no advice.
       return undefined;
     }
+  }
+
+  /**
+   * P11.6+ — finalize the outcome of a task's PENDING RETRY/FIX recovery action once its
+   * verdict is known. SUCCEEDED when the retried run PASSED; FAILED (with the next failure id)
+   * when it failed again. Evidence-only (RC-006 provenance already set at creation); never
+   * changes a decision. No-op when nothing is pending or the repository is not wired. A
+   * failure to persist is swallowed — the recovery loop must not break on a bookkeeping write.
+   */
+  private async finalizePendingRecovery(
+    taskId: string,
+    pending: Map<string, string>,
+    outcome: 'SUCCEEDED' | 'FAILED',
+    _nextFailureId?: string,
+  ): Promise<void> {
+    const actionId = pending.get(taskId);
+    if (actionId === undefined) return;
+    pending.delete(taskId);
+    const repo = this.deps.recoveryActionRepository;
+    if (repo === undefined) return;
+    try {
+      await repo.setOutcome(actionId, outcome, this.deps.now());
+    } catch { /* bookkeeping write — non-fatal */ }
   }
 
   private async buildStatesMap(g: TaskGraph): Promise<Map<string, TaskState>> {

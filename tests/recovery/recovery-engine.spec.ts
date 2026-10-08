@@ -71,7 +71,16 @@ describe('P5-RE1 — RecoveryEngine', () => {
     const r = await engine.execute(await seedInput('FIX'));
     const stored = await recoveryRepo.getById(r.recoveryAction.actionId);
     expect(stored?.action).toBe('FIX');
-    expect(stored?.outcome).toBe('SUCCEEDED');
+    // P11.6+: RETRY/FIX are recorded PENDING — their success is unknown until the retried
+    // run is verified; the orchestrator finalizes the outcome then. (Was eagerly SUCCEEDED.)
+    expect(stored?.outcome).toBe('PENDING');
+  });
+
+  it('P11.6+: RETRY/FIX start PENDING (success is unknown at authorization time)', async () => {
+    const retry = await engine.execute(await seedInput('RETRY'));
+    expect(retry.recoveryAction.outcome).toBe('PENDING');
+    const fix = await engine.execute(await seedInput('FIX'));
+    expect(fix.recoveryAction.outcome).toBe('PENDING');
   });
 
   // ── shouldRetry flag ──────────────────────────────────────────────────────
