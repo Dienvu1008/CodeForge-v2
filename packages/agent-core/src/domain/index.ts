@@ -22,3 +22,5 @@ export * from './memory.js';
 export * from './self-model.js';
 export * from './learning.js';
 export * from './advice.js';
+// Phase 12:
+export * from './mission.js';
