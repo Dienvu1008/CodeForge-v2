@@ -67,3 +67,6 @@ export * from './control/index.js';
 // Phase 11:
 //   - learning/ (P11.1: SelfModelBuilder — LE-004/008, read-only projection)
 export * from './learning/index.js';
+// Phase 12:
+//   - mission/ (P12.2: Mission Intake + Complexity/Risk analyzers — MI-001/005, advisory)
+export * from './mission/index.js';

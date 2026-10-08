@@ -83,6 +83,7 @@ Phase gate:
 | `ME` | Memory / RAG |
 | `AU` | Autonomy (parallel / multi-agent) |
 | `LE` | Learning / Intelligence Plane |
+| `MI` | Mission Intelligence (pre-execution) |
 
 ---
 
@@ -379,6 +380,25 @@ parity, LE-003 clamp trong allowed-set, LE-007 no bypass). Toàn bộ 8 invarian
 | LE-006 | Learning store có retention bound; không ghi không giới hạn. | LearningStore / LessonWriter | 11 | HIGH |
 | LE-007 | Lớp learning không bao giờ bypass Policy/ToolGateway/ModelGateway để lấy dữ liệu hay thực thi action. | AdviceGate | 11 | CRITICAL |
 | LE-008 | SelfModel/learning chỉ đọc dữ liệu đã redact; không có PII/secret rò rỉ từ event/failure sang advice/self-model. | Redactor / SelfModelBuilder | 11 | CRITICAL |
+
+### 3.24 Mission Intelligence (MI)
+
+Phase 12. Lớp intelligence TRƯỚC thực thi: phân loại/ước lượng/đánh giá mission, khám phá +
+**xác minh** năng lực môi trường, chọn model + planning mode, (mission phức tạp) dựng kiến
+trúc và dừng ở Architecture Gate — tất cả **advisory**, kernel deterministic vẫn authoritative.
+Thêm theo từng sub-phase (invariants-first): P12.2 ship MI-005 (classification deterministic);
+MI-001/002/003/004/006/007/008 land ở các sub-phase sau (intake/capability/router/gate/wiring).
+
+| ID | Statement | Enforcement | Phase | Severity |
+|---|---|---|---|---|
+| MI-005 | Complexity/risk/type classification deterministic trên cùng tín hiệu khách quan (+ advisory LLM đã clamp); cùng input → cùng phân loại. | MissionIntake / ComplexityAnalyzer / RiskAnalyzer | 12 | HIGH |
+
+> Các invariant MI còn lại (land theo sub-phase): MI-001 (output advisory, không authority —
+> qua MissionGate), MI-002 (flag-off parity = hành vi Phase 11), MI-003 (capability chỉ
+> VERIFIED bằng evidence ProcessSupervisor), MI-004 (Mission không mutate Goal / không tạo
+> Task), MI-006 (ModelRouter chỉ chọn model thực-có), MI-007 (ArchitectureGate dừng
+> AWAITING_HUMAN khi blocker), MI-008 (ExpertProfile/LLM output là untrusted prompt-context).
+> Xem `PHASE_12_ROADMAP.md §1`.
 
 ---
 

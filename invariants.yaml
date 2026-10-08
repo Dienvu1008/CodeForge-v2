@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.7
+version: 1.8
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1433,4 +1433,17 @@ invariants:
     test: "tests/invariants/learning/le-008.spec.ts"
     phase: 11
     severity: CRITICAL
+    status: ACTIVE
+
+  # ── Mission Intelligence (MI) ───────────────────────────────────
+  # Phase 12. Pre-execution intelligence layer; advisory, kernel stays authoritative.
+  # Added per sub-phase (invariants-first). P12.2: MI-005 (deterministic classification).
+  # MI-001/002/003/004/006/007/008 land in later sub-phases.
+  - id: MI-005
+    statement: "Complexity/risk/type classification deterministic trên cùng tín hiệu khách quan (+ advisory LLM đã clamp); cùng input → cùng phân loại."
+    enforcement: ["MissionIntake", "ComplexityAnalyzer", "RiskAnalyzer"]
+    violation_class: NONDETERMINISTIC_CLASSIFICATION
+    test: "tests/invariants/mission/mi-005.spec.ts"
+    phase: 12
+    severity: HIGH
     status: ACTIVE
