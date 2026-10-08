@@ -42,6 +42,8 @@ export * from './code-intelligence/index.js';
 export * from './memory/index.js';
 // Phase 11 — P11.2: Learning store (SQLite)
 export * from './learning/index.js';
+// Phase 12 — P12.3: Mission Intelligence adapters (capability prober)
+export * from './mission/index.js';
 // Phase 9 — P9.3: Observability server (protocol-agnostic service + node:http transport)
 export * from './observability-server/index.js';
 // Phase 9 — P9.8: Telegram adapter (another transport over ObservabilityService)

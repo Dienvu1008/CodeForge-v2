@@ -391,14 +391,14 @@ MI-001/002/003/004/006/007/008 land ở các sub-phase sau (intake/capability/ro
 
 | ID | Statement | Enforcement | Phase | Severity |
 |---|---|---|---|---|
+| MI-003 | Một capability chỉ được coi là tiền-điều-kiện khi VERIFIED bằng evidence từ ProcessSupervisor; lời LLM về tool existence không bao giờ đủ. | CapabilityVerifier / ProcessSupervisor | 12 | CRITICAL |
 | MI-005 | Complexity/risk/type classification deterministic trên cùng tín hiệu khách quan (+ advisory LLM đã clamp); cùng input → cùng phân loại. | MissionIntake / ComplexityAnalyzer / RiskAnalyzer | 12 | HIGH |
 
 > Các invariant MI còn lại (land theo sub-phase): MI-001 (output advisory, không authority —
-> qua MissionGate), MI-002 (flag-off parity = hành vi Phase 11), MI-003 (capability chỉ
-> VERIFIED bằng evidence ProcessSupervisor), MI-004 (Mission không mutate Goal / không tạo
-> Task), MI-006 (ModelRouter chỉ chọn model thực-có), MI-007 (ArchitectureGate dừng
-> AWAITING_HUMAN khi blocker), MI-008 (ExpertProfile/LLM output là untrusted prompt-context).
-> Xem `PHASE_12_ROADMAP.md §1`.
+> qua MissionGate), MI-002 (flag-off parity = hành vi Phase 11), MI-004 (Mission không mutate
+> Goal / không tạo Task), MI-006 (ModelRouter chỉ chọn model thực-có), MI-007 (ArchitectureGate
+> dừng AWAITING_HUMAN khi blocker), MI-008 (ExpertProfile/LLM output là untrusted
+> prompt-context). Xem `PHASE_12_ROADMAP.md §1`.
 
 ---
 

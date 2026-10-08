@@ -1439,6 +1439,14 @@ invariants:
   # Phase 12. Pre-execution intelligence layer; advisory, kernel stays authoritative.
   # Added per sub-phase (invariants-first). P12.2: MI-005 (deterministic classification).
   # MI-001/002/003/004/006/007/008 land in later sub-phases.
+  - id: MI-003
+    statement: "Một capability chỉ được coi là tiền-điều-kiện khi VERIFIED bằng evidence từ ProcessSupervisor; lời LLM về tool existence không bao giờ đủ."
+    enforcement: ["CapabilityVerifier", "ProcessSupervisor"]
+    violation_class: UNVERIFIED_CAPABILITY
+    test: "tests/invariants/mission/mi-003.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
   - id: MI-005
     statement: "Complexity/risk/type classification deterministic trên cùng tín hiệu khách quan (+ advisory LLM đã clamp); cùng input → cùng phân loại."
     enforcement: ["MissionIntake", "ComplexityAnalyzer", "RiskAnalyzer"]
