@@ -1,0 +1,196 @@
+{
+  "id": "codeforge-native",
+  "version": "0.1.0",
+  "description": "CodeForge native seed benchmark — a small, representative, multi-category suite whose only purpose is to validate the evaluation infrastructure (runner, isolation, checks, metrics, trace, baseline, regression). Not a leaderboard. Each task is behavior-verified by deterministic checks, never by an expected patch.",
+  "tasks": [
+    {
+      "id": "CF-001",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Fix an off-by-one in a sum helper",
+      "description": "The function sumToN in src/math.js is supposed to return 1+2+...+n but returns one short. Fix it so the tests pass.",
+      "seedFiles": {
+        "src/math.js": "function sumToN(n) {\n  let total = 0;\n  for (let i = 1; i < n; i++) total += i;\n  return total;\n}\nmodule.exports = { sumToN };\n",
+        "test.js": "const assert = require('node:assert');\nconst { sumToN } = require('./src/math.js');\nassert.strictEqual(sumToN(5), 15);\nassert.strictEqual(sumToN(1), 1);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node test.js", "description": "sumToN tests pass" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "touchesPaths": ["src/math.js"], "maxFilesChanged": 1 },
+      "difficulty": "TRIVIAL",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "CF-002",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Add an isEven helper",
+      "description": "Add an exported function isEven(n) to src/util.js that returns true for even integers and false otherwise. Keep the existing exports.",
+      "seedFiles": {
+        "src/util.js": "function isPositive(n) { return n > 0; }\nmodule.exports = { isPositive };\n",
+        "test.js": "const assert = require('node:assert');\nconst u = require('./src/util.js');\nassert.strictEqual(u.isEven(2), true);\nassert.strictEqual(u.isEven(3), false);\nassert.strictEqual(u.isPositive(1), true);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node test.js", "description": "isEven + existing isPositive both work" },
+        { "kind": "file_contains", "target": "src/util.js", "expect": "isEven", "description": "isEven is defined in util.js" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "CF-003",
+      "version": 1,
+      "category": "REFACTOR",
+      "title": "Rename a function without breaking callers",
+      "description": "Rename the function calc to computeTotal in src/order.js and update its caller in src/index.js. Behavior must be unchanged.",
+      "seedFiles": {
+        "src/order.js": "function calc(items) {\n  return items.reduce((a, b) => a + b, 0);\n}\nmodule.exports = { calc };\n",
+        "src/index.js": "const { calc } = require('./order.js');\nmodule.exports = { total: (xs) => calc(xs) };\n",
+        "test.js": "const assert = require('node:assert');\nconst { computeTotal } = require('./src/order.js');\nconst idx = require('./src/index.js');\nassert.strictEqual(computeTotal([1,2,3]), 6);\nassert.strictEqual(idx.total([4,5]), 9);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node test.js", "description": "renamed function + caller both work" },
+        { "kind": "file_absent", "target": "src/.rename-marker", "description": "no stray marker files" }
+      ],
+      "expected": { "missionType": "REFACTOR", "maxFilesChanged": 2 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "CF-004",
+      "version": 1,
+      "category": "TESTING",
+      "title": "Write a test for an existing function",
+      "description": "Create test.js that requires src/str.js and asserts that reverse('abc') === 'cba'. Running `node test.js` must exit 0.",
+      "seedFiles": {
+        "src/str.js": "function reverse(s) { return s.split('').reverse().join(''); }\nmodule.exports = { reverse };\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "test.js", "description": "a test file was created" },
+        { "kind": "command", "target": "node test.js", "description": "the created test passes" }
+      ],
+      "expected": { "missionType": "TESTING", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "CF-005",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Diagnose and fix a thrown error",
+      "description": "Running `node run.js` currently throws because parseConfig returns undefined for an empty string. Make parseConfig return an empty object for empty/whitespace input so run.js prints the port.",
+      "seedFiles": {
+        "src/config.js": "function parseConfig(raw) {\n  if (raw.trim().length === 0) return undefined;\n  return JSON.parse(raw);\n}\nmodule.exports = { parseConfig };\n",
+        "run.js": "const { parseConfig } = require('./src/config.js');\nconst cfg = parseConfig('');\nconsole.log('port=' + (cfg.port || 3000));\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node run.js", "description": "run.js no longer throws" },
+        { "kind": "command", "target": "node -e \"const{parseConfig}=require('./src/config.js');if(typeof parseConfig('')!=='object'||parseConfig('')===null)process.exit(1)\"", "description": "parseConfig('') returns an object" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "CF-006",
+      "version": 1,
+      "category": "MULTI_FILE",
+      "title": "Add a feature spanning two modules",
+      "description": "Add a function discount(price, pct) to src/pricing.js and use it in src/checkout.js so checkoutTotal applies the discount. Keep existing behavior for pct=0.",
+      "seedFiles": {
+        "src/pricing.js": "function tax(price) { return price * 0.1; }\nmodule.exports = { tax };\n",
+        "src/checkout.js": "const { tax } = require('./pricing.js');\nfunction checkoutTotal(price, pct) {\n  return price + tax(price);\n}\nmodule.exports = { checkoutTotal };\n",
+        "test.js": "const assert = require('node:assert');\nconst { discount } = require('./src/pricing.js');\nconst { checkoutTotal } = require('./src/checkout.js');\nassert.strictEqual(discount(100, 10), 90);\nassert.strictEqual(Math.round(checkoutTotal(100, 0)), 110);\nassert.strictEqual(Math.round(checkoutTotal(100, 50)), 55);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node test.js", "description": "discount + checkout integration pass" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "CF-007",
+      "version": 1,
+      "category": "REPOSITORY_UNDERSTANDING",
+      "title": "Find and document the entry point",
+      "description": "Create ENTRY.md stating which file is the application entry point (the one that starts the server) and the port it listens on.",
+      "seedFiles": {
+        "package.json": "{\n  \"name\": \"demo\",\n  \"main\": \"src/server.js\"\n}\n",
+        "src/server.js": "const http = require('node:http');\nconst PORT = 8080;\nhttp.createServer((_, res) => res.end('hi')).listen(PORT);\n",
+        "src/helpers.js": "module.exports = { noop() {} };\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "ENTRY.md", "description": "ENTRY.md was created" },
+        { "kind": "file_contains", "target": "ENTRY.md", "expect": "server.js", "description": "identifies the entry file" },
+        { "kind": "file_contains", "target": "ENTRY.md", "expect": "8080", "description": "identifies the port" }
+      ],
+      "expected": { "missionType": "RESEARCH", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "CF-008",
+      "version": 1,
+      "category": "MIGRATION",
+      "title": "Migrate require() to a single shared constant",
+      "description": "Both src/a.js and src/b.js hardcode the base URL 'http://localhost:3000'. Extract it to src/config.js as BASE_URL and have both modules import it. Behavior unchanged.",
+      "seedFiles": {
+        "src/a.js": "const BASE = 'http://localhost:3000';\nmodule.exports = { aUrl: () => BASE + '/a' };\n",
+        "src/b.js": "const BASE = 'http://localhost:3000';\nmodule.exports = { bUrl: () => BASE + '/b' };\n",
+        "test.js": "const assert = require('node:assert');\nconst { BASE_URL } = require('./src/config.js');\nconst { aUrl } = require('./src/a.js');\nconst { bUrl } = require('./src/b.js');\nassert.strictEqual(BASE_URL, 'http://localhost:3000');\nassert.strictEqual(aUrl(), 'http://localhost:3000/a');\nassert.strictEqual(bUrl(), 'http://localhost:3000/b');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node test.js", "description": "shared BASE_URL used by both modules" },
+        { "kind": "file_exists", "target": "src/config.js", "description": "config module created" }
+      ],
+      "expected": { "missionType": "MIGRATION", "maxFilesChanged": 3 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "CF-009",
+      "version": 1,
+      "category": "PROJECT_GENERATION",
+      "title": "Generate a tiny CLI from scratch",
+      "description": "Create a Node CLI at bin/greet.js so that `node bin/greet.js World` prints exactly 'Hello, World!'. The workspace starts empty.",
+      "seedFiles": {},
+      "verification": [
+        { "kind": "file_exists", "target": "bin/greet.js", "description": "CLI file created" },
+        { "kind": "command", "target": "node bin/greet.js World", "description": "runs without error" }
+      ],
+      "expected": { "missionType": "PROJECT", "maxFilesChanged": 3 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "CF-010",
+      "version": 1,
+      "category": "ARCHITECTURE",
+      "title": "Separate a monolith into layers",
+      "description": "src/app.js mixes HTTP handling and business logic. Split the pure business logic (the add function) into src/domain.js and have src/app.js import it. The test must still pass.",
+      "seedFiles": {
+        "src/app.js": "function add(a, b) { return a + b; }\nfunction handle(req) { return { body: String(add(req.a, req.b)) }; }\nmodule.exports = { handle };\n",
+        "test.js": "const assert = require('node:assert');\nconst { add } = require('./src/domain.js');\nconst { handle } = require('./src/app.js');\nassert.strictEqual(add(2, 3), 5);\nassert.strictEqual(handle({ a: 2, b: 3 }).body, '5');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node test.js", "description": "domain extracted; app still works" },
+        { "kind": "file_exists", "target": "src/domain.js", "description": "domain layer created" }
+      ],
+      "expected": { "missionType": "ARCHITECTURE", "maxFilesChanged": 2 },
+      "difficulty": "HARD",
+      "risk": "MEDIUM",
+      "timeoutMs": 240000
+    }
+  ]
+}
