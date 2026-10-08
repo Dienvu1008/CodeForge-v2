@@ -21,3 +21,12 @@ export {
   type InventoryEntry,
 } from './capability.js';
 export { CapabilityDiscovery, type CapabilityDiscoveryDeps } from './capability-discovery.js';
+// P12.4: model requirement analysis + capability-based routing over a REAL registry (MI-006).
+export {
+  ModelRegistry,
+  analyzeModelRequirement,
+  routeModel,
+  type RegisteredModel,
+  type ModelCapabilities,
+  type RoutingOutcome,
+} from './model-router.js';

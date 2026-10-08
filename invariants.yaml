@@ -1455,3 +1455,11 @@ invariants:
     phase: 12
     severity: HIGH
     status: ACTIVE
+  - id: MI-006
+    statement: "ModelRouter chỉ chọn trong các model THỰC SỰ có trong registry; đề xuất model không tồn tại → fallback/escalate, không bao giờ chọn bừa."
+    enforcement: ["ModelRouter"]
+    violation_class: ROUTE_TO_NONEXISTENT_MODEL
+    test: "tests/invariants/mission/mi-006.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
