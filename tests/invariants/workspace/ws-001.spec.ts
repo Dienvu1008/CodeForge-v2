@@ -50,6 +50,10 @@ describe('WS-001: canonical, cross-platform reproducible hash', () => {
     expect(h1).toBe(h2);
   });
 
+  // Some vectors (e.g. v018: 500 files) build + hash a lot of I/O; under full-suite parallel
+  // load on a slow/shared CI runner the default 5s can flake (ubuntu passes, windows-latest
+  // times out). Give the contract a generous budget — this is about hash correctness, not
+  // latency. Mirrors tests/cross-platform/workspace-vectors.spec.ts.
   it('matches the committed expected.json (cross-OS contract) for applicable vectors', async () => {
     let checked = 0;
     for (const v of VECTORS) {
@@ -76,5 +80,5 @@ describe('WS-001: canonical, cross-platform reproducible hash', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
-  });
+  }, 30_000);
 });

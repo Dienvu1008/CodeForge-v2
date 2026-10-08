@@ -55,6 +55,9 @@ describe('Phase0Harness — runWorkspaceVector', () => {
 });
 
 describe('Phase0Harness — generateReport', () => {
+  // generateReport() builds + hashes every workspace vector (incl. v018: 500 files); under
+  // full-suite parallel load on a slow/shared CI runner the default 5s can flake (windows-
+  // latest). Generous budget — correctness, not latency. See ws-001 / workspace-vectors.
   it('produces a report with all vectors passing (run or safely skipped)', async () => {
     const report = await harness().generateReport();
     expect(report.invariantCount).toBe(172); // 144 + 7 ME (P7) + 7 AU (P8) + 6 OB (P9) + 8 LE (P11.1-P11.3)
@@ -64,7 +67,7 @@ describe('Phase0Harness — generateReport', () => {
     expect(report.vectorsPassed).toBe(report.vectorsRun);
     // no run vector is marked not-ok
     expect(report.vectorResults.filter((r) => r.ran && !r.ok)).toEqual([]);
-  });
+  }, 30_000);
 });
 
 describe('NoopCrashInjector — CrashInjector interface (Phase 0)', () => {
