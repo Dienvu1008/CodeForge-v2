@@ -30,3 +30,6 @@ export {
   type ModelCapabilities,
   type RoutingOutcome,
 } from './model-router.js';
+// P12.5: planning strategy router + expert profiles (advisory; MI-001, MI-008).
+export { decidePlanningMode, type PlanningDecision } from './planning-router.js';
+export { selectExpertProfile, renderExpertProfile } from './expert-profile.js';

@@ -1463,3 +1463,11 @@ invariants:
     phase: 12
     severity: CRITICAL
     status: ACTIVE
+  - id: MI-008
+    statement: "ExpertProfile và mọi nội dung do LLM sinh là prompt-context untrusted (SE-010); không mang authority."
+    enforcement: ["PromptBoundary", "ExpertProfile"]
+    violation_class: PROFILE_AS_AUTHORITY
+    test: "tests/invariants/mission/mi-008.spec.ts"
+    phase: 12
+    severity: HIGH
+    status: ACTIVE
