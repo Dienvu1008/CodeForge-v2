@@ -54,3 +54,5 @@ export * from './verification-runtime/index.js';
 export * from './context-runtime/index.js';
 // Phase 10 — P10.5: Approval runtime (human-in-the-loop tool approval coordinator)
 export * from './approval-runtime/index.js';
+// Evaluation adapters: isolated workspace, check runner, benchmark runner, baseline store, dataset loader.
+export * from './evaluation/index.js';
