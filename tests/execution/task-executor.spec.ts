@@ -358,6 +358,71 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     expect(sawPolicyKey).toBe(false);
   });
 
+  // ── P12.8: a promptPlan shapes the prompt (persona / guidance / few-shot / verbosity) ──
+
+  it('injects EXPERT_PERSONA, TASK_TYPE_GUIDANCE and EXAMPLE sections when a promptPlan is present', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    await executor.execute(makeReq(task, {
+      promptPlan: {
+        expertPersona: 'Adopt the perspective of a TypeScript Systems Engineer.',
+        taskTypeGuidance: 'This is a BUG FIX. Find the ROOT CAUSE.',
+        fewShotExampleId: 'example-bugfix',
+        verbosity: 'guarded',
+      },
+    }));
+    const prompt = model.lastPrompt ?? '';
+    expect(prompt).toContain('EXPERT_PERSONA');
+    expect(prompt).toContain('TypeScript Systems Engineer');
+    expect(prompt).toContain('TASK_TYPE_GUIDANCE');
+    expect(prompt).toContain('ROOT CAUSE');
+    expect(prompt).toContain('EXAMPLE'); // few-shot resolved from the id
+  });
+
+  it('guarded verbosity adds a small-model addendum to the system prompt', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    await executor.execute(makeReq(task, { promptPlan: { verbosity: 'guarded' } }));
+    const sys = model.history[model.history.length - 1]?.request.systemPrompt ?? '';
+    expect(sys).toMatch(/small-model mode/i);
+  });
+
+  it('no promptPlan ⇒ no persona/guidance sections and the base system prompt (fail-safe)', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    await executor.execute(makeReq(task));
+    expect(model.lastPrompt ?? '').not.toContain('EXPERT_PERSONA');
+    const sys = model.history[model.history.length - 1]?.request.systemPrompt ?? '';
+    expect(sys).not.toMatch(/small-model mode/i);
+    expect(sys).not.toMatch(/You are a strong model/i);
+  });
+
+  it('a promptPlan makes the task prompt larger (the steering costs some tokens — measured)', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const base = new TaskExecutor({ ...deps, executor: fakeExec });
+    await base.execute(makeReq(task));
+    const before = (model.lastPrompt ?? '').length;
+
+    model.reset();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const shaped = new TaskExecutor({ ...deps, executor: fakeExec });
+    await shaped.execute(makeReq(task, {
+      promptPlan: {
+        expertPersona: 'Adopt the perspective of a TypeScript Systems Engineer.',
+        taskTypeGuidance: 'This is a BUG FIX. Find the ROOT CAUSE.',
+        fewShotExampleId: 'example-bugfix',
+        verbosity: 'guarded',
+      },
+    }));
+    const after = (model.lastPrompt ?? '').length;
+    // Shaping adds guidance, so the prompt grows — the trade the benchmark must watch.
+    expect(after).toBeGreaterThan(before);
+  });
+
   // ── success: one tool call then done ──────────────────────────────────────
 
   it('SUCCEEDED after one tool call + done signal', async () => {

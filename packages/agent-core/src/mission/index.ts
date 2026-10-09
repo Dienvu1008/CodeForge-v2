@@ -34,6 +34,14 @@ export {
 // P12.5: planning strategy router + expert profiles (advisory; MI-001, MI-008).
 export { decidePlanningMode, type PlanningDecision } from './planning-router.js';
 export { selectExpertProfile, renderExpertProfile } from './expert-profile.js';
+// P12.8: deterministic prompt composition (prompt shaping from mission signals; MI-008 advisory).
+export {
+  composePromptPlan,
+  selectVerbosity,
+  resolveFewShotExample,
+  type PromptPlan,
+  type PromptVerbosity,
+} from './prompt-composer.js';
 // P12.6: Mission Architect (LLM blueprint) + Architecture Gate (deterministic; MI-007).
 export { MissionArchitect, type MissionArchitectDeps } from './mission-architect.js';
 // Tier B1: assumption-based goal clarification (LLM, advisory).

@@ -230,6 +230,8 @@ describe('Real-runtime benchmark E2E + first baseline', () => {
     console.log(`CONTEXT-COST (avg/case): tokens_used=${avg('context_tokens_used').toFixed(1)}, ` +
       `items=${avg('context_items').toFixed(1)}, codebase_items=${avg('context_codebase_items').toFixed(1)}, ` +
       `snapshots=${avg('context_snapshots').toFixed(1)}`);
+    console.log(`PROMPT-COST (avg/case): prompt_tokens_peak=${avg('prompt_tokens_peak').toFixed(1)}, ` +
+      `prompt_tokens_total=${avg('prompt_tokens_total').toFixed(1)}`);
     // The context metrics must now be present and non-trivial (collector is wired).
     expect(avg('context_snapshots')).toBeGreaterThan(0);
     expect(avg('context_tokens_used')).toBeGreaterThan(0);

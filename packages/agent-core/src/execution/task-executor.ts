@@ -40,6 +40,8 @@ import type { ContextBuilder }          from '../context/context-builder.js';
 import type { RetrievedSymbol }         from '../context/retriever.js';
 import type { ContextItem }             from '../domain/context.js';
 import { policyFromContextPlan, type ContextPlan } from '../mission/mission-context-strategy.js';
+import { resolveFewShotExample, type PromptPlan } from '../mission/prompt-composer.js';
+import { countPromptTokens }           from '../context/token-counter.js';
 import type { ToolGateway }             from '../tool/tool-gateway.js';
 import type { ToolCall, RiskClass }     from '../domain/tool-call.js';
 import type { Provenance }              from '../domain/provenance.js';
@@ -129,6 +131,23 @@ const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'g
 const CODEBASE_ITEM_KINDS: ReadonlySet<string> = new Set([
   'file_full', 'file_snippet', 'symbol_definition', 'symbol_usage', 'memory',
 ]);
+
+/**
+ * P12.8: a small, verbosity-specific addendum appended to the (static) executor system prompt.
+ * `guarded` adds blunt scaffolding for weak local models (one action per step); `terse` trims
+ * repetition for strong reasoners; `normal`/undefined add nothing (the base prompt is unchanged,
+ * fail-safe parity). Deliberately short so it steers without bloating a small model's budget.
+ */
+function verbosityAddendum(verbosity?: 'terse' | 'normal' | 'guarded'): string {
+  if (verbosity === 'guarded') {
+    return '\n\nIMPORTANT (small-model mode): take exactly ONE action per step. Prefer write_file ' +
+      'over any read. Output ONLY the JSON object — no prose, no markdown fences.';
+  }
+  if (verbosity === 'terse') {
+    return '\n\nYou are a strong model: skip unnecessary exploration, act directly, and finish fast.';
+  }
+  return '';
+}
 
 /**
  * Deterministic loop detector: returns true when the model is stuck exploring instead of acting.
@@ -375,6 +394,14 @@ export interface TaskExecutorRequest {
    * Absent ⇒ the executor uses DEFAULT_CONTEXT_POLICY (fail-safe parity, unchanged behavior).
    */
   readonly contextPlan?:            ContextPlan;
+  /**
+   * P12.8 prompt shaping: deterministic prompt-guidance hints (expert persona + task-type
+   * guidance + few-shot id + verbosity) composed by the Mission Intelligence stage. The executor
+   * injects these as TRUSTED prompt sections and selects a system-prompt variant from the
+   * verbosity, so the prompt adapts to the task + model. Advisory (MI-008): guidance/data only,
+   * never authority. Absent ⇒ the static default prompt is used (fail-safe parity).
+   */
+  readonly promptPlan?:             PromptPlan;
 }
 
 // ── TaskExecutorResult ────────────────────────────────────────────────────────
@@ -549,10 +576,10 @@ export class TaskExecutor {
       }
 
       // ── 3a. Build model request ─────────────────────────────────────────────
-      const taskPrompt = this.buildTaskPrompt(req.task, transcript, req.priorFailureEvidence, contextSection, req.goalAssumptions);
+      const taskPrompt = this.buildTaskPrompt(req.task, transcript, req.priorFailureEvidence, contextSection, req.goalAssumptions, req.promptPlan);
       const modelReq = modelRequest(
         'execute',
-        BOUNDARY_SYSTEM_PREAMBLE + '\n\n' + TASK_EXECUTOR_SYSTEM_PROMPT,
+        BOUNDARY_SYSTEM_PREAMBLE + '\n\n' + TASK_EXECUTOR_SYSTEM_PROMPT + verbosityAddendum(req.promptPlan?.verbosity),
         taskPrompt,
         {
           responseSchema:  TOOL_CALL_PROPOSAL_SCHEMA,
@@ -562,8 +589,14 @@ export class TaskExecutor {
       );
       const requestWithCtx = { ...modelReq, contextSnapshotId: snapshot.snapshotId };
 
-      // P10.6: the agent is about to ask the model for its next action (display-only).
-      await this.emitProgress(req.sessionId, runId, 'DECISION_REQUESTED', { step: i + 1 });
+      // P10.6: the agent is about to ask the model for its next action (display-only). We also
+      // record the prompt size (system+task tokens) so benchmarking can measure prompt cost
+      // before/after a prompt-shaping change — the "prompt cost" signal (pairs with the context
+      // cost signal from CONTEXT_SNAPSHOT_BUILT). Deterministic estimate; never affects a decision.
+      await this.emitProgress(req.sessionId, runId, 'DECISION_REQUESTED', {
+        step: i + 1,
+        promptTokens: countPromptTokens(modelReq.systemPrompt, taskPrompt),
+      });
 
       // ── 3b. Call model + parse (MG-001/002/003, SE-010) ─────────────────────
       let output: RawExecuteOutput;
@@ -899,6 +932,7 @@ export class TaskExecutor {
     priorFailureEvidence?: string,
     contextSection?: { trustedBlock: string; untrustedBlock: string },
     goalAssumptions?: readonly string[],
+    promptPlan?: PromptPlan,
   ): string {
     const acLines = task.acceptanceCriteria.length > 0
       ? task.acceptanceCriteria.map((ac) => `  - ${ac.description}`).join('\n')
@@ -943,6 +977,22 @@ export class TaskExecutor {
     // specific problem rather than redoing the same thing. The boundary preamble tells
     // the model to treat untrusted content as data, not instructions (SE-010).
     const sections: Array<{ label: string; content: string; trust: 'trusted' | 'untrusted' }> = [];
+    // P12.8: prompt-shaping hints from the Mission Intelligence stage. These are TRUSTED (composed
+    // deterministically by the runtime from mission signals, not from user/workspace content) and
+    // adapt the prompt to the task type + model. Each is advisory guidance (MI-008), appended early
+    // so it frames the work. Absent ⇒ none added (static default prompt, fail-safe parity).
+    if (promptPlan?.expertPersona !== undefined && promptPlan.expertPersona.trim().length > 0) {
+      sections.push({ label: 'EXPERT_PERSONA', content: promptPlan.expertPersona, trust: 'trusted' });
+    }
+    if (promptPlan?.taskTypeGuidance !== undefined && promptPlan.taskTypeGuidance.trim().length > 0) {
+      sections.push({ label: 'TASK_TYPE_GUIDANCE', content: promptPlan.taskTypeGuidance, trust: 'trusted' });
+    }
+    if (promptPlan?.fewShotExampleId !== undefined) {
+      const example = resolveFewShotExample(promptPlan.fewShotExampleId);
+      if (example !== undefined) {
+        sections.push({ label: 'EXAMPLE', content: example, trust: 'trusted' });
+      }
+    }
     // Tier B2: when the goal was under-specified, the Mission Intelligence stage stated
     // explicit assumptions (option (ii): assume-and-state). These came from the deterministic
     // runtime's clarification pass — not raw user content — so they are TRUSTED guidance that

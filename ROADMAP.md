@@ -101,8 +101,15 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      per-call. Fail-safe when absent. Measured on a real workspace: narrow TASK scope cut context
      ~62% (21→8 items, 313→118 tokens) with the pinned task item retained. Still TODO: measure the
      real-model *success* impact (needs a real-model run with mission on + an ambiguous-scope set).
+   - **Prompt shaping → executor (DONE, P12.8):** a deterministic `PromptComposer` (no LLM) turns
+     mission signals into a `PromptPlan` (expert persona + task-type guidance + few-shot + verbosity),
+     threaded to each `TaskExecutorRequest` and injected as trusted prompt sections + a
+     verbosity-selected system-prompt addendum (guarded for weak local models, terse for strong
+     reasoners). Fail-safe when absent. Wires the previously-unused `expert-profile.ts`. Prompt cost
+     is now measured (`prompt_tokens_peak/total`); real-model success impact still TODO.
    - apply routed model at execution (live model selection, not just an emitted id);
-   - let the Planner consume planning-mode + expert-profile + architecture.
+   - let the Planner consume planning-mode + expert-profile + architecture (prompt shaping is wired
+     to the executor; the Planner prompt is the remaining consumer).
    Gate the remaining items with before/after benchmark numbers (does steering actually improve task correctness?).
 2. **Goal clarification** (make vague goals usable — the biggest UX gap for real users):
    - **Tier A (DONE):** `assessUncertainty` deterministically detects goal ambiguity →

@@ -60,20 +60,23 @@ next investment.
 | Capability model (dependency graph) | PARTIAL | Flat `enables[]` boolean list; NOT a real dependency graph (e.g. `build_android` → android-sdk + flutter). |
 | Model requirement analysis + routing | PARTIAL | `model-router.ts` picks a registered id + emits `MISSION_MODEL_SELECTED`; **runtime still executes the single configured gateway — no live model swap** (MI-006 selection only). |
 | Planning-mode router | IMPLEMENTED_BUT_NOT_WIRED | `planning-router.ts` computes a mode into the Mission; the Planner does not consume it. |
-| Expert profiles | IMPLEMENTED_BUT_NOT_WIRED | `expert-profile.ts` selected/rendered into the outcome; not injected into the Planner/executor prompt. |
+| Expert profiles | DONE (P12.8) | `expert-profile.ts` selected/rendered, now injected into the EXECUTOR prompt as a trusted `EXPERT_PERSONA` section via the PromptComposer (still not in the Planner prompt — next). |
+| Prompt composition (prompt shaping) | DONE (P12.8) | `mission/prompt-composer.ts` — deterministic, pure assembly (NO LLM): `composePromptPlan(mission, profile)` → `PromptPlan` {expertPersona, taskTypeGuidance, fewShotExampleId, verbosity}, threaded orchestrator → `TaskExecutorRequest.promptPlan` → trusted prompt sections (EXPERT_PERSONA / TASK_TYPE_GUIDANCE / EXAMPLE) + a verbosity-selected system-prompt addendum (guarded for weak models, terse for strong reasoners). Advisory (MI-008); absent ⇒ static default prompt (fail-safe). Measured prompt cost: `prompt_tokens_peak/total` metrics. Real-model success impact unmeasured. |
 | Mission Architect (LLM blueprint) | DONE (advisory) | `mission-architect.ts`; validated via structured-output pipeline. |
 | Architecture Gate (deterministic) | DONE | `architecture-gate.ts`, MI-007; BLOCK → AWAITING_HUMAN (the one real control-flow effect). |
 | Context strategy (scope selection) | DONE (P12.7) | `mission-context-strategy.ts` → `toContextPlan` → threaded orchestrator → `TaskExecutorRequest.contextPlan` → BOTH the `ContextBuilder` policy (`policyFromContextPlan`: scope→maxItems+tokens) AND the `ContextCollector` caps per-call. Fail-safe (no plan ⇒ default policy + default caps). Measured before/after on a real workspace: narrow TASK scope cut context ~62% (21 items/313 tok → 8 items/118 tok) with the pinned task item retained. Real-model success impact still unmeasured (needs a real-model run with mission on). |
-| MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. The orchestrator reads `proceed` (gate BLOCK → AWAITING_HUMAN), `assumptions` (Tier B2, threaded to the executor prompt), **and now `contextPlan`** (P12.7: threaded to the executor to size the context pipeline). Routing/architecture are still otherwise observable-only. |
+| MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. The orchestrator reads `proceed` (gate BLOCK → AWAITING_HUMAN), `assumptions` (Tier B2 → executor prompt), `contextPlan` (P12.7 → context pipeline size), **and now `promptPlan`** (P12.8 → prompt shaping: persona/guidance/few-shot/verbosity into the executor prompt). Routing/architecture are still otherwise observable-only. |
 | Uncertainty assessment (goal ambiguity) | DONE | Tier A: `assessUncertainty` (deterministic) → KNOWN/INFERRED/UNKNOWN + `openQuestions`; `MISSION_UNCERTAINTY_ASSESSED`. |
 | Goal clarification by assumption (option ii) | DONE | Tier B1: `AssumptionAdvisor` (LLM) turns a vague goal's gaps into EXPLICIT assumptions + a clarified restatement; mirrored into Mission.acceptanceCriteria (never the Goal — MI-004); emitted as `MISSION_ASSUMPTIONS_MADE` and shown in the dashboard reasoning. **Tier B2: the assumptions now STEER the agent** — the stage exposes a flattened `assumptions` list, the orchestrator threads it into every `TaskExecutorRequest` (`goalAssumptions`), and the executor injects a TRUSTED `STATED_ASSUMPTIONS` prompt section telling the model to proceed under them as fixed constraints. Fail-safe (absent ⇒ prompt unchanged). Before/after benchmark still pending. |
 
 > **The honest one-line summary of Phase 12 today:** the intelligence layer *analyzes and
 > observes* (events + a gate that can halt for a human). Its influence on the agent is still
 > narrow but growing: the Architecture Gate can halt for a human, and (Tier B2) stated goal
-> assumptions now steer the executor's prompt, and (P12.7) the context strategy now sizes the
-> context pipeline (ContextBuilder policy + Collector caps). The planner and the model used at
-> execution time are still observable-only — not yet wired into behavior.
+> assumptions now steer the executor's prompt, (P12.7) the context strategy now sizes the context
+> pipeline (ContextBuilder policy + Collector caps), and (P12.8) the PromptComposer now shapes the
+> executor prompt (expert persona + task-type guidance + few-shot + verbosity) from mission signals
+> — deterministically, no extra LLM call. The planner prompt and the model used at execution time
+> are still observable-only — not yet wired into behavior.
 
 ### Model system
 

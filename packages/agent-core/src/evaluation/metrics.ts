@@ -42,6 +42,18 @@ function sumPayloadField(events: readonly DomainEvent[], type: string, field: st
   return total;
 }
 
+/** Max of a numeric payload field across all events of a given type (0 when absent). */
+function maxPayloadField(events: readonly DomainEvent[], type: string, field: string): number {
+  let max = 0;
+  for (const e of events) {
+    if (e.type !== type) continue;
+    const p = e.payload as Record<string, unknown> | undefined;
+    const v = p?.[field];
+    if (typeof v === 'number' && Number.isFinite(v) && v > max) max = v;
+  }
+  return max;
+}
+
 /**
  * Compute the canonical metric set for a case. Deterministic over the evidence. Boolean metrics
  * are encoded as 0/1. Counts prefer the runtime trace, falling back to runner counters.
@@ -74,6 +86,12 @@ export function computeMetrics(ev: CaseEvidence): readonly Metric[] {
   metrics.push({ name: 'context_tokens_used', group: 'context', value: sumPayloadField(ev.events, 'CONTEXT_SNAPSHOT_BUILT', 'tokenUsed'), unit: 'tokens' });
   metrics.push({ name: 'context_items', group: 'context', value: sumPayloadField(ev.events, 'CONTEXT_SNAPSHOT_BUILT', 'itemCount'), unit: 'count' });
   metrics.push({ name: 'context_codebase_items', group: 'context', value: sumPayloadField(ev.events, 'CONTEXT_SNAPSHOT_BUILT', 'codebaseItemCount'), unit: 'count' });
+
+  // ── Prompt cost (the "prompt size" signal — read before/after a prompt-shaping change) ──
+  // Sourced from the promptTokens on DECISION_REQUESTED events (one per model call). We report
+  // both the peak (the largest single prompt the model saw) and the total across all calls.
+  metrics.push({ name: 'prompt_tokens_peak', group: 'efficiency', value: maxPayloadField(ev.events, 'DECISION_REQUESTED', 'promptTokens'), unit: 'tokens' });
+  metrics.push({ name: 'prompt_tokens_total', group: 'efficiency', value: sumPayloadField(ev.events, 'DECISION_REQUESTED', 'promptTokens'), unit: 'tokens' });
 
   // ── Scope ────────────────────────────────────────────────────────────────────
   metrics.push({ name: 'files_changed', group: 'scope', value: ev.filesChanged.length, unit: 'count' });

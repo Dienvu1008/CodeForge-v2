@@ -15,6 +15,7 @@ import type { ExecutionCoordinator }    from '../execution/execution-coordinator
 import type { TaskExecutor, TaskExecutorRequest } from '../execution/task-executor.js';
 import type { CheckpointService, CaptureInput }   from '../checkpoint/checkpoint-service.js';
 import type { ContextPlan }             from '../mission/mission-context-strategy.js';
+import type { PromptPlan }              from '../mission/prompt-composer.js';
 import { computeSchedule }              from '../scheduler/scheduler.js';
 import { isTerminalTaskState }          from '../state-machine/states.js';
 import type { FailureAnalyzer }          from '../recovery/failure-analyzer.js';
@@ -87,6 +88,12 @@ export interface MissionStageDecision {
    * uses its default context policy (fail-safe parity). Never affects the Goal/Graph (MI-004).
    */
   readonly contextPlan?: ContextPlan;
+  /**
+   * P12.8 prompt shaping: deterministic prompt-guidance hints composed from the mission. Threaded
+   * into each TaskExecutorRequest so the executor prompt adapts to the task/model. Advisory
+   * (MI-008); absent ⇒ the executor uses its static default prompt (fail-safe parity).
+   */
+  readonly promptPlan?: PromptPlan;
 }
 export interface MissionStage {
   /** Analyze the goal for a specific session (sessionId scopes the MISSION_* audit events). */
@@ -223,6 +230,8 @@ export class SessionOrchestrator {
     // so the context pipeline is bounded per the mission. Undefined ⇒ executor default policy
     // (fail-safe). Read-only w.r.t. the Goal/Graph (MI-004).
     let contextPlan: ContextPlan | undefined;
+    // P12.8: prompt-shaping hints from the stage (if any), threaded to each TaskExecutorRequest.
+    let promptPlan: PromptPlan | undefined;
     if (this.deps.missionStage !== undefined) {
       let decision: MissionStageDecision | undefined;
       try {
@@ -237,6 +246,9 @@ export class SessionOrchestrator {
       }
       if (decision !== undefined && decision.contextPlan !== undefined) {
         contextPlan = decision.contextPlan;
+      }
+      if (decision !== undefined && decision.promptPlan !== undefined) {
+        promptPlan = decision.promptPlan;
       }
       if (decision !== undefined && decision.proceed === false) {
         // ArchitectureGate BLOCKed: stop before planning and hand control to a human (MI-007).
@@ -372,6 +384,7 @@ export class SessionOrchestrator {
         ...(evidence !== undefined ? { priorFailureEvidence: evidence } : {}),
         ...(goalAssumptions.length > 0 ? { goalAssumptions } : {}),
         ...(contextPlan !== undefined ? { contextPlan } : {}),
+        ...(promptPlan !== undefined ? { promptPlan } : {}),
       };
       const result = await this.deps.taskExecutor.execute(req);
       taskRunCount++;

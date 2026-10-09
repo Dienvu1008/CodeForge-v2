@@ -38,6 +38,7 @@ import { assessRisk } from './risk-analyzer.js';
 import { assessUncertainty } from './uncertainty-analyzer.js';
 import { decidePlanningMode } from './planning-router.js';
 import { decideContextStrategy, toContextPlan, type ContextStrategy, type ContextPlan } from './mission-context-strategy.js';
+import { composePromptPlan, type PromptPlan } from './prompt-composer.js';
 import { selectExpertProfile } from './expert-profile.js';
 import { analyzeModelRequirement, routeModel, type ModelRegistry, type RoutingOutcome } from './model-router.js';
 import { MissionArchitect } from './mission-architect.js';
@@ -106,6 +107,13 @@ export interface MissionStageOutcome {
    * (which also carries a human-readable `reason` for events/dashboard).
    */
   readonly contextPlan: ContextPlan;
+  /**
+   * P12.8 prompt shaping: deterministic prompt-guidance hints (expert persona + task-type
+   * guidance + few-shot id + verbosity) composed from the mission. Threaded into each
+   * TaskExecutorRequest so the executor prompt ADAPTS to the task + model instead of being
+   * static. Advisory (MI-008): guidance/data for the model, never authority.
+   */
+  readonly promptPlan: PromptPlan;
   /** The selected model routing (undefined when no registry was wired). */
   readonly routing?: RoutingOutcome;
   readonly expertProfile: ExpertProfile;
@@ -233,6 +241,7 @@ export class MissionIntelligence {
     const contextStrategy = decideContextStrategy(mission);
     const contextPlan = toContextPlan(contextStrategy);
     const expertProfile = selectExpertProfile(missionType, goal.description, this.deps.workspaceSignals);
+    const promptPlan = composePromptPlan(mission, expertProfile);
 
     // ── Model routing (MI-006) ──────────────────────────────────────────────────
     let routing: RoutingOutcome | undefined;
@@ -270,7 +279,7 @@ export class MissionIntelligence {
           await this.emit(sessionId, 'MISSION_USER_CONFIRMATION_REQUIRED', missionId, { blockers: gate.blockers });
           return {
             proceed: false,
-            mission, contextStrategy, contextPlan, expertProfile,
+            mission, contextStrategy, contextPlan, promptPlan, expertProfile,
             architecture, gate, blockers: gate.blockers,
             ...(routing !== undefined ? { routing } : {}),
             ...(preflight !== undefined ? { preflight } : {}),
@@ -286,7 +295,7 @@ export class MissionIntelligence {
 
     return {
       proceed: true,
-      mission, contextStrategy, contextPlan, expertProfile,
+      mission, contextStrategy, contextPlan, promptPlan, expertProfile,
       blockers: [],
       ...(routing !== undefined ? { routing } : {}),
       ...(preflight !== undefined ? { preflight } : {}),
