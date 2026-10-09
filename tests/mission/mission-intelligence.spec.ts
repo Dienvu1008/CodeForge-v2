@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   MissionIntelligence,
   MissionArchitect,
+  AssumptionAdvisor,
   type Goal,
   type DomainEvent,
   type EventLog,
@@ -121,5 +122,66 @@ describe('MissionIntelligence.analyze — advisory stage', () => {
 
     expect(out.proceed).toBe(true);          // did not block on an advisory failure
     expect(out.architecture).toBeUndefined(); // blueprint skipped
+  });
+});
+
+describe('MissionIntelligence.analyze — Tier B1 goal clarification (assume + state)', () => {
+  // An under-specified goal: no acceptance criteria + vague "a script that".
+  const vagueGoal = (): Goal => ({
+    goalId: 'g-vague', version: 1, description: 'create a script that multiplies two matrices',
+    constraints: [], acceptanceCriteria: [], createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'user',
+  });
+  const CLARIFY = JSON.stringify({
+    clarifiedGoal: 'matmul.py exposing multiply(a,b) over nested-list matrices',
+    assumptions: [
+      { question: 'representation?', assumption: 'nested Python lists', acceptance: 'multiply([[1,2],[3,4]],[[5,6],[7,8]]) == [[19,22],[43,50]]' },
+    ],
+  });
+
+  it('makes explicit assumptions for an under-specified goal, emits them, and adds mission acceptance', async () => {
+    const events = new MemoryEventLog();
+    const gw = new FakeModel(); gw.setResponse(/.*/, CLARIFY);
+    const stage = new MissionIntelligence({
+      events, ...rt(),
+      assumptionAdvisor: new AssumptionAdvisor({ gateway: gw, now: () => 't', newProvenanceId: () => 'p' }),
+    });
+
+    const out = await stage.analyze('s-5', vagueGoal());
+
+    expect(out.mission.uncertainty.level).not.toBe('KNOWN'); // detected as vague (Tier A)
+    expect(out.clarification).toBeDefined();
+    expect(out.clarification?.assumptions.length).toBeGreaterThan(0);
+    // The assumption's acceptance was mirrored into the Mission's acceptanceCriteria (not the Goal).
+    expect(out.mission.acceptanceCriteria.some((ac) => ac.description.includes('19,22'))).toBe(true);
+    expect(events.types()).toContain('MISSION_UNCERTAINTY_ASSESSED');
+    expect(events.types()).toContain('MISSION_ASSUMPTIONS_MADE');
+    expect(out.proceed).toBe(true);
+  });
+
+  it('does NOT clarify a KNOWN (precise) goal', async () => {
+    const events = new MemoryEventLog();
+    const gw = new FakeModel(); gw.setResponse(/.*/, CLARIFY);
+    const stage = new MissionIntelligence({
+      events, ...rt(),
+      assumptionAdvisor: new AssumptionAdvisor({ gateway: gw, now: () => 't', newProvenanceId: () => 'p' }),
+    });
+    // goal() carries an acceptance criterion + concrete verb → should be KNOWN or near it.
+    const out = await stage.analyze('s-6', goal('add an exported isEven(n) that returns true for even integers'));
+    if (out.mission.uncertainty.level === 'KNOWN') {
+      expect(out.clarification).toBeUndefined();
+      expect(events.types()).not.toContain('MISSION_ASSUMPTIONS_MADE');
+    }
+  });
+
+  it('proceeds unchanged when the advisor LLM output is invalid (fail-safe)', async () => {
+    const events = new MemoryEventLog();
+    const gw = new FakeModel(); gw.setResponse(/.*/, 'not json');
+    const stage = new MissionIntelligence({
+      events, ...rt(),
+      assumptionAdvisor: new AssumptionAdvisor({ gateway: gw, now: () => 't', newProvenanceId: () => 'p' }),
+    });
+    const out = await stage.analyze('s-7', vagueGoal());
+    expect(out.proceed).toBe(true);
+    expect(out.clarification).toBeUndefined();
   });
 });

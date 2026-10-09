@@ -27,7 +27,10 @@ import type {
   PreflightReport,
   ExpertProfile,
   Capability,
+  GoalClarification,
 } from '../domain/mission.js';
+import type { AcceptanceCriterion } from '../domain/common.js';
+import { AssumptionAdvisor } from './assumption-advisor.js';
 import { extractSignals, type WorkspaceSignals } from './signals.js';
 import { classifyMissionType } from './mission-intake.js';
 import { assessComplexity } from './complexity-analyzer.js';
@@ -71,6 +74,15 @@ export interface MissionIntelligenceDeps {
    */
   readonly architect?: MissionArchitect;
 
+  /**
+   * Optional Tier B1 assumption advisor (LLM). When present AND the goal is under-specified
+   * (uncertainty ≥ INFERRED), the stage asks it to make EXPLICIT assumptions and a clarified
+   * restatement (option (ii): assume + state, don't stop to ask). Absent / on error → skipped,
+   * the mission proceeds unchanged (fail-safe). The clarification is advisory (MI-001) and is
+   * mirrored into the Mission's acceptanceCriteria copy only — never into the Goal (MI-004).
+   */
+  readonly assumptionAdvisor?: AssumptionAdvisor;
+
   /** Optional workspace signals (languages/fileCount) to sharpen complexity analysis. */
   readonly workspaceSignals?: WorkspaceSignals;
 }
@@ -92,6 +104,8 @@ export interface MissionStageOutcome {
   readonly preflight?: PreflightReport;
   readonly architecture?: Architecture;
   readonly gate?: ArchitectureGateResult;
+  /** Tier B1: assumptions the agent made for an under-specified goal (undefined when none). */
+  readonly clarification?: GoalClarification;
   /** Blockers that forced proceed=false (empty when proceed=true). */
   readonly blockers: readonly string[];
 }
@@ -166,7 +180,33 @@ export class MissionIntelligence {
     const planning = decidePlanningMode(missionWithArch);
     await this.emit(sessionId, 'MISSION_PLANNING_MODE_SELECTED', missionId, { mode: planning.mode, reason: planning.reason });
 
-    const mission: Mission = { ...missionWithArch, planningMode: planning.mode };
+    let mission: Mission = { ...missionWithArch, planningMode: planning.mode };
+
+    // ── Tier B1: goal clarification by explicit assumption (option (ii)) ─────────
+    // When the goal is under-specified (uncertainty ≥ INFERRED) and an advisor is wired, make
+    // EXPLICIT assumptions instead of stopping to ask. The assumptions are mirrored into the
+    // Mission's acceptanceCriteria (a mission-level copy — NEVER the Goal, MI-004) so planning
+    // has a concrete target, and surfaced to the user via MISSION_ASSUMPTIONS_MADE (shown in the
+    // dashboard like a commercial agent's "reasoning"). Fail-safe: on error, proceed unchanged.
+    let clarification: GoalClarification | undefined;
+    if (this.deps.assumptionAdvisor !== undefined && mission.uncertainty.level !== 'KNOWN') {
+      try {
+        clarification = await this.deps.assumptionAdvisor.clarify(mission);
+        const assumedCriteria: AcceptanceCriterion[] = clarification.assumptions.map((a, i) => ({
+          criterionId: `${missionId}-assumed-${i + 1}`,
+          description: a.acceptance,
+          mandatory: false, // assumed, not user-stated — advisory acceptance
+        }));
+        mission = { ...mission, acceptanceCriteria: [...mission.acceptanceCriteria, ...assumedCriteria] };
+        await this.emit(sessionId, 'MISSION_ASSUMPTIONS_MADE', missionId, {
+          clarifiedGoal: clarification.clarifiedGoal,
+          assumptions: clarification.assumptions,
+        });
+      } catch {
+        // Advisory LLM failure must not break the run (MI-001/MI-002): proceed without assumptions.
+        clarification = undefined;
+      }
+    }
 
     const contextStrategy = decideContextStrategy(mission);
     const expertProfile = selectExpertProfile(missionType, goal.description, this.deps.workspaceSignals);
@@ -211,6 +251,7 @@ export class MissionIntelligence {
             architecture, gate, blockers: gate.blockers,
             ...(routing !== undefined ? { routing } : {}),
             ...(preflight !== undefined ? { preflight } : {}),
+            ...(clarification !== undefined ? { clarification } : {}),
           };
         }
       } catch {
@@ -227,6 +268,7 @@ export class MissionIntelligence {
       ...(preflight !== undefined ? { preflight } : {}),
       ...(architecture !== undefined ? { architecture } : {}),
       ...(gate !== undefined ? { gate } : {}),
+      ...(clarification !== undefined ? { clarification } : {}),
     };
   }
 

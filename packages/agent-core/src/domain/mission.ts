@@ -294,5 +294,34 @@ export interface ArchitectureGateResult {
   readonly reasons: readonly string[];
 }
 
+// ── Goal clarification (Tier B1) — assumption-based elaboration of a vague goal ──
+
+/**
+ * A single stated assumption the agent makes to fill a gap in an under-specified goal, with a
+ * concrete acceptance check implied by it. This is how option (ii) works: instead of stopping to
+ * ask the user, the agent proceeds under EXPLICIT, visible assumptions.
+ *
+ * It is an UNTRUSTED LLM PROPOSAL (SE-010) that passed structured validation, and ADVISORY
+ * (MI-001): it never mutates the Goal (MI-004). The assumptions are mirrored into the Mission's
+ * acceptanceCriteria (a mission-level copy) and surfaced to the user, not written back to the Goal.
+ */
+export interface GoalAssumption {
+  /** The gap this assumption resolves (echoes a Mission.uncertainty openQuestion when possible). */
+  readonly question: string;
+  /** The concrete choice the agent is making (e.g. "matrices are Python nested lists"). */
+  readonly assumption: string;
+  /** How a correct result under this assumption would be verified (becomes acceptance text). */
+  readonly acceptance: string;
+}
+
+export interface GoalClarification {
+  readonly missionId: string;
+  /** One-line restatement of the goal with the gaps resolved. */
+  readonly clarifiedGoal: string;
+  readonly assumptions: readonly GoalAssumption[];
+  readonly provenance: Provenance;
+  readonly createdAt: string;
+}
+
 /** Current Mission schema version (bump when the shape changes). */
 export const MISSION_VERSION = 1;

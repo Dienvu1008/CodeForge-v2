@@ -91,6 +91,7 @@ import {
   // Phase 12 (P12.7): optional Mission Intelligence stage (advisory; MI-001/002/004).
   MissionIntelligence,
   MissionArchitect,
+  AssumptionAdvisor,
   CapabilityDiscovery,
   ModelRegistry,
   type Session,
@@ -372,6 +373,9 @@ async function main(): Promise<void> {
         ]),
         preferredModelId: modelName,
         architect: new MissionArchitect({ gateway: model, now: rt.now, newProvenanceId: rt.nextId }),
+        // Tier B1: when a goal is under-specified, make explicit assumptions (option (ii)) instead
+        // of stopping to ask — shown in the dashboard as the agent's reasoning.
+        assumptionAdvisor: new AssumptionAdvisor({ gateway: model, now: rt.now, newProvenanceId: rt.nextId }),
       })
     : undefined;
   console.log(`  Mission:    ${missionOn ? 'ON (advisory pre-planning: preflight + model routing + architecture gate)' : 'off (Phase 11 behavior)'}`);
