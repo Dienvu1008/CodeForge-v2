@@ -294,6 +294,42 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     expect(result.summary).toBe('Task complete: wrote the file.');
   });
 
+  // ── Tier B2: stated assumptions are injected into the task prompt ──────────
+
+  it('injects a STATED_ASSUMPTIONS section when goalAssumptions are present', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    await executor.execute(makeReq(task, {
+      goalAssumptions: [
+        'Target language is TypeScript',
+        'The CLI reads from stdin',
+      ],
+    }));
+    const prompt = model.lastPrompt ?? '';
+    expect(prompt).toContain('STATED_ASSUMPTIONS');
+    expect(prompt).toContain('Target language is TypeScript');
+    expect(prompt).toContain('The CLI reads from stdin');
+    // The assumptions must be framed as fixed constraints to proceed under (option (ii)).
+    expect(prompt).toMatch(/Proceed under these assumptions/i);
+  });
+
+  it('omits the STATED_ASSUMPTIONS section when no goalAssumptions are given (fail-safe)', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    await executor.execute(makeReq(task)); // no goalAssumptions
+    expect(model.lastPrompt ?? '').not.toContain('STATED_ASSUMPTIONS');
+  });
+
+  it('omits the STATED_ASSUMPTIONS section when goalAssumptions is empty/blank', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    await executor.execute(makeReq(task, { goalAssumptions: ['', '   '] }));
+    expect(model.lastPrompt ?? '').not.toContain('STATED_ASSUMPTIONS');
+  });
+
   // ── success: one tool call then done ──────────────────────────────────────
 
   it('SUCCEEDED after one tool call + done signal', async () => {

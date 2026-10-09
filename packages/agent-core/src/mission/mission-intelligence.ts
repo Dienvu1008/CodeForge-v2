@@ -106,6 +106,13 @@ export interface MissionStageOutcome {
   readonly gate?: ArchitectureGateResult;
   /** Tier B1: assumptions the agent made for an under-specified goal (undefined when none). */
   readonly clarification?: GoalClarification;
+  /**
+   * Tier B2: the assumption STATEMENTS flattened from `clarification.assumptions` (each entry
+   * is a GoalAssumption.assumption string). Present only when assumptions were made. This is the
+   * field the orchestrator reads to satisfy MissionStageDecision.assumptions and thread the
+   * assumptions into every TaskExecutorRequest, so the agent proceeds under them (option (ii)).
+   */
+  readonly assumptions?: readonly string[];
   /** Blockers that forced proceed=false (empty when proceed=true). */
   readonly blockers: readonly string[];
 }
@@ -208,6 +215,13 @@ export class MissionIntelligence {
       }
     }
 
+    // Tier B2: flatten the structured assumptions into plain statements so the orchestrator can
+    // thread them into each TaskExecutorRequest (MissionStageDecision.assumptions). Empty list ⇒
+    // the field is omitted below (conditional spread) and prompts stay unchanged (fail-safe).
+    const assumptionStatements: readonly string[] = clarification !== undefined
+      ? clarification.assumptions.map((a) => a.assumption).filter((s) => s.trim().length > 0)
+      : [];
+
     const contextStrategy = decideContextStrategy(mission);
     const expertProfile = selectExpertProfile(missionType, goal.description, this.deps.workspaceSignals);
 
@@ -252,6 +266,7 @@ export class MissionIntelligence {
             ...(routing !== undefined ? { routing } : {}),
             ...(preflight !== undefined ? { preflight } : {}),
             ...(clarification !== undefined ? { clarification } : {}),
+            ...(assumptionStatements.length > 0 ? { assumptions: assumptionStatements } : {}),
           };
         }
       } catch {
@@ -269,6 +284,7 @@ export class MissionIntelligence {
       ...(architecture !== undefined ? { architecture } : {}),
       ...(gate !== undefined ? { gate } : {}),
       ...(clarification !== undefined ? { clarification } : {}),
+      ...(assumptionStatements.length > 0 ? { assumptions: assumptionStatements } : {}),
     };
   }
 

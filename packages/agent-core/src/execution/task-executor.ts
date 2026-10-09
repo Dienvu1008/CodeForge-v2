@@ -341,6 +341,15 @@ export interface TaskExecutorRequest {
    * section. Undefined on the first attempt.
    */
   readonly priorFailureEvidence?:   string;
+  /**
+   * Tier B2: assumptions the Mission Intelligence stage stated when the goal was
+   * under-specified (option (ii): assume-and-state). These were produced by the
+   * deterministic runtime from a model clarification pass, NOT raw user content, so
+   * they are injected as a TRUSTED prompt section to steer the agent toward the
+   * assumed interpretation. Fail-safe: absent ⇒ prompt is unchanged. Never mutates
+   * the Goal (MI-004).
+   */
+  readonly goalAssumptions?:        readonly string[];
 }
 
 // ── TaskExecutorResult ────────────────────────────────────────────────────────
@@ -490,7 +499,7 @@ export class TaskExecutor {
       }
 
       // ── 3a. Build model request ─────────────────────────────────────────────
-      const taskPrompt = this.buildTaskPrompt(req.task, transcript, req.priorFailureEvidence, contextSection);
+      const taskPrompt = this.buildTaskPrompt(req.task, transcript, req.priorFailureEvidence, contextSection, req.goalAssumptions);
       const modelReq = modelRequest(
         'execute',
         BOUNDARY_SYSTEM_PREAMBLE + '\n\n' + TASK_EXECUTOR_SYSTEM_PROMPT,
@@ -839,6 +848,7 @@ export class TaskExecutor {
     transcript: ReadonlyArray<{ step: number; toolName: string; arguments: Record<string, unknown>; result: string; exitCode: number | null }>,
     priorFailureEvidence?: string,
     contextSection?: { trustedBlock: string; untrustedBlock: string },
+    goalAssumptions?: readonly string[],
   ): string {
     const acLines = task.acceptanceCriteria.length > 0
       ? task.acceptanceCriteria.map((ac) => `  - ${ac.description}`).join('\n')
@@ -883,6 +893,25 @@ export class TaskExecutor {
     // specific problem rather than redoing the same thing. The boundary preamble tells
     // the model to treat untrusted content as data, not instructions (SE-010).
     const sections: Array<{ label: string; content: string; trust: 'trusted' | 'untrusted' }> = [];
+    // Tier B2: when the goal was under-specified, the Mission Intelligence stage stated
+    // explicit assumptions (option (ii): assume-and-state). These came from the deterministic
+    // runtime's clarification pass — not raw user content — so they are TRUSTED guidance that
+    // steers the agent toward the assumed interpretation instead of guessing or stalling.
+    const assumptionList = (goalAssumptions ?? []).map((a) => a.trim()).filter((a) => a.length > 0);
+    if (assumptionList.length > 0) {
+      sections.push({
+        label:   'STATED_ASSUMPTIONS',
+        content: [
+          'The goal was under-specified. The runtime has already resolved the ambiguity by',
+          'stating the following assumptions. Proceed under these assumptions — do NOT stop to',
+          'ask, and do NOT re-interpret the goal differently. Treat each assumption as a fixed',
+          'constraint on what you build:',
+          '',
+          ...assumptionList.map((a) => `  - ${a}`),
+        ].join('\n'),
+        trust: 'trusted',
+      });
+    }
     if (priorFailureEvidence !== undefined && priorFailureEvidence.trim().length > 0) {
       sections.push({
         label:   'PRIOR_ATTEMPT_FAILED_VERIFICATION',

@@ -64,14 +64,15 @@ next investment.
 | Mission Architect (LLM blueprint) | DONE (advisory) | `mission-architect.ts`; validated via structured-output pipeline. |
 | Architecture Gate (deterministic) | DONE | `architecture-gate.ts`, MI-007; BLOCK → AWAITING_HUMAN (the one real control-flow effect). |
 | Context strategy (scope selection) | IMPLEMENTED_BUT_NOT_WIRED | `mission-context-strategy.ts` computed into the outcome; **never fed to the ContextBuilder/retriever**. |
-| MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. **The orchestrator reads only `proceed`** — the Mission/routing/context/architecture are observable but otherwise discarded. |
+| MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. The orchestrator reads `proceed` (gate BLOCK → AWAITING_HUMAN) **and now `assumptions`** (Tier B2, threaded to the executor). The Mission/routing/context/architecture are still otherwise observable-only. |
 | Uncertainty assessment (goal ambiguity) | DONE | Tier A: `assessUncertainty` (deterministic) → KNOWN/INFERRED/UNKNOWN + `openQuestions`; `MISSION_UNCERTAINTY_ASSESSED`. |
-| Goal clarification by assumption (option ii) | PARTIAL | Tier B1 done: `AssumptionAdvisor` (LLM) turns a vague goal's gaps into EXPLICIT assumptions + a clarified restatement; mirrored into Mission.acceptanceCriteria (never the Goal — MI-004); emitted as `MISSION_ASSUMPTIONS_MADE` and shown in the dashboard as the agent's reasoning. **Advisory**: the assumptions are not yet injected into the planner/executor prompt (Tier B2), so they inform the human + acceptance tally but do not yet steer the agent's work. |
+| Goal clarification by assumption (option ii) | DONE | Tier B1: `AssumptionAdvisor` (LLM) turns a vague goal's gaps into EXPLICIT assumptions + a clarified restatement; mirrored into Mission.acceptanceCriteria (never the Goal — MI-004); emitted as `MISSION_ASSUMPTIONS_MADE` and shown in the dashboard reasoning. **Tier B2: the assumptions now STEER the agent** — the stage exposes a flattened `assumptions` list, the orchestrator threads it into every `TaskExecutorRequest` (`goalAssumptions`), and the executor injects a TRUSTED `STATED_ASSUMPTIONS` prompt section telling the model to proceed under them as fixed constraints. Fail-safe (absent ⇒ prompt unchanged). Before/after benchmark still pending. |
 
 > **The honest one-line summary of Phase 12 today:** the intelligence layer *analyzes and
-> observes* (events + a gate that can halt for a human), but it does **not yet steer** the
-> planner, the context, or the model used at execution time. The analysis is real; the influence
-> is (deliberately, for now) limited to the Architecture Gate.
+> observes* (events + a gate that can halt for a human). Its influence on the agent is still
+> narrow but growing: the Architecture Gate can halt for a human, and (Tier B2) stated goal
+> assumptions now steer the executor's prompt. The planner, context strategy, and the model used
+> at execution time are still observable-only — not yet wired into behavior.
 
 ### Model system
 
@@ -159,15 +160,16 @@ next investment.
 5. **ArtifactStore is in-memory only.**
 6. **Product surface is minimal** (functional dashboard + thin VS Code client; no graph view).
 7. **Capability model is flat booleans**, not a dependency graph.
-8. **Vague goals produce vague results — detection added (Tier A), clarification not yet.** A goal
-   with no acceptance criteria and no way to verify (e.g. "create a python script that multiplies
-   two matrices") cannot be scored PASSED (no evidence) and gives the agent no concrete target.
-   Tier A now **detects** this: `assessUncertainty` marks such a goal UNKNOWN with concrete
-   `openQuestions`. But the runtime does **not yet stop to ask the user** — the agent still plans
-   and guesses. The clarification loop (Tier B: LLM generates questions + a gate; Tier C: the
-   dashboard asks and the answer becomes acceptance criteria, then re-plan) is the next step and
-   is NOT built. Until then, clear goals (like the CF-001..010 benchmark tasks) are what the
-   runtime drives best.
+8. **Vague goals: detected (Tier A) + handled by assume-and-state (Tier B1/B2); no stop-and-ask
+   yet (Tier C).** A goal with no acceptance criteria and no way to verify (e.g. "create a python
+   script that multiplies two matrices") still cannot be scored PASSED (no evidence). Tier A
+   **detects** this (`assessUncertainty` → UNKNOWN + `openQuestions`); Tier B1 makes EXPLICIT
+   assumptions + a clarified restatement; **Tier B2 now injects those assumptions into the
+   executor prompt** so the agent proceeds under a concrete interpretation instead of guessing
+   blindly. The runtime still does **not stop to ask the user** — that stop-and-ask path (Tier C:
+   dashboard asks, the answer becomes acceptance criteria, then re-plan) is optional and NOT
+   built. The before/after benchmark proving B2 improves task correctness is also still pending.
+   Clear goals (like the CF-001..010 benchmark tasks) remain what the runtime drives best.
 9. **Local small models (6–9B) are weak agents.** They plan acceptably but often under-perform
    at execution (looping on reads, emitting malformed tool-call JSON, over-decomposing). The
    runtime now mitigates this (anti-loop nudge, reasoning-model JSON handling, graceful-stop) but
@@ -187,6 +189,8 @@ Driven by running the real runtime against live goals:
 - **Runtime model switching** — `SwitchableModelGateway` + `GET/POST /config` (dashboard picker).
 - **Dashboard** — Goals chat history, Pending-Approval, Result (`/workspace/files`), workspace +
   model in header, model list/download, honest VERIFYING labeling, no-store cache.
-- **Goal clarification (Tier A + B1)** — detect vague goals (`assessUncertainty`) + make explicit
-  assumptions (`AssumptionAdvisor`), shown in the dashboard Live Activity as the agent's reasoning
-  (MISSION_* events rendered as readable "thinking" lines, commercial-agent style).
+- **Goal clarification (Tier A + B1 + B2)** — detect vague goals (`assessUncertainty`) + make
+  explicit assumptions (`AssumptionAdvisor`), shown in the dashboard Live Activity as the agent's
+  reasoning (MISSION_* events as readable "thinking" lines, commercial-agent style). **Tier B2:
+  those assumptions now steer the agent** — threaded orchestrator → `TaskExecutorRequest.goalAssumptions`
+  → a TRUSTED `STATED_ASSUMPTIONS` section in the executor prompt (fail-safe when absent; Goal never mutated, MI-004).

@@ -72,6 +72,13 @@ export interface MissionStageDecision {
   /** false ONLY on an ArchitectureGate BLOCK → orchestrator stops before planning (MI-007). */
   readonly proceed: boolean;
   readonly blockers: readonly string[];
+  /**
+   * Tier B2: assumptions the stage stated when the goal was under-specified (option (ii):
+   * assume-and-state). Advisory and read-only w.r.t. the Goal (MI-004): the orchestrator
+   * only threads these strings into each TaskExecutorRequest so the agent proceeds under the
+   * assumed interpretation. Absent/empty ⇒ no behavior change (fail-safe parity).
+   */
+  readonly assumptions?: readonly string[];
 }
 export interface MissionStage {
   /** Analyze the goal for a specific session (sessionId scopes the MISSION_* audit events). */
@@ -200,6 +207,10 @@ export class SessionOrchestrator {
     // stage is advisory (MI-001/MI-004): the ONLY control-flow effect it can have is reporting
     // proceed:false on an ArchitectureGate BLOCK, which drives the session to AWAITING_HUMAN
     // (MI-007) and returns BEFORE any planning/commit. It never mutates the Goal or the Graph.
+    // Tier B2: assumptions stated by the Mission Intelligence stage (if any), threaded into
+    // every TaskExecutorRequest below so the agent proceeds under the assumed interpretation.
+    // Run-scoped and read-only w.r.t. the Goal (MI-004); empty ⇒ prompts unchanged (fail-safe).
+    let goalAssumptions: readonly string[] = [];
     if (this.deps.missionStage !== undefined) {
       let decision: MissionStageDecision | undefined;
       try {
@@ -208,6 +219,9 @@ export class SessionOrchestrator {
         // The advisory stage must never break the run (MI-002 spirit). On any error, fall
         // through to normal planning as if the stage were not wired.
         decision = undefined;
+      }
+      if (decision !== undefined && Array.isArray(decision.assumptions)) {
+        goalAssumptions = decision.assumptions;
       }
       if (decision !== undefined && decision.proceed === false) {
         // ArchitectureGate BLOCKed: stop before planning and hand control to a human (MI-007).
@@ -341,6 +355,7 @@ export class SessionOrchestrator {
         workspaceRevisionAtEnd:   input.revision,
         graphSummary:             input.graphSummary ?? defaultSummary,
         ...(evidence !== undefined ? { priorFailureEvidence: evidence } : {}),
+        ...(goalAssumptions.length > 0 ? { goalAssumptions } : {}),
       };
       const result = await this.deps.taskExecutor.execute(req);
       taskRunCount++;

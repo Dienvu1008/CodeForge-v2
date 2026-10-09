@@ -4,7 +4,7 @@
 > view that survives across conversations. Phase docs (`PHASE_*`) hold detail; this file holds
 > the *product* trajectory. Status detail lives in `PROJECT_STATUS.md`.
 >
-> Last updated: 2026-09-15 · post-eval hardening + goal-clarification Tier A.
+> Last updated: 2026-09-14 · post-eval hardening + goal-clarification Tier A/B1/B2.
 
 ---
 
@@ -106,8 +106,11 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      LLM `AssumptionAdvisor` turns a high-uncertainty mission's `openQuestions` into EXPLICIT
      assumptions + a clarified restatement, mirrored into Mission.acceptanceCriteria and emitted
      as `MISSION_ASSUMPTIONS_MADE` (shown in the dashboard as the agent's "reasoning"). Advisory.
-   - **Tier B2 (next):** inject the stated assumptions into the planner/executor prompt so they
-     actually steer the agent's work (not just inform the human) — gated by a before/after bench.
+   - **Tier B2 (DONE):** the stated assumptions now **steer the agent**. The stage exposes a
+     flattened `assumptions` list; the orchestrator threads it into every `TaskExecutorRequest`
+     (`goalAssumptions`); the executor injects a TRUSTED `STATED_ASSUMPTIONS` prompt section that
+     tells the model to proceed under them as fixed constraints. Fail-safe: absent ⇒ prompt
+     unchanged; never mutates the Goal (MI-004). (Before/after benchmark still pending.)
    - **Tier C (optional):** a stop-and-ask path for the hardest cases (reuse AWAITING_HUMAN + the
      Goals chat), if assume-and-state proves insufficient for some goals.
 3. **Finish the recovery vocabulary** — implement REPLAN and ROLLBACK (retire the Phase-5.5 stubs).
