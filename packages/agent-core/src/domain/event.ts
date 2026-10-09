@@ -37,6 +37,9 @@ export type KnownEventType =
   | 'MODEL_SELECTED'
   | 'DECISION_REQUESTED'
   | 'DECISION_COMPLETED'
+  // Context observability (display-only; emitted after a ContextSnapshot is built so the trace
+  // records how much context the agent was given — the "context cost" signal for benchmarking).
+  | 'CONTEXT_SNAPSHOT_BUILT'
   | 'TOOL_CALL_REQUESTED'
   | 'TOOL_CALL_APPROVED'
   | 'TOOL_CALL_DENIED'

@@ -63,16 +63,17 @@ next investment.
 | Expert profiles | IMPLEMENTED_BUT_NOT_WIRED | `expert-profile.ts` selected/rendered into the outcome; not injected into the Planner/executor prompt. |
 | Mission Architect (LLM blueprint) | DONE (advisory) | `mission-architect.ts`; validated via structured-output pipeline. |
 | Architecture Gate (deterministic) | DONE | `architecture-gate.ts`, MI-007; BLOCK → AWAITING_HUMAN (the one real control-flow effect). |
-| Context strategy (scope selection) | IMPLEMENTED_BUT_NOT_WIRED | `mission-context-strategy.ts` computed into the outcome; **never fed to the ContextBuilder/retriever**. |
-| MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. The orchestrator reads `proceed` (gate BLOCK → AWAITING_HUMAN) **and now `assumptions`** (Tier B2, threaded to the executor). The Mission/routing/context/architecture are still otherwise observable-only. |
+| Context strategy (scope selection) | DONE (P12.7) | `mission-context-strategy.ts` → `toContextPlan` → threaded orchestrator → `TaskExecutorRequest.contextPlan` → BOTH the `ContextBuilder` policy (`policyFromContextPlan`: scope→maxItems+tokens) AND the `ContextCollector` caps per-call. Fail-safe (no plan ⇒ default policy + default caps). Measured before/after on a real workspace: narrow TASK scope cut context ~62% (21 items/313 tok → 8 items/118 tok) with the pinned task item retained. Real-model success impact still unmeasured (needs a real-model run with mission on). |
+| MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. The orchestrator reads `proceed` (gate BLOCK → AWAITING_HUMAN), `assumptions` (Tier B2, threaded to the executor prompt), **and now `contextPlan`** (P12.7: threaded to the executor to size the context pipeline). Routing/architecture are still otherwise observable-only. |
 | Uncertainty assessment (goal ambiguity) | DONE | Tier A: `assessUncertainty` (deterministic) → KNOWN/INFERRED/UNKNOWN + `openQuestions`; `MISSION_UNCERTAINTY_ASSESSED`. |
 | Goal clarification by assumption (option ii) | DONE | Tier B1: `AssumptionAdvisor` (LLM) turns a vague goal's gaps into EXPLICIT assumptions + a clarified restatement; mirrored into Mission.acceptanceCriteria (never the Goal — MI-004); emitted as `MISSION_ASSUMPTIONS_MADE` and shown in the dashboard reasoning. **Tier B2: the assumptions now STEER the agent** — the stage exposes a flattened `assumptions` list, the orchestrator threads it into every `TaskExecutorRequest` (`goalAssumptions`), and the executor injects a TRUSTED `STATED_ASSUMPTIONS` prompt section telling the model to proceed under them as fixed constraints. Fail-safe (absent ⇒ prompt unchanged). Before/after benchmark still pending. |
 
 > **The honest one-line summary of Phase 12 today:** the intelligence layer *analyzes and
 > observes* (events + a gate that can halt for a human). Its influence on the agent is still
 > narrow but growing: the Architecture Gate can halt for a human, and (Tier B2) stated goal
-> assumptions now steer the executor's prompt. The planner, context strategy, and the model used
-> at execution time are still observable-only — not yet wired into behavior.
+> assumptions now steer the executor's prompt, and (P12.7) the context strategy now sizes the
+> context pipeline (ContextBuilder policy + Collector caps). The planner and the model used at
+> execution time are still observable-only — not yet wired into behavior.
 
 ### Model system
 
@@ -91,7 +92,7 @@ next investment.
 | Repository analysis (symbols, import graph) | DONE | `infrastructure/code-intelligence/` (Tree-sitter / LSP), consumed by `ContextCollector`. |
 | ContextBuilder + token budget + trust marking | DONE | `context/`, CX-*. |
 | Changed-paths / retrieval | DONE | `context-runtime/`. |
-| Mission → Context strategy integration | IMPLEMENTED_BUT_NOT_WIRED | Strategy exists but is not applied (see Mission Intelligence). |
+| Mission → Context strategy integration | DONE (P12.7) | Strategy flattened to `ContextPlan`, threaded through the orchestrator to the executor; sizes the ContextBuilder policy + the ContextCollector caps. Fail-safe when absent. |
 
 ### Planning & execution
 

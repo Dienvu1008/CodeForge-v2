@@ -17,7 +17,7 @@ import {
   SqliteApprovalRepository, SqliteVerificationRepository, Blake3GraphHasher,
   runMigrations, createMigrationRegistry,
   NodeWorkspaceManager, NodeProcessSupervisor, NodeToolExecutor, WorkspaceProcessSupervisor,
-  BenchmarkRunner, BaselineStore, loadBenchmarkFile, inspectProject,
+  BenchmarkRunner, BaselineStore, loadBenchmarkFile, inspectProject, ContextCollector,
   type AgentRunner,
 } from '@codeforge/infrastructure';
 import {
@@ -125,9 +125,14 @@ function makeRealAgentRunner(): AgentRunner {
         const completionGate = new CompletionGate({ reports: verReports });
         const verificationPolicy = buildVerificationPolicy(inspectProject(workspaceRoot));
         const tg = new ToolGateway({ calls: toolCalls, approvals, events, policy: buildToolPolicy('full'), now: c.now, nextId: c.nextId });
+        // Wire the real ContextCollector so the agent sees actual codebase signals (files +
+        // symbols + import graph) — this makes the CONTEXT_SNAPSHOT_BUILT metrics non-trivial, so
+        // the baseline captures real context cost to compare against after a strategy change.
+        const contextCollector = new ContextCollector({ workspaceRoot });
         const taskExec = new TaskExecutor({
           taskRunService: taskRunSvc, executionCoordinator: coordinator,
           contextBuilder: new ContextBuilder({ now: c.now, nextId: c.nextId }),
+          contextProvider: contextCollector,
           gateway: model, toolGateway: tg, executor: toolExec,
           verificationEngine: verEngine, completionGate, verificationPolicy,
           events, maxToolCalls: 8, now: c.now, nextId: c.nextId,
@@ -217,7 +222,16 @@ describe('Real-runtime benchmark E2E + first baseline', () => {
     expect(reloaded?.result.total).toBe(10);
     expect(baseline.label).toBe('codeforge-0.12-fakemodel');
 
+    // Context cost signal (the "before" number for a context-strategy change). These are averages
+    // across all 10 cases, sourced from the CONTEXT_SNAPSHOT_BUILT trace events.
+    const avg = (name: string) => result.metricAverages[name] ?? 0;
     console.log(`BASELINE codeforge-0.12-fakemodel: ${result.success}/${result.total} success, ` +
       `failures=${JSON.stringify(result.failureBreakdown)}`);
+    console.log(`CONTEXT-COST (avg/case): tokens_used=${avg('context_tokens_used').toFixed(1)}, ` +
+      `items=${avg('context_items').toFixed(1)}, codebase_items=${avg('context_codebase_items').toFixed(1)}, ` +
+      `snapshots=${avg('context_snapshots').toFixed(1)}`);
+    // The context metrics must now be present and non-trivial (collector is wired).
+    expect(avg('context_snapshots')).toBeGreaterThan(0);
+    expect(avg('context_tokens_used')).toBeGreaterThan(0);
   }, 120_000);
 });

@@ -39,6 +39,7 @@ import type { ExecutionCoordinator }    from './execution-coordinator.js';
 import type { ContextBuilder }          from '../context/context-builder.js';
 import type { RetrievedSymbol }         from '../context/retriever.js';
 import type { ContextItem }             from '../domain/context.js';
+import { policyFromContextPlan, type ContextPlan } from '../mission/mission-context-strategy.js';
 import type { ToolGateway }             from '../tool/tool-gateway.js';
 import type { ToolCall, RiskClass }     from '../domain/tool-call.js';
 import type { Provenance }              from '../domain/provenance.js';
@@ -119,6 +120,15 @@ RULES (follow strictly — these are enforced; wasted steps make the task FAIL):
 
 /** Read-only tools: "looking", not "doing". Repeating these is the hallmark of a stuck model. */
 const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'git_status', 'git_log', 'git_diff']);
+
+/**
+ * ContextItem kinds that represent CODEBASE context (files/symbols/memory/RAG), as opposed to
+ * the pinned task/goal/graph/failure items rendered elsewhere. Used both to render the codebase
+ * block for the model and to count "codebase items" for the CONTEXT_SNAPSHOT_BUILT metric.
+ */
+const CODEBASE_ITEM_KINDS: ReadonlySet<string> = new Set([
+  'file_full', 'file_snippet', 'symbol_definition', 'symbol_usage', 'memory',
+]);
 
 /**
  * Deterministic loop detector: returns true when the model is stuck exploring instead of acting.
@@ -319,8 +329,15 @@ export interface ContextSignals {
 }
 
 export interface ContextProvider {
-  /** Collect signals from the workspace. Must not throw (degrade to fewer signals). */
-  collect(changedPaths?: readonly string[]): Promise<ContextSignals>;
+  /**
+   * Collect signals from the workspace. Must not throw (degrade to fewer signals).
+   *
+   * P12.7: an optional ContextPlan lets the provider bound collection to the mission's scope
+   * (e.g. a narrow TASK scope reads fewer files; a repositoryWide one reads broadly). Advisory +
+   * fail-safe: when omitted, the provider uses its own default caps (unchanged behavior). The
+   * provider decides how to honor the plan; it must still never throw.
+   */
+  collect(changedPaths?: readonly string[], plan?: ContextPlan): Promise<ContextSignals>;
 }
 
 // ── TaskExecutorRequest ───────────────────────────────────────────────────────
@@ -350,6 +367,14 @@ export interface TaskExecutorRequest {
    * the Goal (MI-004).
    */
   readonly goalAssumptions?:        readonly string[];
+  /**
+   * P12.7 context wiring: the context plan (scope + maxFiles + repositoryWide) the Mission
+   * Intelligence stage derived for this session. Used to size the ContextBuilder's policy (how
+   * many items / how large a token budget) so a trivial task does not load the whole repo and a
+   * heavy one is not starved (CX-005, §34). Advisory: the TokenBudgeter stays the authority.
+   * Absent ⇒ the executor uses DEFAULT_CONTEXT_POLICY (fail-safe parity, unchanged behavior).
+   */
+  readonly contextPlan?:            ContextPlan;
 }
 
 // ── TaskExecutorResult ────────────────────────────────────────────────────────
@@ -439,11 +464,21 @@ export class TaskExecutor {
     let signals: ContextSignals | undefined;
     if (this.deps.contextProvider !== undefined) {
       try {
-        signals = await this.deps.contextProvider.collect();
+        // P12.7: pass the mission's context plan so the provider can bound collection to scope
+        // (fewer files for a narrow task, broad for repositoryWide). Undefined ⇒ provider defaults.
+        signals = await this.deps.contextProvider.collect(undefined, req.contextPlan);
       } catch {
         signals = undefined; // provider must not throw, but be defensive
       }
     }
+
+    // P12.7: when the mission supplied a context plan, size the ContextBuilder policy from it
+    // (scope → maxItems + token budget). Absent ⇒ pass no policy, so ContextBuilder uses
+    // DEFAULT_CONTEXT_POLICY exactly as before (fail-safe parity). The TokenBudgeter remains the
+    // authority (CX-004) — this only sets soft caps.
+    const contextPolicy = req.contextPlan !== undefined
+      ? policyFromContextPlan(req.contextPlan)
+      : undefined;
 
     const snapshot = this.deps.contextBuilder.build({
       sessionId:         req.sessionId,
@@ -452,6 +487,7 @@ export class TaskExecutor {
       workspaceRevision: req.workspaceRevisionAtStart,
       buildReason:       'task_execution',
       taskData:          req.task,
+      ...(contextPolicy !== undefined ? { policy: contextPolicy } : {}),
       ...(req.graphSummary !== undefined ? { graphSummary: req.graphSummary } : {}),
       ...(signals !== undefined ? {
         workspaceFiles:     signals.workspaceFiles,
@@ -459,6 +495,20 @@ export class TaskExecutor {
         importReverseEdges: signals.importReverseEdges,
         changedPaths:       signals.changedPaths,
       } : {}),
+    });
+
+    // Context observability: record how much context the agent was given (token usage + item
+    // counts) into the trace. Display-only + best-effort (emitProgress swallows errors); it
+    // never affects a decision. This is the "context cost" signal benchmarking reads to compare
+    // before/after a context-strategy change (does narrower scope cut tokens without hurting
+    // success?). CX-004/005 unaffected: the snapshot is already built + bounded here.
+    const codebaseItemCount = snapshot.items.filter((it) => CODEBASE_ITEM_KINDS.has(it.kind)).length;
+    await this.emitProgress(req.sessionId, runId, 'CONTEXT_SNAPSHOT_BUILT', {
+      snapshotId:        snapshot.snapshotId,
+      tokenUsed:         snapshot.tokenUsed,
+      tokenBudget:       snapshot.tokenBudget,
+      itemCount:         snapshot.items.length,
+      codebaseItemCount,
     });
 
     // P10.3: render the snapshot's context items ONCE into a stable string injected into
@@ -1030,9 +1080,7 @@ export class TaskExecutor {
    * the model can reference real files. Returns empty blocks when there is nothing to show.
    */
   private renderContextItems(items: readonly ContextItem[]): { trustedBlock: string; untrustedBlock: string } {
-    const CODEBASE_KINDS = new Set([
-      'file_full', 'file_snippet', 'symbol_definition', 'symbol_usage', 'memory',
-    ]);
+    const CODEBASE_KINDS = CODEBASE_ITEM_KINDS;
     const trusted: string[] = [];
     const untrusted: string[] = [];
     for (const item of items) {

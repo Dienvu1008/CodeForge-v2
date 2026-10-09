@@ -37,7 +37,7 @@ import { assessComplexity } from './complexity-analyzer.js';
 import { assessRisk } from './risk-analyzer.js';
 import { assessUncertainty } from './uncertainty-analyzer.js';
 import { decidePlanningMode } from './planning-router.js';
-import { decideContextStrategy, type ContextStrategy } from './mission-context-strategy.js';
+import { decideContextStrategy, toContextPlan, type ContextStrategy, type ContextPlan } from './mission-context-strategy.js';
 import { selectExpertProfile } from './expert-profile.js';
 import { analyzeModelRequirement, routeModel, type ModelRegistry, type RoutingOutcome } from './model-router.js';
 import { MissionArchitect } from './mission-architect.js';
@@ -98,6 +98,14 @@ export interface MissionStageOutcome {
   readonly proceed: boolean;
   readonly mission: Mission;
   readonly contextStrategy: ContextStrategy;
+  /**
+   * P12.7 context wiring: the FLATTENED, serializable context plan (scope + maxFiles +
+   * repositoryWide) derived from `contextStrategy`. This is the field the orchestrator threads
+   * into each TaskExecutorRequest so the context pipeline is bounded per the mission. Always
+   * present (contextStrategy is always computed); kept separate from the richer contextStrategy
+   * (which also carries a human-readable `reason` for events/dashboard).
+   */
+  readonly contextPlan: ContextPlan;
   /** The selected model routing (undefined when no registry was wired). */
   readonly routing?: RoutingOutcome;
   readonly expertProfile: ExpertProfile;
@@ -223,6 +231,7 @@ export class MissionIntelligence {
       : [];
 
     const contextStrategy = decideContextStrategy(mission);
+    const contextPlan = toContextPlan(contextStrategy);
     const expertProfile = selectExpertProfile(missionType, goal.description, this.deps.workspaceSignals);
 
     // ── Model routing (MI-006) ──────────────────────────────────────────────────
@@ -261,7 +270,7 @@ export class MissionIntelligence {
           await this.emit(sessionId, 'MISSION_USER_CONFIRMATION_REQUIRED', missionId, { blockers: gate.blockers });
           return {
             proceed: false,
-            mission, contextStrategy, expertProfile,
+            mission, contextStrategy, contextPlan, expertProfile,
             architecture, gate, blockers: gate.blockers,
             ...(routing !== undefined ? { routing } : {}),
             ...(preflight !== undefined ? { preflight } : {}),
@@ -277,7 +286,7 @@ export class MissionIntelligence {
 
     return {
       proceed: true,
-      mission, contextStrategy, expertProfile,
+      mission, contextStrategy, contextPlan, expertProfile,
       blockers: [],
       ...(routing !== undefined ? { routing } : {}),
       ...(preflight !== undefined ? { preflight } : {}),

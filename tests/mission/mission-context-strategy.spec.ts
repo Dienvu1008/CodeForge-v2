@@ -2,7 +2,10 @@
 // trivial task must NOT widen to repository scope (CX-005 / §34); heavy/architectural missions
 // warrant repository (or multi-repo) scope. Pure: same mission → same strategy.
 import { describe, it, expect } from 'vitest';
-import { decideContextStrategy, type Mission, type MissionType, type Complexity } from '@codeforge/agent-core';
+import {
+  decideContextStrategy, toContextPlan, policyFromContextPlan,
+  type Mission, type MissionType, type Complexity,
+} from '@codeforge/agent-core';
 
 function mission(type: MissionType, level: Complexity, contextScope: Mission['contextScope'] = 'FILE'): Mission {
   return {
@@ -52,5 +55,48 @@ describe('decideContextStrategy', () => {
   it('is deterministic', () => {
     const m = mission('REFACTOR', 'MEDIUM');
     expect(JSON.stringify(decideContextStrategy(m))).toEqual(JSON.stringify(decideContextStrategy(m)));
+  });
+});
+
+describe('toContextPlan', () => {
+  it('projects the three steering fields and drops reason', () => {
+    const s = decideContextStrategy(mission('PROJECT', 'HIGH', 'REPOSITORY'));
+    const plan = toContextPlan(s);
+    expect(plan).toEqual({ scope: s.scope, maxFiles: s.maxFiles, repositoryWide: s.repositoryWide });
+    expect('reason' in plan).toBe(false);
+  });
+});
+
+describe('policyFromContextPlan', () => {
+  it('narrow scopes (TASK/FILE) get the smallest token budget', () => {
+    const p = policyFromContextPlan({ scope: 'TASK', maxFiles: 3, repositoryWide: false });
+    expect(p.availableTokens).toBe(4096);
+    // maxItems ≈ 2× maxFiles, clamped to a floor of 8.
+    expect(p.maxItems).toBe(8); // max(8, round(3*2)) = 8
+  });
+
+  it('MODULE scope gets the mid token budget', () => {
+    const p = policyFromContextPlan({ scope: 'MODULE', maxFiles: 25, repositoryWide: false });
+    expect(p.availableTokens).toBe(8192);
+    expect(p.maxItems).toBe(50); // round(25*2)=50, under the 60 cap
+  });
+
+  it('REPOSITORY scope gets the largest budget and clamps maxItems to 60', () => {
+    const p = policyFromContextPlan({ scope: 'REPOSITORY', maxFiles: 150, repositoryWide: true });
+    expect(p.availableTokens).toBe(12288);
+    expect(p.maxItems).toBe(60); // round(150*2)=300, clamped to 60
+  });
+
+  it('EXTERNAL_RESEARCH and MULTI_REPOSITORY also get the largest budget', () => {
+    expect(policyFromContextPlan({ scope: 'EXTERNAL_RESEARCH', maxFiles: 150, repositoryWide: true }).availableTokens).toBe(12288);
+    expect(policyFromContextPlan({ scope: 'MULTI_REPOSITORY', maxFiles: 400, repositoryWide: true }).availableTokens).toBe(12288);
+  });
+
+  it('carries a scope-tagged policyId and is pure/deterministic', () => {
+    const plan = { scope: 'FILE' as const, maxFiles: 5, repositoryWide: false };
+    const a = policyFromContextPlan(plan);
+    const b = policyFromContextPlan(plan);
+    expect(a.policyId).toBe('cx-file');
+    expect(JSON.stringify(a)).toEqual(JSON.stringify(b));
   });
 });

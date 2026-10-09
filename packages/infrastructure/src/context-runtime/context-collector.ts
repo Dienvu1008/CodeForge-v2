@@ -16,7 +16,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { join, relative, sep, extname } from 'node:path';
-import type { RetrievedSymbol } from '@codeforge/agent-core';
+import type { RetrievedSymbol, ContextPlan } from '@codeforge/agent-core';
 import { TreeSitterAdapter } from '../code-intelligence/tree-sitter-adapter.js';
 import { SymbolExtractor } from '../code-intelligence/symbol-extractor.js';
 import { ImportGraphBuilder } from '../code-intelligence/import-graph-builder.js';
@@ -94,8 +94,14 @@ export class ContextCollector {
    * affected set (e.g. files the current task edited); when empty the Retriever falls
    * back to import-distance / alphabetical ranking.
    */
-  async collect(changedPaths: readonly string[] = []): Promise<CollectedContext> {
-    const workspaceFiles = await this.readWorkspaceFiles();
+  async collect(changedPaths: readonly string[] = [], plan?: ContextPlan): Promise<CollectedContext> {
+    // P12.7: derive per-call caps from the mission's context plan. A repositoryWide plan reads as
+    // broadly as the instance allows; a narrow (non-repo) plan is bounded to ~plan.maxFiles files
+    // and a tighter byte ceiling, so a trivial task does not slurp the whole repo (CX-005, §34).
+    // No plan ⇒ the instance defaults (unchanged behavior, fail-safe). Pure caps; the downstream
+    // TokenBudgeter still trims to the policy budget.
+    const caps = this.resolveCaps(plan);
+    const workspaceFiles = await this.readWorkspaceFiles(caps);
 
     // Code-intelligence over the TS/JS/… subset. Degrades to empty on any failure.
     const { symbols, importReverseEdges } = await this.analyze(workspaceFiles);
@@ -108,14 +114,32 @@ export class ContextCollector {
     };
   }
 
+  /**
+   * Translate a ContextPlan into concrete collection caps for a single collect() call. The
+   * instance caps are the ceiling; a narrow plan only ever TIGHTENS them (never widens past the
+   * instance limits). Deterministic + pure. Absent plan ⇒ the instance defaults verbatim.
+   */
+  private resolveCaps(plan?: ContextPlan): { maxFiles: number; maxTotalBytes: number } {
+    if (plan === undefined || plan.repositoryWide) {
+      return { maxFiles: this.maxFiles, maxTotalBytes: this.maxTotalBytes };
+    }
+    // Narrow (non-repository) scope: bound to the plan's soft file cap (with a little headroom so
+    // import-graph neighbours still load), clamped to the instance ceiling; byte budget tightened
+    // proportionally but never below a usable floor.
+    const narrowFiles = Math.min(this.maxFiles, Math.max(4, plan.maxFiles * 3));
+    const narrowBytes = Math.min(this.maxTotalBytes, Math.max(128 * 1024, narrowFiles * this.maxFileBytes));
+    return { maxFiles: narrowFiles, maxTotalBytes: narrowBytes };
+  }
+
   // ── file collection ─────────────────────────────────────────────────────────
 
-  private async readWorkspaceFiles(): Promise<ReadonlyMap<string, string>> {
+  private async readWorkspaceFiles(caps: { maxFiles: number; maxTotalBytes: number }): Promise<ReadonlyMap<string, string>> {
     const files = new Map<string, string>();
     let totalBytes = 0;
+    const { maxFiles, maxTotalBytes } = caps;
 
     const walk = async (dir: string): Promise<void> => {
-      if (files.size >= this.maxFiles || totalBytes >= this.maxTotalBytes) return;
+      if (files.size >= maxFiles || totalBytes >= maxTotalBytes) return;
       let entries: Dirent[];
       try {
         entries = await readdir(dir, { withFileTypes: true });
@@ -125,7 +149,7 @@ export class ContextCollector {
       // Deterministic order.
       entries.sort((a, b) => a.name.localeCompare(b.name));
       for (const entry of entries) {
-        if (files.size >= this.maxFiles || totalBytes >= this.maxTotalBytes) return;
+        if (files.size >= maxFiles || totalBytes >= maxTotalBytes) return;
         if (entry.name.startsWith('.') && entry.isDirectory()) {
           if (this.skipDirs.has(entry.name)) continue;
         }
@@ -138,7 +162,7 @@ export class ContextCollector {
           try {
             const info = await stat(abs);
             if (info.size > this.maxFileBytes) continue;
-            if (totalBytes + info.size > this.maxTotalBytes) continue;
+            if (totalBytes + info.size > maxTotalBytes) continue;
             const content = await readFile(abs, 'utf8');
             // Skip apparent binaries (NUL byte) that slipped past the extension filter.
             if (content.includes('\u0000')) continue;

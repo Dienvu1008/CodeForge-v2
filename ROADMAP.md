@@ -95,10 +95,15 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
 (that is the point of building eval first). Candidate milestones:
 
 1. **Wire Mission Intelligence into execution** (close the biggest integration debt):
-   - feed `ContextStrategy` → ContextBuilder (bound retrieval by mission scope);
+   - **`ContextStrategy` → ContextBuilder + Collector (DONE, P12.7):** the strategy is flattened
+     to a `ContextPlan`, threaded through the orchestrator to each `TaskExecutorRequest`, and sizes
+     BOTH the ContextBuilder policy (scope→maxItems+token budget) AND the ContextCollector caps
+     per-call. Fail-safe when absent. Measured on a real workspace: narrow TASK scope cut context
+     ~62% (21→8 items, 313→118 tokens) with the pinned task item retained. Still TODO: measure the
+     real-model *success* impact (needs a real-model run with mission on + an ambiguous-scope set).
    - apply routed model at execution (live model selection, not just an emitted id);
    - let the Planner consume planning-mode + expert-profile + architecture.
-   Gate this with before/after benchmark numbers (does steering actually improve task correctness?).
+   Gate the remaining items with before/after benchmark numbers (does steering actually improve task correctness?).
 2. **Goal clarification** (make vague goals usable — the biggest UX gap for real users):
    - **Tier A (DONE):** `assessUncertainty` deterministically detects goal ambiguity →
      Mission.uncertainty + `openQuestions` + `MISSION_UNCERTAINTY_ASSESSED` event. Advisory.

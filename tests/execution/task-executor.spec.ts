@@ -330,6 +330,34 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     expect(model.lastPrompt ?? '').not.toContain('STATED_ASSUMPTIONS');
   });
 
+  // ── P12.7: a contextPlan sizes the ContextBuilder policy ───────────────────
+
+  it('derives the ContextBuilder policy from req.contextPlan (narrow scope → small budget)', async () => {
+    const { deps, task } = await makeTestDeps();
+    // Spy wrapping the real ContextBuilder to capture the policy it was handed.
+    const real = deps.contextBuilder;
+    let capturedPolicy: { availableTokens: number; maxItems: number; policyId: string } | undefined;
+    const spy = { build: (req: Parameters<typeof real.build>[0]) => { capturedPolicy = req.policy; return real.build(req); } };
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, contextBuilder: spy as typeof real, executor: fakeExec });
+    await executor.execute(makeReq(task, { contextPlan: { scope: 'TASK', maxFiles: 3, repositoryWide: false } }));
+    expect(capturedPolicy).toBeDefined();
+    expect(capturedPolicy?.policyId).toBe('cx-task');
+    expect(capturedPolicy?.availableTokens).toBe(4096); // TASK/FILE tier
+    expect(capturedPolicy?.maxItems).toBe(8);           // clamp(8,60, round(3*2))
+  });
+
+  it('passes NO policy when contextPlan is absent (ContextBuilder uses its default — fail-safe)', async () => {
+    const { deps, task } = await makeTestDeps();
+    const real = deps.contextBuilder;
+    let sawPolicyKey = true;
+    const spy = { build: (req: Parameters<typeof real.build>[0]) => { sawPolicyKey = req.policy !== undefined; return real.build(req); } };
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    const executor = new TaskExecutor({ ...deps, contextBuilder: spy as typeof real, executor: fakeExec });
+    await executor.execute(makeReq(task)); // no contextPlan
+    expect(sawPolicyKey).toBe(false);
+  });
+
   // ── success: one tool call then done ──────────────────────────────────────
 
   it('SUCCEEDED after one tool call + done signal', async () => {

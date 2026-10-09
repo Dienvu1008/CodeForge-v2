@@ -6,6 +6,7 @@
 // remain the authority on what actually enters a snapshot (and the snapshot stays provenance-
 // tracked and size-bounded regardless). Pure: same mission → same recommendation.
 import type { Mission, ContextScope, MissionType, Complexity } from '../domain/mission.js';
+import { DEFAULT_CONTEXT_POLICY, type ContextPolicy } from '../context/context-builder.js';
 
 export interface ContextStrategy {
   readonly scope: ContextScope;
@@ -14,6 +15,47 @@ export interface ContextStrategy {
   /** Whether cross-file / repository-wide retrieval is warranted. */
   readonly repositoryWide: boolean;
   readonly reason: string;
+}
+
+/**
+ * ContextPlan — the FLATTENED, serializable subset of a ContextStrategy that is threaded through
+ * the orchestrator seam into each TaskExecutorRequest (same pattern as Tier B2's assumptions).
+ * It drops `reason` (log/emit only) and carries just the three fields that actually steer
+ * retrieval. Advisory (MI-001): it changes HOW MUCH / HOW WIDE context is gathered, never WHAT is
+ * authoritative; absent ⇒ callers fall back to defaults (fail-safe parity).
+ */
+export interface ContextPlan {
+  readonly scope: ContextScope;
+  readonly maxFiles: number;
+  readonly repositoryWide: boolean;
+}
+
+/** Project a ContextStrategy to its serializable ContextPlan (drops the human-readable reason). */
+export function toContextPlan(strategy: ContextStrategy): ContextPlan {
+  return { scope: strategy.scope, maxFiles: strategy.maxFiles, repositoryWide: strategy.repositoryWide };
+}
+
+/**
+ * Translate a ContextPlan into a concrete ContextPolicy for the ContextBuilder. This is the
+ * deliberate scope→budget mapping (one "file" can produce several context items — symbols —
+ * so maxItems is NOT a 1:1 copy of maxFiles). Token budgets step by scope rather than scaling
+ * linearly. These numbers are an initial proposal to be tuned by the context benchmark; the
+ * TokenBudgeter (CX-004) remains the final authority — this only sets soft caps. Pure + total.
+ */
+export function policyFromContextPlan(plan: ContextPlan): ContextPolicy {
+  // maxItems ≈ 2× the file cap (files + their symbols/snippets), clamped to a sane band.
+  const maxItems = Math.min(60, Math.max(8, Math.round(plan.maxFiles * 2)));
+  // Token budget steps by scope (discrete tiers, not a linear function of maxFiles).
+  const availableTokens =
+    plan.scope === 'TASK' || plan.scope === 'FILE' ? 4096 :
+    plan.scope === 'MODULE'                        ? 8192 :
+    /* REPOSITORY / MULTI_REPOSITORY / EXTERNAL_RESEARCH */ 12288;
+  return {
+    ...DEFAULT_CONTEXT_POLICY,
+    policyId: `cx-${plan.scope.toLowerCase()}`,
+    availableTokens,
+    maxItems,
+  };
 }
 
 // Deterministic soft file caps per scope (hints only; CX-005 budgeter stays authoritative).

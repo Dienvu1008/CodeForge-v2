@@ -82,4 +82,28 @@ describe('P10.3 ContextCollector', () => {
     expect(result.workspaceFiles.size).toBe(0);
     expect(result.symbols).toEqual([]);
   });
+
+  // ── P12.7: a ContextPlan bounds per-call collection ──────────────────────────
+
+  it('a narrow (non-repository) plan tightens the file cap for that call', async () => {
+    // Add more files so an unbounded collect would read > the narrow cap.
+    for (let i = 0; i < 8; i++) {
+      await writeFile(join(root, `extra${i}.ts`), `export const v${i} = ${i};\n`, 'utf8');
+    }
+    const collector = new ContextCollector({ workspaceRoot: root });
+    // Narrow TASK plan: maxFiles 2 → cap ≈ max(4, 2*3)=6 files for this call.
+    const narrow = await collector.collect([], { scope: 'TASK', maxFiles: 2, repositoryWide: false });
+    expect(narrow.workspaceFiles.size).toBeLessThanOrEqual(6);
+    // A repositoryWide plan reads broadly (all 11 source files here).
+    const wide = await collector.collect([], { scope: 'REPOSITORY', maxFiles: 150, repositoryWide: true });
+    expect(wide.workspaceFiles.size).toBeGreaterThan(narrow.workspaceFiles.size);
+  });
+
+  it('no plan keeps the instance default caps (unchanged behavior)', async () => {
+    const collector = new ContextCollector({ workspaceRoot: root });
+    const a = await collector.collect();            // no plan
+    const b = await collector.collect([], undefined); // explicit undefined plan
+    expect(a.workspaceFiles.size).toBe(b.workspaceFiles.size);
+    expect(a.workspaceFiles.size).toBeGreaterThanOrEqual(3); // the 3 seed files at least
+  });
 });

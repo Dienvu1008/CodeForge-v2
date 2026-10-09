@@ -40,7 +40,13 @@ export { MissionArchitect, type MissionArchitectDeps } from './mission-architect
 export { AssumptionAdvisor, type AssumptionAdvisorDeps } from './assumption-advisor.js';
 export { evaluateArchitecture } from './architecture-gate.js';
 // P12.7: context strategy + the optional pre-planning MissionIntelligence stage (MI-001/002/004).
-export { decideContextStrategy, type ContextStrategy } from './mission-context-strategy.js';
+export {
+  decideContextStrategy,
+  toContextPlan,
+  policyFromContextPlan,
+  type ContextStrategy,
+  type ContextPlan,
+} from './mission-context-strategy.js';
 export {
   MissionIntelligence,
   type MissionIntelligenceDeps,

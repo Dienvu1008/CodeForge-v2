@@ -30,6 +30,18 @@ function countEvents(events: readonly DomainEvent[], type: string): number {
   return events.filter((e) => e.type === type).length;
 }
 
+/** Sum a numeric payload field across all events of a given type (0 when absent). */
+function sumPayloadField(events: readonly DomainEvent[], type: string, field: string): number {
+  let total = 0;
+  for (const e of events) {
+    if (e.type !== type) continue;
+    const p = e.payload as Record<string, unknown> | undefined;
+    const v = p?.[field];
+    if (typeof v === 'number' && Number.isFinite(v)) total += v;
+  }
+  return total;
+}
+
 /**
  * Compute the canonical metric set for a case. Deterministic over the evidence. Boolean metrics
  * are encoded as 0/1. Counts prefer the runtime trace, falling back to runner counters.
@@ -52,6 +64,16 @@ export function computeMetrics(ev: CaseEvidence): readonly Metric[] {
   if (ev.counters?.modelTokens !== undefined) {
     metrics.push({ name: 'model_tokens', group: 'efficiency', value: ev.counters.modelTokens, unit: 'tokens' });
   }
+
+  // ── Context (the "context cost" signal — read before/after a context-strategy change) ──
+  // Sourced from CONTEXT_SNAPSHOT_BUILT events the TaskExecutor emits after each snapshot build.
+  // A task may build several snapshots (one per task_run), so tokens/items are summed and the
+  // snapshot count is reported, letting a reader compute per-snapshot averages if desired.
+  const ctxSnapshots = countEvents(ev.events, 'CONTEXT_SNAPSHOT_BUILT');
+  metrics.push({ name: 'context_snapshots', group: 'context', value: ctxSnapshots, unit: 'count' });
+  metrics.push({ name: 'context_tokens_used', group: 'context', value: sumPayloadField(ev.events, 'CONTEXT_SNAPSHOT_BUILT', 'tokenUsed'), unit: 'tokens' });
+  metrics.push({ name: 'context_items', group: 'context', value: sumPayloadField(ev.events, 'CONTEXT_SNAPSHOT_BUILT', 'itemCount'), unit: 'count' });
+  metrics.push({ name: 'context_codebase_items', group: 'context', value: sumPayloadField(ev.events, 'CONTEXT_SNAPSHOT_BUILT', 'codebaseItemCount'), unit: 'count' });
 
   // ── Scope ────────────────────────────────────────────────────────────────────
   metrics.push({ name: 'files_changed', group: 'scope', value: ev.filesChanged.length, unit: 'count' });

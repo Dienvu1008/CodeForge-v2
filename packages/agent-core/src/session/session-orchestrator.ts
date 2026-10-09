@@ -14,6 +14,7 @@ import type { TaskGraphRepository, TaskRepository, TaskExecutionRepository, Task
 import type { ExecutionCoordinator }    from '../execution/execution-coordinator.js';
 import type { TaskExecutor, TaskExecutorRequest } from '../execution/task-executor.js';
 import type { CheckpointService, CaptureInput }   from '../checkpoint/checkpoint-service.js';
+import type { ContextPlan }             from '../mission/mission-context-strategy.js';
 import { computeSchedule }              from '../scheduler/scheduler.js';
 import { isTerminalTaskState }          from '../state-machine/states.js';
 import type { FailureAnalyzer }          from '../recovery/failure-analyzer.js';
@@ -79,6 +80,13 @@ export interface MissionStageDecision {
    * assumed interpretation. Absent/empty ⇒ no behavior change (fail-safe parity).
    */
   readonly assumptions?: readonly string[];
+  /**
+   * P12.7 context wiring: the flattened context plan (scope + maxFiles + repositoryWide) the
+   * stage derived from the mission. Advisory (MI-001): the orchestrator threads it into each
+   * TaskExecutorRequest so the context pipeline is bounded per the mission. Absent ⇒ the executor
+   * uses its default context policy (fail-safe parity). Never affects the Goal/Graph (MI-004).
+   */
+  readonly contextPlan?: ContextPlan;
 }
 export interface MissionStage {
   /** Analyze the goal for a specific session (sessionId scopes the MISSION_* audit events). */
@@ -211,6 +219,10 @@ export class SessionOrchestrator {
     // every TaskExecutorRequest below so the agent proceeds under the assumed interpretation.
     // Run-scoped and read-only w.r.t. the Goal (MI-004); empty ⇒ prompts unchanged (fail-safe).
     let goalAssumptions: readonly string[] = [];
+    // P12.7: context plan from the stage (if any), threaded into every TaskExecutorRequest below
+    // so the context pipeline is bounded per the mission. Undefined ⇒ executor default policy
+    // (fail-safe). Read-only w.r.t. the Goal/Graph (MI-004).
+    let contextPlan: ContextPlan | undefined;
     if (this.deps.missionStage !== undefined) {
       let decision: MissionStageDecision | undefined;
       try {
@@ -222,6 +234,9 @@ export class SessionOrchestrator {
       }
       if (decision !== undefined && Array.isArray(decision.assumptions)) {
         goalAssumptions = decision.assumptions;
+      }
+      if (decision !== undefined && decision.contextPlan !== undefined) {
+        contextPlan = decision.contextPlan;
       }
       if (decision !== undefined && decision.proceed === false) {
         // ArchitectureGate BLOCKed: stop before planning and hand control to a human (MI-007).
@@ -356,6 +371,7 @@ export class SessionOrchestrator {
         graphSummary:             input.graphSummary ?? defaultSummary,
         ...(evidence !== undefined ? { priorFailureEvidence: evidence } : {}),
         ...(goalAssumptions.length > 0 ? { goalAssumptions } : {}),
+        ...(contextPlan !== undefined ? { contextPlan } : {}),
       };
       const result = await this.deps.taskExecutor.execute(req);
       taskRunCount++;
