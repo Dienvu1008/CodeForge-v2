@@ -296,13 +296,33 @@ export class SessionOrchestrator {
       const updatedStates = await this.buildStatesMap(g);
       const readySched = computeSchedule({ nodes: g.nodes, edges: g.edges, states: updatedStates });
       if (readySched.next === undefined) {
-        const stuck = g.nodes.some((n) => {
-          const s = updatedStates.get(n.taskId) ?? 'PENDING';
-          return !isTerminalTaskState(s) && s !== 'VERIFYING';
-        });
-        if (stuck) {
-          await this.abortSession(input.sessionId);
-          throw new SessionOrchestratorError('DEADLOCK', 'No schedulable tasks but non-terminal tasks remain');
+        // Nothing is schedulable. Classify the non-terminal, non-VERIFYING tasks that remain:
+        //   - "blocked": a PENDING task whose dependency can NEVER pass (a dependency FAILED /
+        //     is AWAITING_HUMAN / escalated). This is NOT a deadlock to abort on — the plan is
+        //     partially unachievable (common with weak-model plans). We finish the session
+        //     gracefully, counting those tasks as non-passed, and PRESERVE the work that did
+        //     succeed, rather than throwing away the whole run.
+        //   - "cyclic": a PENDING task stuck behind other non-terminal tasks with no failed
+        //     dependency — a genuine dependency cycle (a planner bug). Still finish gracefully
+        //     (don't discard completed work), but it is surfaced via the non-passed tally.
+        const remaining = g.nodes
+          .map((n) => n.taskId)
+          .filter((id) => {
+            const s = updatedStates.get(id) ?? 'PENDING';
+            return !isTerminalTaskState(s) && s !== 'VERIFYING';
+          });
+        if (remaining.length > 0) {
+          // SM-L8 ("no infinite PENDING"): a task that can never become schedulable (its
+          // dependency failed / escalated, or a planner-produced cycle) is driven to the
+          // terminal ABORTED state (PENDING --DEP_UNREACHABLE--> ABORTED). This replaces the
+          // old hard DEADLOCK-abort that discarded the WHOLE run: now the graph becomes fully
+          // terminal, the session COMPLETES normally, and the work that DID succeed (passed
+          // tasks + files already written) is preserved. The aborted tasks are counted as
+          // non-passed in the tally (step 6), which truthfully reports the partial outcome.
+          for (const id of remaining) {
+            try { await this.deps.executionCoordinator.setState(id, 'ABORTED'); }
+            catch { /* best-effort: a projection write must not crash the finish path */ }
+          }
         }
         break;
       }
