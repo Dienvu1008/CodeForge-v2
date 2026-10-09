@@ -108,8 +108,9 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      reasoners). Fail-safe when absent. Wires the previously-unused `expert-profile.ts`. Prompt cost
      is now measured (`prompt_tokens_peak/total`); real-model success impact still TODO.
    - apply routed model at execution (live model selection, not just an emitted id);
-   - let the Planner consume planning-mode + expert-profile + architecture (prompt shaping is wired
-     to the executor; the Planner prompt is the remaining consumer).
+   - let the Planner consume planning-mode + architecture (expert-profile + verbosity prompt shaping
+     is now wired to BOTH the executor and the planner; planning-mode + architecture blueprint
+     remain the unconsumed mission outputs).
    Gate the remaining items with before/after benchmark numbers (does steering actually improve task correctness?).
 2. **Goal clarification** (make vague goals usable — the biggest UX gap for real users):
    - **Tier A (DONE):** `assessUncertainty` deterministically detects goal ambiguity →

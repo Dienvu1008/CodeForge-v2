@@ -499,3 +499,60 @@ describe('P10.4 Planner — bounded PlanCritic refinement (MG-006)', () => {
     expect(fake.callCount).toBe(1); // one plan call, no critique
   });
 });
+
+describe('P12.8 Planner — prompt shaping (expert persona + verbosity)', () => {
+  it('injects an EXPERT_PERSONA section into the plan prompt when a promptPlan is present', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    await planner.plan('S', goal(), EMPTY_GRAPH, revision(), {
+      expertPersona: 'Adopt the perspective of a TypeScript Systems Engineer.',
+      verbosity: 'guarded',
+    });
+    const prompt = fake.lastPrompt ?? '';
+    expect(prompt).toContain('EXPERT_PERSONA');
+    expect(prompt).toContain('TypeScript Systems Engineer');
+  });
+
+  it('guarded verbosity adds a keep-the-plan-small addendum to the system prompt', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    await planner.plan('S', goal(), EMPTY_GRAPH, revision(), { verbosity: 'guarded' });
+    const sys = fake.history[fake.history.length - 1]?.request.systemPrompt ?? '';
+    expect(sys).toMatch(/Keep the plan SMALL/i);
+  });
+
+  it('no promptPlan ⇒ no persona section and the base plan prompt (fail-safe parity)', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+    expect(fake.lastPrompt ?? '').not.toContain('EXPERT_PERSONA');
+    const sys = fake.history[fake.history.length - 1]?.request.systemPrompt ?? '';
+    expect(sys).not.toMatch(/Keep the plan SMALL/i);
+  });
+
+  it('does NOT inject executor-oriented task-type guidance / few-shot into the plan prompt', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    await planner.plan('S', goal(), EMPTY_GRAPH, revision(), {
+      expertPersona: 'Adopt the perspective of a TypeScript Systems Engineer.',
+      taskTypeGuidance: 'This is a BUG FIX. Find the ROOT CAUSE.',
+      fewShotExampleId: 'example-bugfix',
+      verbosity: 'normal',
+    });
+    const prompt = fake.lastPrompt ?? '';
+    expect(prompt).not.toContain('TASK_TYPE_GUIDANCE');
+    expect(prompt).not.toContain('EXAMPLE');
+  });
+});

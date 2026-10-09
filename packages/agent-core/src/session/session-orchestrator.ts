@@ -270,7 +270,7 @@ export class SessionOrchestrator {
     const baseGraph = await this.deps.graphRepository.getCurrent(input.sessionId);
     let mutation;
     try {
-      mutation = await this.deps.planner.plan(input.sessionId, input.goal, baseGraph, input.revision);
+      mutation = await this.deps.planner.plan(input.sessionId, input.goal, baseGraph, input.revision, promptPlan);
     } catch (err) {
       await this.abortSession(input.sessionId);
       throw new SessionOrchestratorError('PLAN_FAILED',

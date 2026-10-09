@@ -60,8 +60,8 @@ next investment.
 | Capability model (dependency graph) | PARTIAL | Flat `enables[]` boolean list; NOT a real dependency graph (e.g. `build_android` → android-sdk + flutter). |
 | Model requirement analysis + routing | PARTIAL | `model-router.ts` picks a registered id + emits `MISSION_MODEL_SELECTED`; **runtime still executes the single configured gateway — no live model swap** (MI-006 selection only). |
 | Planning-mode router | IMPLEMENTED_BUT_NOT_WIRED | `planning-router.ts` computes a mode into the Mission; the Planner does not consume it. |
-| Expert profiles | DONE (P12.8) | `expert-profile.ts` selected/rendered, now injected into the EXECUTOR prompt as a trusted `EXPERT_PERSONA` section via the PromptComposer (still not in the Planner prompt — next). |
-| Prompt composition (prompt shaping) | DONE (P12.8) | `mission/prompt-composer.ts` — deterministic, pure assembly (NO LLM): `composePromptPlan(mission, profile)` → `PromptPlan` {expertPersona, taskTypeGuidance, fewShotExampleId, verbosity}, threaded orchestrator → `TaskExecutorRequest.promptPlan` → trusted prompt sections (EXPERT_PERSONA / TASK_TYPE_GUIDANCE / EXAMPLE) + a verbosity-selected system-prompt addendum (guarded for weak models, terse for strong reasoners). Advisory (MI-008); absent ⇒ static default prompt (fail-safe). Measured prompt cost: `prompt_tokens_peak/total` metrics. Real-model success impact unmeasured. |
+| Expert profiles | DONE (P12.8) | `expert-profile.ts` selected/rendered, now injected into BOTH the executor AND the planner prompt as a trusted `EXPERT_PERSONA` section via the PromptComposer. |
+| Prompt composition (prompt shaping) | DONE (P12.8) | `mission/prompt-composer.ts` — deterministic, pure assembly (NO LLM): `composePromptPlan(mission, profile)` → `PromptPlan` {expertPersona, taskTypeGuidance, fewShotExampleId, verbosity}, threaded orchestrator → both the executor (`TaskExecutorRequest.promptPlan` → EXPERT_PERSONA / TASK_TYPE_GUIDANCE / EXAMPLE sections) AND the planner (`Planner.plan(..., promptPlan)` → EXPERT_PERSONA section; executor-oriented guidance/few-shot deliberately NOT applied to decomposition), plus a verbosity-selected system-prompt addendum (guarded for weak models, terse for strong reasoners). Advisory (MI-008); absent ⇒ static default prompt (fail-safe). Measured prompt cost: `prompt_tokens_peak/total` metrics. Real-model success impact unmeasured. |
 | Mission Architect (LLM blueprint) | DONE (advisory) | `mission-architect.ts`; validated via structured-output pipeline. |
 | Architecture Gate (deterministic) | DONE | `architecture-gate.ts`, MI-007; BLOCK → AWAITING_HUMAN (the one real control-flow effect). |
 | Context strategy (scope selection) | DONE (P12.7) | `mission-context-strategy.ts` → `toContextPlan` → threaded orchestrator → `TaskExecutorRequest.contextPlan` → BOTH the `ContextBuilder` policy (`policyFromContextPlan`: scope→maxItems+tokens) AND the `ContextCollector` caps per-call. Fail-safe (no plan ⇒ default policy + default caps). Measured before/after on a real workspace: narrow TASK scope cut context ~62% (21 items/313 tok → 8 items/118 tok) with the pinned task item retained. Real-model success impact still unmeasured (needs a real-model run with mission on). |
@@ -75,8 +75,9 @@ next investment.
 > assumptions now steer the executor's prompt, (P12.7) the context strategy now sizes the context
 > pipeline (ContextBuilder policy + Collector caps), and (P12.8) the PromptComposer now shapes the
 > executor prompt (expert persona + task-type guidance + few-shot + verbosity) from mission signals
-> — deterministically, no extra LLM call. The planner prompt and the model used at execution time
-> are still observable-only — not yet wired into behavior.
+> — deterministically, no extra LLM call — on BOTH the executor and the planner prompt. The model
+> used at execution time and the architecture/planning-mode mission outputs are still
+> observable-only — not yet wired into behavior.
 
 ### Model system
 
@@ -103,7 +104,7 @@ next investment.
 |---|---|---|
 | Planner + PlanValidator + PlanCritic | DONE | `planning/`, MG-*/GI-009; advisory critic refinement round. |
 | Task decomposition + dependency ordering | DONE | Planner emits GraphMutation; scheduler orders. |
-| Architecture-first / roadmap-driven planning | PARTIAL | Mission computes an architecture + mode but the Planner does not consume them. |
+| Architecture-first / roadmap-driven planning | PARTIAL | The Planner now consumes the mission's expert persona + verbosity (P12.8 prompt shaping), but still NOT the architecture blueprint or planning-mode. |
 | Replanning | DEFERRED | REPLAN recovery action is a Phase-5.5 stub. |
 | Autonomous ReAct execution loop | DONE | `execution/task-executor.ts`; tool calls, verify, retry, in-loop approval, progress events. |
 

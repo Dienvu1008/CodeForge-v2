@@ -34,6 +34,7 @@ import {
 import type { Task } from '../domain/task.js';
 import type { TaskStrategy, AcceptanceCriterion } from '../domain/common.js';
 import type { PlanCritic, CritiqueResult } from './plan-critic.js';
+import type { PromptPlan } from '../mission/prompt-composer.js';
 
 // ── PlannerError ──────────────────────────────────────────────────────────────
 
@@ -48,6 +49,23 @@ export class PlannerError extends Error {
     this.name = 'PlannerError';
     this.code = code;
   }
+}
+
+/**
+ * P12.8: a small verbosity-specific addendum appended to the (static) planning system preamble.
+ * `guarded` reminds a weak model to keep the plan small + output only JSON; `terse` tells a strong
+ * reasoner to decompose crisply; `normal`/undefined add nothing (fail-safe parity). Short on
+ * purpose — planning prompts are already large.
+ */
+function planVerbosityAddendum(verbosity?: 'terse' | 'normal' | 'guarded'): string {
+  if (verbosity === 'guarded') {
+    return '\n\nKeep the plan SMALL (prefer the fewest tasks that cover the goal). Output ONLY the ' +
+      'JSON plan object — no prose, no markdown fences.';
+  }
+  if (verbosity === 'terse') {
+    return '\n\nDecompose crisply: the minimal set of independently-verifiable tasks, no filler.';
+  }
+  return '';
 }
 
 // ── PlannerDeps ───────────────────────────────────────────────────────────────
@@ -92,6 +110,14 @@ export class Planner {
     goal:        Goal,
     graph:       TaskGraph,
     revision:    WorkspaceRevision,
+    /**
+     * P12.8: optional prompt-shaping hints from the Mission Intelligence stage. The Planner
+     * applies the deterministic expert persona + verbosity to its decomposition prompt (it does
+     * NOT apply the executor-oriented task-type guidance / few-shot, which describe how to EXECUTE
+     * a task, not how to DECOMPOSE a goal). Advisory (MI-008); absent ⇒ the static plan prompt
+     * (fail-safe parity).
+     */
+    promptPlan?: PromptPlan,
   ): Promise<GraphMutation> {
     // 1. Build context snapshot (CX-003: workspace items marked untrusted).
     const ctxRequest: BuildContextRequest = {
@@ -104,7 +130,7 @@ export class Planner {
     const snapshot = this.contextBuilder.build(ctxRequest);
 
     // 2. Generate the first plan.
-    let rawPlan = await this.generatePlan(goal, graph, snapshot.snapshotId);
+    let rawPlan = await this.generatePlan(goal, graph, snapshot.snapshotId, undefined, promptPlan);
 
     // 2b. P10.4: optional bounded refinement driven by the advisory PlanCritic (MG-006).
     //     The critic cannot reject or commit — if it flags a weak plan, the Planner
@@ -123,7 +149,7 @@ export class Planner {
         }
         if (critique.score >= threshold && critique.issues.length === 0) break; // good enough
         const feedback = this.formatCritique(critique);
-        const refined = await this.generatePlan(goal, graph, snapshot.snapshotId, feedback);
+        const refined = await this.generatePlan(goal, graph, snapshot.snapshotId, feedback, promptPlan);
         // Keep the refined plan only if it is non-empty (generatePlan guarantees this).
         rawPlan = refined;
       }
@@ -143,11 +169,12 @@ export class Planner {
     graph:      TaskGraph,
     snapshotId: string,
     critique?:  string,
+    promptPlan?: PromptPlan,
   ): Promise<RawPlan> {
-    const taskPrompt = this.buildPlanPrompt(goal, graph, critique);
+    const taskPrompt = this.buildPlanPrompt(goal, graph, critique, promptPlan);
     const request = modelRequest(
       'plan',
-      BOUNDARY_SYSTEM_PREAMBLE,
+      BOUNDARY_SYSTEM_PREAMBLE + planVerbosityAddendum(promptPlan?.verbosity),
       taskPrompt,
       { responseSchema: PLAN_SCHEMA, temperature: 0, maxOutputTokens: 2048 },
     );
@@ -202,13 +229,20 @@ export class Planner {
    * per-task acceptance criteria. `critique` (optional) carries a prior PlanCritic's
    * feedback for a bounded refinement round (MG-006 — advisory, not authority).
    */
-  private buildPlanPrompt(goal: Goal, graph: TaskGraph, critique?: string): string {
+  private buildPlanPrompt(goal: Goal, graph: TaskGraph, critique?: string, promptPlan?: PromptPlan): string {
     const graphSummary = `Current graph: ${graph.nodes.length} tasks, version ${graph.version}.`;
     const acBlock = goal.acceptanceCriteria.length > 0
       ? `Acceptance criteria:\n${goal.acceptanceCriteria.map((ac) => `  - ${ac.description}`).join('\n')}`
       : '';
 
     const sections: Array<{ label: string; content: string; trust: 'trusted' | 'untrusted' }> = [];
+
+    // P12.8: a deterministic expert persona from the Mission Intelligence stage, framing the
+    // decomposition. TRUSTED (runtime-composed, not user content); advisory (MI-008). Absent ⇒
+    // nothing added (static plan prompt, fail-safe parity).
+    if (promptPlan?.expertPersona !== undefined && promptPlan.expertPersona.trim().length > 0) {
+      sections.push({ label: 'EXPERT_PERSONA', content: promptPlan.expertPersona, trust: 'trusted' });
+    }
 
     sections.push({
       label:   'PLANNING TASK',
