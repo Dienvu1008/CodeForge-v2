@@ -3,6 +3,7 @@
 // SE-004 (env allowlist). SE-005/PR-004 secret redaction lives in infrastructure/redaction.
 export {
   validateModelOutput,
+  extractJson,
   ModelOutputError,
   MAX_OUTPUT_RETRIES,
   type OutputSchema,

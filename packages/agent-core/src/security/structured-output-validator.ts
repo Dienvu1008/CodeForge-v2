@@ -82,6 +82,55 @@ function hasInjectionMarker(raw: string): boolean {
   return INJECTION_PATTERNS.some((p) => p.test(raw));
 }
 
+/**
+ * Extract the JSON payload from a model response that may be wrapped. Handles, in order:
+ *   1. <think>…</think> reasoning blocks (deepseek-r1 and other reasoning models) — removed.
+ *   2. ```json … ``` or ``` … ``` markdown fences — unwrapped.
+ *   3. A JSON object/array embedded in surrounding prose — the outermost {...} or [...] is sliced.
+ * If none apply, the trimmed input is returned unchanged (so pure JSON is untouched).
+ * Pure + deterministic. The result is still fed to JSON.parse, which rejects anything invalid —
+ * this only strips KNOWN wrappers, it never "repairs" malformed JSON.
+ */
+export function extractJson(raw: string): string {
+  let s = raw;
+  // 1. Drop reasoning blocks (there can be more than one; non-greedy, dot-matches-newline).
+  s = s.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  s = s.trim();
+  // 2. Unwrap a fenced code block if the content is entirely one fence.
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence !== null && fence[1] !== undefined) s = fence[1].trim();
+  // 3. If still not starting at a bracket, slice the outermost JSON object/array by bracket depth.
+  if (s.length > 0 && s[0] !== '{' && s[0] !== '[') {
+    const sliced = sliceOutermostJson(s);
+    if (sliced !== undefined) s = sliced;
+  }
+  return s.trim();
+}
+
+/** Slice the first balanced {...} or [...] region, respecting strings/escapes. */
+function sliceOutermostJson(s: string): string | undefined {
+  const start = s.search(/[{[]/);
+  if (start < 0) return undefined;
+  const open = s[start];
+  const close = open === '{' ? '}' : ']';
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === open) depth++;
+    else if (ch === close) { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  return undefined;
+}
+
 // ── Core validator ────────────────────────────────────────────────────────────
 
 export interface ValidateOptions {
@@ -141,9 +190,14 @@ export function validateModelOutput<T = unknown>(
   }
 
   // ── Stage 1: parse ──────────────────────────────────────────────────────────
+  // Many models (especially reasoning models like deepseek-r1, and chat models) wrap the JSON
+  // in <think>…</think> reasoning, ```json fences, or a sentence before the object. The payload
+  // is still deterministic JSON — extractJson pulls it out BEFORE JSON.parse. This does not
+  // weaken security: the injection scan above already ran on the full raw, and the schema +
+  // semantic gates below are unchanged. It only makes parsing tolerant of common wrappers.
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(extractJson(raw));
   } catch {
     return {
       ok: false,

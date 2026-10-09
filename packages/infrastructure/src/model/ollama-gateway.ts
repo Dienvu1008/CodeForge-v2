@@ -50,6 +50,13 @@ interface OllamaGenerateRequest {
   readonly prompt: string;
   readonly stream: boolean;
   readonly format?: 'json';
+  /**
+   * Disable "thinking" for hybrid reasoning models (qwen3, deepseek-r1, …). The runtime needs a
+   * STRUCTURED answer, not chain-of-thought: left enabled, these models spend the whole
+   * num_predict budget on hidden reasoning and return an EMPTY `response` → "not valid JSON".
+   * Ollama ignores this flag for non-reasoning models, so it is safe to always send.
+   */
+  readonly think?: boolean;
   readonly options?: Readonly<Record<string, unknown>>;
 }
 
@@ -102,6 +109,8 @@ export class OllamaModelGateway implements ModelGateway {
       model:   this._model,
       prompt,
       stream:  true, // P10.6: stream NDJSON chunks; assembled below (display-only).
+      // Reasoning models must answer directly (see `think` doc) — otherwise an empty response.
+      think:   false,
       // Use JSON format hint when a responseSchema is provided.
       ...(request.responseSchema !== undefined ? { format: 'json' } : {}),
       options: {
