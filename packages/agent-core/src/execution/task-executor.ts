@@ -86,25 +86,66 @@ Response format (pick ONE):
   To call a tool: {"type":"tool_call","toolName":"<name>","arguments":{...}}
   When done:      {"type":"done","summary":"<what was accomplished>"}
 
-Strategy: first explore the workspace (list_dir, read_file), then make changes (write_file),
-then verify by running the project's checks (e.g. run_command {"command":"npm test"}). When
-the checks pass and the task is satisfied, respond with done.
+Strategy: BIAS TO ACTION. You have a LIMITED number of steps — do not waste them exploring.
+A tiny amount of exploration is fine (at most ONE list_dir and only the reads you truly need),
+then WRITE the code with write_file, then verify. Most tasks need only a few steps: read what
+you need → write_file → (optionally) run a check → done.
 
-RULES (follow strictly):
-  1. SCOPE: change ONLY what the task asks for. Do NOT edit test files (test.js, *.test.*,
+RULES (follow strictly — these are enforced; wasted steps make the task FAIL):
+  1. ACT, DON'T WANDER: if the task is to create or edit a file, your FIRST or SECOND action
+     MUST be write_file. Do NOT list or read more than you need. For a "create a new script"
+     task on an empty/new workspace, call write_file on the very first step — there is nothing
+     to explore.
+  2. NEVER REPEAT A READ-ONLY CALL: list_dir / read_file / git_status / git_log with the same
+     (or an already-seen) argument is FORBIDDEN — the result is already in PREVIOUS STEPS above.
+     Repeating it wastes a step and moves you toward failure. If you already listed a directory,
+     you KNOW its contents; act on that knowledge.
+  3. SCOPE: change ONLY what the task asks for. Do NOT edit test files (test.js, *.test.*,
      *.spec.*) or change the acceptance criteria unless the task explicitly says so. To make
      a failing test pass, fix the SOURCE CODE — never rewrite the test to match the bug.
-  2. CONTENT: write_file replaces the WHOLE file, so include the complete, real content —
-     read the file first and keep every unrelated line intact. Never write an empty file or
-     a placeholder/TODO stub.
-  3. READ RESULTS: each previous step shows its exit code and output. If a step shows ERROR
+  4. CONTENT: write_file replaces the WHOLE file, so include the complete, real content —
+     when editing an existing file read it first and keep every unrelated line intact. Never
+     write an empty file or a placeholder/TODO stub.
+  5. READ RESULTS: each previous step shows its exit code and output. If a step shows ERROR
      or a non-zero exit, fix that root cause before moving on — do not ignore it or repeat
      the same failing action.
-  4. VERIFY: after you change code, run the project's checks (e.g. npm test) and confirm
-     they pass BEFORE you respond with done. Do not claim done on an unverified change.
-  5. STOP: as soon as the task is done and the checks pass, respond with done on the very
-     next turn. Do NOT keep exploring or re-reading files after the change is complete.
-  6. NO REPEATS: do not repeat a tool call you already made with the same arguments.`;
+  6. VERIFY THEN STOP: after you write the code, if the project has a check (e.g. a test
+     command) run it ONCE; then respond with done. If there is no check to run, respond with
+     done as soon as the file(s) are written. Do NOT keep exploring after the work is done.
+  7. WHEN IN DOUBT, FINISH: if you are unsure what else to do, prefer write_file (to produce
+     the result) or done (if the result already exists) over another read-only call.`;
+
+// ── Anti-loop detector (pure, exported for testing) ───────────────────────────
+
+/** Read-only tools: "looking", not "doing". Repeating these is the hallmark of a stuck model. */
+const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'git_status', 'git_log', 'git_diff']);
+
+/**
+ * Deterministic loop detector: returns true when the model is stuck exploring instead of acting.
+ * Two signals (either triggers):
+ *   (a) the SAME read-only call was repeated with the same arguments, or
+ *   (b) the last 3 steps were ALL read-only (no write/command in between).
+ * Pure + deterministic. Used only to inject a corrective prompt nudge — the model still decides;
+ * the deterministic step budget remains the hard stop.
+ */
+export function detectExplorationLoop(
+  transcript: ReadonlyArray<{ toolName: string; arguments: Record<string, unknown> }>,
+): boolean {
+  if (transcript.length < 3) return false;
+
+  // (a) exact repeat of any read-only call.
+  const seen = new Set<string>();
+  for (const t of transcript) {
+    if (!READONLY_TOOLS.has(t.toolName)) continue;
+    const key = t.toolName + ':' + JSON.stringify(t.arguments);
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+
+  // (b) the last 3 steps were all read-only (no progress toward a result).
+  const tail = transcript.slice(-3);
+  return tail.length === 3 && tail.every((t) => READONLY_TOOLS.has(t.toolName));
+}
 
 // ── TaskExecutorError ─────────────────────────────────────────────────────────
 
@@ -826,6 +867,17 @@ export class TaskExecutor {
       ? '\nThe project checks have already run and PASSED. The task is complete — respond with {"type":"done","summary":"..."} NOW. Do not run more tools.\n'
       : '';
 
+    // Deterministic loop-breaker: weak models often repeat read-only calls (list_dir/read_file)
+    // instead of acting. If the recent transcript is dominated by read-only calls — or a call
+    // was literally repeated — inject a forceful corrective nudge. This is a deterministic read
+    // of the transcript (not model output); the model still decides, but it is told plainly to
+    // stop looking and start writing.
+    const antiLoopHint = this.looksLikeExplorationLoop(transcript)
+      ? '\nSTOP EXPLORING. You have made several read-only calls (list_dir/read_file) already — ' +
+        'their results are above. Do NOT call another read-only tool. Your NEXT action MUST be ' +
+        'write_file (to produce the result) or done (if it already exists).\n'
+      : '';
+
     // P10.2: when a prior attempt failed verification, inject the failure evidence
     // (red test / build output) as an UNTRUSTED section (CX-005) so the model fixes the
     // specific problem rather than redoing the same thing. The boundary preamble tells
@@ -870,6 +922,7 @@ export class TaskExecutor {
         `Progress: ${transcript.length} step(s) completed.`,
         transcriptText,
         checksPassedHint,
+        antiLoopHint,
         'Decide the next action. Respond with JSON only.',
         'To use a tool: {"type":"tool_call","toolName":"<name>","arguments":{...}}',
         'When the task is complete: {"type":"done","summary":"<what was accomplished>"}',
@@ -905,6 +958,19 @@ export class TaskExecutor {
       return t.exitCode === 0 && !FAIL_RE.test(t.result);
     }
     return false;
+  }
+
+  /**
+   * Deterministic loop detector: returns true when the model is stuck exploring instead of
+   * acting. Two signals (either triggers): (a) the SAME read-only call was repeated with the
+   * same arguments, or (b) the last 3+ steps were ALL read-only (list_dir/read_file/git_status/
+   * git_log) with no write/command in between. Used only to inject a corrective prompt nudge —
+   * the model still decides; the deterministic step budget remains the hard stop.
+   */
+  private looksLikeExplorationLoop(
+    transcript: ReadonlyArray<{ toolName: string; arguments: Record<string, unknown> }>,
+  ): boolean {
+    return detectExplorationLoop(transcript);
   }
 
   /**
