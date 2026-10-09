@@ -102,11 +102,14 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
 2. **Goal clarification** (make vague goals usable — the biggest UX gap for real users):
    - **Tier A (DONE):** `assessUncertainty` deterministically detects goal ambiguity →
      Mission.uncertainty + `openQuestions` + `MISSION_UNCERTAINTY_ASSESSED` event. Advisory.
-   - **Tier B (next):** an LLM `ClarificationAdvisor` turns a high-uncertainty mission's
-     `openQuestions` into user-facing questions; a deterministic `ClarificationGate` decides when
-     to ask (adaptive: assume-with-stated-assumptions for mild ambiguity, stop-and-ask for high).
-   - **Tier C:** the dashboard asks the questions (Goals chat), the user's answers become
-     acceptance criteria, and the mission re-plans with a now-clear goal.
+   - **Tier B1 (DONE):** chosen behavior is option (ii) — assume + state, don't stop to ask. An
+     LLM `AssumptionAdvisor` turns a high-uncertainty mission's `openQuestions` into EXPLICIT
+     assumptions + a clarified restatement, mirrored into Mission.acceptanceCriteria and emitted
+     as `MISSION_ASSUMPTIONS_MADE` (shown in the dashboard as the agent's "reasoning"). Advisory.
+   - **Tier B2 (next):** inject the stated assumptions into the planner/executor prompt so they
+     actually steer the agent's work (not just inform the human) — gated by a before/after bench.
+   - **Tier C (optional):** a stop-and-ask path for the hardest cases (reuse AWAITING_HUMAN + the
+     Goals chat), if assume-and-state proves insufficient for some goals.
 3. **Finish the recovery vocabulary** — implement REPLAN and ROLLBACK (retire the Phase-5.5 stubs).
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.

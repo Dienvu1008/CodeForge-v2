@@ -65,7 +65,8 @@ next investment.
 | Architecture Gate (deterministic) | DONE | `architecture-gate.ts`, MI-007; BLOCK → AWAITING_HUMAN (the one real control-flow effect). |
 | Context strategy (scope selection) | IMPLEMENTED_BUT_NOT_WIRED | `mission-context-strategy.ts` computed into the outcome; **never fed to the ContextBuilder/retriever**. |
 | MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. **The orchestrator reads only `proceed`** — the Mission/routing/context/architecture are observable but otherwise discarded. |
-| Uncertainty assessment (goal ambiguity) | PARTIAL | Tier A done: `assessUncertainty` (deterministic) scores goal ambiguity from objective signals (missing acceptance, short/vague wording, no I/O) → KNOWN/INFERRED/UNKNOWN + concrete `openQuestions`; wired into the Mission + `MISSION_UNCERTAINTY_ASSESSED` event. **Advisory only** — it does not yet stop to ask the user (Tier B/C: LLM question generation + clarification loop + UI, not built). |
+| Uncertainty assessment (goal ambiguity) | DONE | Tier A: `assessUncertainty` (deterministic) → KNOWN/INFERRED/UNKNOWN + `openQuestions`; `MISSION_UNCERTAINTY_ASSESSED`. |
+| Goal clarification by assumption (option ii) | PARTIAL | Tier B1 done: `AssumptionAdvisor` (LLM) turns a vague goal's gaps into EXPLICIT assumptions + a clarified restatement; mirrored into Mission.acceptanceCriteria (never the Goal — MI-004); emitted as `MISSION_ASSUMPTIONS_MADE` and shown in the dashboard as the agent's reasoning. **Advisory**: the assumptions are not yet injected into the planner/executor prompt (Tier B2), so they inform the human + acceptance tally but do not yet steer the agent's work. |
 
 > **The honest one-line summary of Phase 12 today:** the intelligence layer *analyzes and
 > observes* (events + a gate that can halt for a human), but it does **not yet steer** the
@@ -186,3 +187,6 @@ Driven by running the real runtime against live goals:
 - **Runtime model switching** — `SwitchableModelGateway` + `GET/POST /config` (dashboard picker).
 - **Dashboard** — Goals chat history, Pending-Approval, Result (`/workspace/files`), workspace +
   model in header, model list/download, honest VERIFYING labeling, no-store cache.
+- **Goal clarification (Tier A + B1)** — detect vague goals (`assessUncertainty`) + make explicit
+  assumptions (`AssumptionAdvisor`), shown in the dashboard Live Activity as the agent's reasoning
+  (MISSION_* events rendered as readable "thinking" lines, commercial-agent style).

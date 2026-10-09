@@ -50,6 +50,12 @@ export const DASHBOARD_HTML = `<!doctype html>
   .msg a.view { color:#58a6ff; cursor:pointer; text-decoration:underline; }
   #chatForm { display:flex; gap:8px; margin-top:10px; }
   #chatForm textarea { flex:1; min-height:38px; max-height:120px; resize:vertical; background:#0e1116; color:#d7dde5; border:1px solid #30363d; border-radius:4px; padding:6px 8px; font:inherit; }
+  /* Reasoning lines in Live Activity (commercial-agent style "thinking") */
+  li.reasoning { color:#c9d1d9; border-bottom:1px solid #1c2128; padding:4px 0; }
+  li.reasoning b { color:#d7dde5; }
+  li.reasoning i { color:#8b949e; font-style:italic; }
+  ul.reasoning-sub { margin:4px 0 2px 16px; padding:0; max-height:none; }
+  ul.reasoning-sub li { border:none; padding:1px 0; color:#9aa4b2; }
 </style>
 </head>
 <body>
@@ -233,9 +239,50 @@ export const DASHBOARD_JS = `"use strict";
       .catch(function () {});
   }
 
-  function renderActivity(entries) {
-    $("activity").innerHTML = entries.slice(-200).map(function (e) {
-      return "<li>" + e.at.slice(11, 19) + " <span class='cat'>" + e.category + "</span> " + e.eventType + "</li>";
+  function esc2(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  // Turn a raw DomainEvent into a human-readable "reasoning" line (commercial-agent style). The
+  // MISSION_* events carry the agent's thinking in their payload; render it, not just the type.
+  // Returns an HTML string for one <li>, or "" to render the plain type.
+  function reasoningLine(type, p) {
+    p = p || {};
+    switch (type) {
+      case "MISSION_RECEIVED":            return "🧠 received goal: " + esc2(p.description);
+      case "MISSION_CLASSIFIED":          return "🧠 classified as <b>" + esc2(p.missionType) + "</b>" + (p.matchedKeyword ? " (" + esc2(p.matchedKeyword) + ")" : "");
+      case "MISSION_COMPLEXITY_ESTIMATED":return "🧠 complexity <b>" + esc2(p.level) + "</b>" + (p.reasons && p.reasons.length ? " — " + esc2(p.reasons.join(", ")) : "");
+      case "MISSION_RISK_ASSESSED":       return "🧠 risk <b>" + esc2(p.level) + "</b>" + (p.factors && p.factors.length ? " (" + esc2(p.factors.join(", ")) + ")" : "");
+      case "MISSION_UNCERTAINTY_ASSESSED": {
+        var q = (p.openQuestions || []).map(function (x) { return "<li>" + esc2(x) + "</li>"; }).join("");
+        return "🧠 goal clarity: <b>" + esc2(p.level) + "</b>" + (q ? "<ul class='reasoning-sub'>" + q + "</ul>" : "");
+      }
+      case "MISSION_ASSUMPTIONS_MADE": {
+        var head = "💡 made assumptions (goal was under-specified): <i>" + esc2(p.clarifiedGoal) + "</i>";
+        var items = (p.assumptions || []).map(function (a) {
+          return "<li><b>" + esc2(a.assumption) + "</b>" + (a.acceptance ? " <span class='cat'>✓ " + esc2(a.acceptance) + "</span>" : "") + "</li>";
+        }).join("");
+        return head + (items ? "<ul class='reasoning-sub'>" + items + "</ul>" : "");
+      }
+      case "MISSION_MODEL_SELECTED":          return "🧠 model: <b>" + esc2(p.modelId || p.kind) + "</b>" + (p.reason ? " — " + esc2(p.reason) : "");
+      case "MISSION_PLANNING_MODE_SELECTED":  return "🧠 planning mode: <b>" + esc2(p.mode) + "</b>";
+      case "MISSION_ARCHITECTURE_PROPOSED":   return "🧠 proposed architecture: " + esc2(p.summary);
+      case "MISSION_ARCHITECTURE_GATE_BLOCKED": return "⛔ architecture gate BLOCKED: " + esc2((p.blockers || []).join("; "));
+      case "MISSION_CAPABILITY_VERIFIED":     return "✓ capability verified: <b>" + esc2(p.name) + "</b>" + (p.version ? " " + esc2(p.version) : "");
+      default: return "";
+    }
+  }
+
+  function activityHtml(type, at, payload) {
+    var reasoning = reasoningLine(type, payload);
+    var time = (at || "").slice(11, 19);
+    if (reasoning) return "<li class='reasoning'>" + time + " " + reasoning + "</li>";
+    return "<li>" + time + " <span class='cat'>" + esc2(type) + "</span></li>";
+  }
+
+  function renderActivity(events) {
+    // The /trace endpoint returns {category,eventType}; the raw event stream returns {type,payload}.
+    $("activity").innerHTML = events.slice(-200).map(function (e) {
+      var type = e.type || e.eventType;
+      return activityHtml(type, e.at, e.payload);
     }).join("");
     var ul = $("activity"); ul.scrollTop = ul.scrollHeight;
   }
@@ -255,9 +302,8 @@ export const DASHBOARD_JS = `"use strict";
     es.onmessage = function (ev) {
       try {
         var e = JSON.parse(ev.data);
-        var li = document.createElement("li");
-        li.textContent = (e.at || "").slice(11, 19) + "  " + e.type;
-        $("activity").appendChild(li);
+        // Render the event as a reasoning line (expands MISSION_* payloads into readable thinking).
+        $("activity").insertAdjacentHTML("beforeend", activityHtml(e.type, e.at, e.payload));
         var ul = $("activity"); ul.scrollTop = ul.scrollHeight;
         refreshState();
       } catch (_e) {}
