@@ -10,6 +10,7 @@ export { extractSignals, type MissionSignals, type WorkspaceSignals } from './si
 export { classifyMissionType, KNOWN_MISSION_TYPES, type MissionTypeResult } from './mission-intake.js';
 export { assessComplexity } from './complexity-analyzer.js';
 export { assessRisk } from './risk-analyzer.js';
+export { assessUncertainty } from './uncertainty-analyzer.js';
 // P12.3: capability discovery + verification (VERIFIED only via a real probe — MI-003).
 export {
   DEFAULT_MACHINE_PROBES,

@@ -32,6 +32,7 @@ import { extractSignals, type WorkspaceSignals } from './signals.js';
 import { classifyMissionType } from './mission-intake.js';
 import { assessComplexity } from './complexity-analyzer.js';
 import { assessRisk } from './risk-analyzer.js';
+import { assessUncertainty } from './uncertainty-analyzer.js';
 import { decidePlanningMode } from './planning-router.js';
 import { decideContextStrategy, type ContextStrategy } from './mission-context-strategy.js';
 import { selectExpertProfile } from './expert-profile.js';
@@ -122,6 +123,16 @@ export class MissionIntelligence {
     const risk = assessRisk(signals);
     await this.emit(sessionId, 'MISSION_RISK_ASSESSED', missionId, { level: risk.level, factors: risk.factors });
 
+    // Tier A: deterministic goal-ambiguity assessment (replaces the old hard-coded KNOWN). A
+    // precise goal (clear I/O + acceptance) scores KNOWN; a vague one (no acceptance, open-ended
+    // wording, no I/O) scores UNKNOWN with concrete openQuestions. Advisory for now — it makes
+    // the Mission.uncertainty field real so the UI can surface it and a later clarification step
+    // (Tier B/C) can act on it.
+    const uncertainty = assessUncertainty(signals, missionType, goal.acceptanceCriteria);
+    await this.emit(sessionId, 'MISSION_UNCERTAINTY_ASSESSED', missionId, {
+      level: uncertainty.level, openQuestions: uncertainty.openQuestions,
+    });
+
     // ── Capability verification (MI-003) ────────────────────────────────────────
     let preflight: PreflightReport | undefined;
     const required = this.deps.requiredCapabilities ?? [];
@@ -146,7 +157,7 @@ export class MissionIntelligence {
     // ── Build the advisory Mission aggregate (MI-004: references the Goal, never mutates it) ──
     const contextScope: ContextScope = inferContextScope(missionType, complexity.level, signals.multiRepo);
     const partialForMode: Mission = this.assembleMission({
-      missionId, goal, missionType, complexity, risk, contextScope,
+      missionId, goal, missionType, complexity, risk, contextScope, uncertainty,
       // planningMode/architectureRequirement filled by refinement below; seed with placeholders.
       planningMode: 'DIRECT', architectureRequirement: 'NOT_REQUIRED',
     });
@@ -224,12 +235,10 @@ export class MissionIntelligence {
   private assembleMission(parts: {
     missionId: string; goal: Goal; missionType: MissionType;
     complexity: Mission['complexity']; risk: Mission['risk']; contextScope: ContextScope;
+    uncertainty: Mission['uncertainty'];
     planningMode: Mission['planningMode']; architectureRequirement: Mission['architectureRequirement'];
   }): Mission {
-    const { missionId, goal, missionType, complexity, risk, contextScope, planningMode, architectureRequirement } = parts;
-    const uncertainty = missionType === 'RESEARCH'
-      ? { level: 'UNKNOWN' as const, openQuestions: [] }
-      : { level: 'KNOWN' as const, openQuestions: [] };
+    const { missionId, goal, missionType, complexity, risk, contextScope, uncertainty, planningMode, architectureRequirement } = parts;
     return {
       missionId,
       goalId: goal.goalId,

@@ -65,7 +65,7 @@ next investment.
 | Architecture Gate (deterministic) | DONE | `architecture-gate.ts`, MI-007; BLOCK → AWAITING_HUMAN (the one real control-flow effect). |
 | Context strategy (scope selection) | IMPLEMENTED_BUT_NOT_WIRED | `mission-context-strategy.ts` computed into the outcome; **never fed to the ContextBuilder/retriever**. |
 | MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. **The orchestrator reads only `proceed`** — the Mission/routing/context/architecture are observable but otherwise discarded. |
-| Uncertainty preservation for UNKNOWN missions | PARTIAL | `UNKNOWN` type is mapped to `FEATURE`; uncertainty stays `KNOWN` unless `RESEARCH`. Genuine unknowns are not surfaced as uncertain. |
+| Uncertainty assessment (goal ambiguity) | PARTIAL | Tier A done: `assessUncertainty` (deterministic) scores goal ambiguity from objective signals (missing acceptance, short/vague wording, no I/O) → KNOWN/INFERRED/UNKNOWN + concrete `openQuestions`; wired into the Mission + `MISSION_UNCERTAINTY_ASSESSED` event. **Advisory only** — it does not yet stop to ask the user (Tier B/C: LLM question generation + clarification loop + UI, not built). |
 
 > **The honest one-line summary of Phase 12 today:** the intelligence layer *analyzes and
 > observes* (events + a gate that can halt for a human), but it does **not yet steer** the
@@ -158,14 +158,15 @@ next investment.
 5. **ArtifactStore is in-memory only.**
 6. **Product surface is minimal** (functional dashboard + thin VS Code client; no graph view).
 7. **Capability model is flat booleans**, not a dependency graph.
-8. **Vague goals produce vague results — by design.** A goal with no acceptance criteria and no
-   way to verify (e.g. "create a python script that multiplies two matrices") cannot be scored
-   PASSED (no evidence) and gives the agent no concrete target. This is the two-axis model
-   working, not a bug: Task Correctness is only measurable against a check. Goals that carry a
-   clear interface + acceptance criteria + a verification command (as the CF-001..010 benchmark
-   tasks do) are what the runtime can actually drive to a PASSED outcome. A future "goal
-   elaboration" step (agent proposes acceptance criteria before planning) is a candidate
-   improvement, not yet built.
+8. **Vague goals produce vague results — detection added (Tier A), clarification not yet.** A goal
+   with no acceptance criteria and no way to verify (e.g. "create a python script that multiplies
+   two matrices") cannot be scored PASSED (no evidence) and gives the agent no concrete target.
+   Tier A now **detects** this: `assessUncertainty` marks such a goal UNKNOWN with concrete
+   `openQuestions`. But the runtime does **not yet stop to ask the user** — the agent still plans
+   and guesses. The clarification loop (Tier B: LLM generates questions + a gate; Tier C: the
+   dashboard asks and the answer becomes acceptance criteria, then re-plan) is the next step and
+   is NOT built. Until then, clear goals (like the CF-001..010 benchmark tasks) are what the
+   runtime drives best.
 9. **Local small models (6–9B) are weak agents.** They plan acceptably but often under-perform
    at execution (looping on reads, emitting malformed tool-call JSON, over-decomposing). The
    runtime now mitigates this (anti-loop nudge, reasoning-model JSON handling, graceful-stop) but
