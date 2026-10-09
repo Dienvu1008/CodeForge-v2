@@ -93,8 +93,27 @@ export interface ObservabilityServiceDeps {
   readonly goalIngress?: GoalIngressPort;
   /** Model management (list + pull local Ollama models). Optional; no runtime authority. */
   readonly modelAdmin?: ModelAdminPort;
+  /** Lists the files currently in the agent's workspace (so the UI can show the RESULT). Optional. */
+  readonly workspaceFiles?: WorkspaceFilesPort;
+  /** Runtime config: report workspace/model + switch the active model. Optional. */
+  readonly runtimeConfig?: RuntimeConfigPort;
   readonly now: () => string;
   readonly nextId: () => string;
+}
+
+/** Read-only lister of workspace files (what the agent produced). Optional; no authority. */
+export interface WorkspaceFilesPort {
+  list(): Promise<readonly { path: string; sizeBytes: number }[]>;
+}
+
+/**
+ * Runtime configuration surface: report the workspace + active model and endpoint, and switch
+ * the active model at runtime. Switching the model is an operational preference, not kernel
+ * authority — it only changes which Ollama model the single gateway targets for future calls.
+ */
+export interface RuntimeConfigPort {
+  get(): { workspaceRoot: string; model: string; endpoint: string };
+  setModel(model: string): string;
 }
 
 export interface SubmitControlResult {
@@ -182,6 +201,26 @@ export class ObservabilityService {
   }
 
   /**
+   * List recent sessions (most-recent first), derived read-only from SESSION_CREATED events in
+   * the log. Lets a dashboard auto-connect to the session a just-submitted goal produced, without
+   * adding a "list" method to the SessionRepository contract. Read-only — no authority.
+   */
+  async listRecentSessions(limit = 20): Promise<readonly { sessionId: string; state: string; createdAt: string }[]> {
+    const created = await this.deps.events.query({ type: 'SESSION_CREATED' });
+    // EventLog.query orders by (session_id, sequence) — NOT by time — so sort explicitly by the
+    // event timestamp DESC to get a true most-recent-first list (ISO strings sort lexically).
+    const recent = [...created]
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      .slice(0, limit);
+    const out: { sessionId: string; state: string; createdAt: string }[] = [];
+    for (const e of recent) {
+      const session = await this.deps.sessions.getById(e.sessionId);
+      out.push({ sessionId: e.sessionId, state: session?.state ?? 'UNKNOWN', createdAt: e.at });
+    }
+    return out;
+  }
+
+  /**
    * Stream events for the session in sequence order, starting after `fromSequence`
    * (OB-009: read-only tail — never a second write path).
    */
@@ -238,6 +277,25 @@ export class ObservabilityService {
       throw new ObservabilityServiceError('GOAL_INGRESS_UNSUPPORTED', 'goal ingress not wired');
     }
     return this.deps.goalIngress.submitGoal(input);
+  }
+
+  /** List the files in the agent's workspace (the tangible RESULT). Empty when not wired. */
+  async listWorkspaceFiles(): Promise<readonly { path: string; sizeBytes: number }[]> {
+    if (this.deps.workspaceFiles === undefined) return [];
+    return this.deps.workspaceFiles.list();
+  }
+
+  /** Current runtime config (workspace + active model). Null when not wired. */
+  getRuntimeConfig(): { workspaceRoot: string; model: string; endpoint: string } | null {
+    return this.deps.runtimeConfig?.get() ?? null;
+  }
+
+  /** Switch the active model at runtime. Throws when not wired. Returns the new model id. */
+  setActiveModel(model: string): string {
+    if (this.deps.runtimeConfig === undefined) {
+      throw new ObservabilityServiceError('MODEL_ADMIN_UNSUPPORTED', 'runtime config not wired');
+    }
+    return this.deps.runtimeConfig.setModel(model);
   }
 
   // ── Model management (optional; list + pull local models) ──────────────────────

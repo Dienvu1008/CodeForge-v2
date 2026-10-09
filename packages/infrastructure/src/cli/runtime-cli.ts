@@ -24,8 +24,8 @@
 //                        on, an advisory stage verifies capabilities, routes the model, and
 //                        (for complex goals) proposes an architecture + runs a gate. Off =
 //                        byte-identical to Phase 11 (MI-002 fail-safe parity).
-import { resolve, join } from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { resolve, join, relative, sep } from 'node:path';
+import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 
@@ -48,7 +48,7 @@ import { SqliteFailureRepository }        from '../repositories/index.js';
 import { SqliteRecoveryActionRepository } from '../repositories/index.js';
 import { SqliteLearningStore }            from '../learning/index.js';
 import { Blake3GraphHasher }              from '../graph-hash/index.js';
-import { OllamaModelGateway, OllamaModelAdmin } from '../model/index.js';
+import { SwitchableModelGateway, OllamaModelAdmin } from '../model/index.js';
 import { NodeWorkspaceManager }           from '../workspace/index.js';
 import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
@@ -122,6 +122,31 @@ function makeRuntime() {
   };
 }
 
+// ── Workspace file listing (read-only; the dashboard "Result" view) ──────────
+// Lists files under the workspace root, excluding the .codeforge scratch zone and heavy dirs.
+// Pure read: no mutation, no authority. Bounded to a sane number of entries.
+const WS_IGNORE = new Set(['.codeforge', 'node_modules', '.git', 'dist', '__pycache__']);
+function listWorkspaceFiles(root: string): { path: string; sizeBytes: number }[] {
+  const out: { path: string; sizeBytes: number }[] = [];
+  const walk = (dir: string): void => {
+    if (out.length >= 500) return;
+    let entries: string[];
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const name of entries) {
+      if (WS_IGNORE.has(name)) continue;
+      const abs = join(dir, name);
+      let st;
+      try { st = statSync(abs); } catch { continue; }
+      if (st.isDirectory()) { walk(abs); continue; }
+      if (!st.isFile()) continue;
+      out.push({ path: relative(root, abs).split(sep).join('/'), sizeBytes: st.size });
+      if (out.length >= 500) return;
+    }
+  };
+  walk(root);
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -184,14 +209,15 @@ async function main(): Promise<void> {
   const failures   = new SqliteFailureRepository(db);
   const recoveryActions = new SqliteRecoveryActionRepository(db);
 
-  // 3. Model gateway (Ollama)
-  const model = new OllamaModelGateway({
+  // 3. Model gateway (Ollama) — SWITCHABLE so the user can pick a different model at runtime
+  // from the dashboard without restarting (MG-001: still one gateway reference everywhere).
+  const model = new SwitchableModelGateway({
     endpoint,
-    model: modelName,
+    initialModel: modelName,
     timeoutMs: 300_000,
     options: { temperature: 0.2 },
   });
-  console.log(`  Ollama model gateway: ${modelName} @ ${endpoint}`);
+  console.log(`  Ollama model gateway: ${modelName} @ ${endpoint} (switchable at runtime)`);
 
   // 4. Domain services
   const hasher     = new Blake3GraphHasher();
@@ -384,6 +410,15 @@ async function main(): Promise<void> {
     goalIngress,
     // Model management (GET /models, POST /models/pull): list + download Ollama models.
     modelAdmin: new OllamaModelAdmin({ endpoint }),
+    // Workspace files (GET /workspace/files): read-only listing so the dashboard shows the RESULT
+    // (what the agent produced). Excludes the .codeforge scratch zone. No authority.
+    workspaceFiles: { list: async () => listWorkspaceFiles(workspaceRoot) },
+    // Runtime config (GET /config, POST /config/model): report workspace + active model and let
+    // the dashboard switch the model at runtime (the switchable gateway swaps the target model).
+    runtimeConfig: {
+      get: () => ({ workspaceRoot, model: model.model, endpoint }),
+      setModel: (m: string) => model.setModel(m),
+    },
     now: rt.now, nextId: rt.nextId,
   });
   const http = new HttpTransport({ service: obService, streamPollMs: 300 });

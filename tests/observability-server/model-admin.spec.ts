@@ -143,4 +143,13 @@ describe('model management HTTP routes', () => {
     });
     expect(r.status).toBe(400);
   });
+
+  it('GET /sessions lists recent sessions (for dashboard auto-connect after Submit Goal)', async () => {
+    ctx = await buildTransport(true);
+    const r = await fetch(`${ctx.base}/sessions?limit=5`);
+    expect(r.status).toBe(200);
+    const body = await r.json() as { sessions: { sessionId: string; state: string }[] };
+    expect(Array.isArray(body.sessions)).toBe(true);
+    expect(body.sessions.some((s) => s.sessionId === 'S')).toBe(true);
+  });
 });

@@ -7,6 +7,10 @@
 //   GET  /state?session=<id>        -> RuntimeProjection (OB-005)
 //   GET  /trace?session=<id>        -> ActivityTrace (OB-007)
 //   GET  /events?session=<id>&from= -> DomainEvent[] (replay, OB-004)
+//   GET  /sessions?limit=           -> { sessions: [{sessionId,state,createdAt}] } (recent, read-only)
+//   GET  /workspace/files           -> { files: [{path,sizeBytes}] } (the agent's result, read-only)
+//   GET  /config                    -> { workspaceRoot, model, endpoint } (runtime config)
+//   POST /config/model {model}      -> { model } (switch the active model at runtime)
 //   GET  /stream?session=<id>&from= -> text/event-stream live tail (OB-009)
 //   POST /control  {ControlRequest} -> { admission, record } (OB-006)
 //   POST /goal     {description, acceptanceCriteria?} -> { goalId, position } (P10.9)
@@ -102,6 +106,34 @@ export class HttpTransport {
       if (method === 'GET' && path === '/events') {
         if (session === '') return this.sendJson(res, 400, { error: 'session required' });
         return this.sendJson(res, 200, await this.opts.service.getEvents(session, from));
+      }
+      if (method === 'GET' && path === '/sessions') {
+        const limit = Number(url.searchParams.get('limit') ?? '20') || 20;
+        return this.sendJson(res, 200, { sessions: await this.opts.service.listRecentSessions(limit) });
+      }
+      if (method === 'GET' && path === '/workspace/files') {
+        return this.sendJson(res, 200, { files: await this.opts.service.listWorkspaceFiles() });
+      }
+      if (method === 'GET' && path === '/config') {
+        const cfg = this.opts.service.getRuntimeConfig();
+        return cfg === null
+          ? this.sendJson(res, 501, { error: 'runtime config not wired' })
+          : this.sendJson(res, 200, cfg);
+      }
+      if (method === 'POST' && path === '/config/model') {
+        const body = await readBody(req);
+        let payload: { model?: unknown };
+        try { payload = JSON.parse(body) as typeof payload; }
+        catch { return this.sendJson(res, 400, { error: 'invalid JSON body' }); }
+        if (typeof payload.model !== 'string' || payload.model.trim() === '') {
+          return this.sendJson(res, 400, { error: 'model required' });
+        }
+        try {
+          const model = this.opts.service.setActiveModel(payload.model);
+          return this.sendJson(res, 200, { model });
+        } catch (err) {
+          return this.sendJson(res, 501, { error: err instanceof Error ? err.message : 'config unavailable' });
+        }
       }
       if (method === 'GET' && path === '/stream') {
         if (session === '') return this.sendJson(res, 400, { error: 'session required' });
@@ -241,11 +273,13 @@ export class HttpTransport {
     res.end(json);
   }
   private sendHtml(res: ServerResponse, html: string): void {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    // no-store: the dashboard asset changes with the build; never let a browser serve a stale
+    // copy (that made a fixed Submit-Goal handler look "broken" because the old JS was cached).
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(html);
   }
   private sendJs(res: ServerResponse, js: string): void {
-    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(js);
   }
 }
