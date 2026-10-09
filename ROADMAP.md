@@ -4,7 +4,7 @@
 > view that survives across conversations. Phase docs (`PHASE_*`) hold detail; this file holds
 > the *product* trajectory. Status detail lives in `PROJECT_STATUS.md`.
 >
-> Last updated: 2026-09-14 · commit `557a788`.
+> Last updated: 2026-09-15 · post-eval runtime/UX hardening cycle.
 
 ---
 
@@ -59,6 +59,13 @@ Law (never weakened): **LLM proposes, the deterministic runtime decides and enfo
 - **Phase 10** — Real verification, autonomy levels + in-loop approval, context collector, goal queue, dashboard/VS Code/Telegram clients, progress events.
 - **Phase 11** — Learning plane (self-model, lessons, advice gate, recovery/rerank advisors) — advisory, flag-off parity.
 - **Phase 12** — Mission Intelligence (intake/complexity/risk, capability verification, model routing, planning router, architect + architecture gate) — advisory, flag-off parity. All 8 `MI-*` invariants active.
+- **Evaluation system** — benchmark domain + loader + isolated runner + deterministic evaluator + metrics + baseline/regression + CF-001..010 seed dataset; first real-kernel baseline recorded (`EVALUATION.md`).
+- **Runtime & product-usability hardening** (this cycle, driven by live dogfooding):
+  - Reasoning-model robustness: strip `<think>`/markdown-fence/prose wrappers before JSON parse (`extractJson`), and send `think:false` to Ollama so reasoning models (qwen3, deepseek-r1) answer with the structured payload instead of burning the token budget on hidden reasoning (was the cause of "model output is not valid JSON" when switching to stronger models).
+  - Anti-loop: a deterministic exploration-loop detector + a hardened "bias to action" executor prompt, so a weak model stops repeating `list_dir`/`read_file` and writes the result.
+  - Orchestrator graceful-stop: an unschedulable dependent task (its dependency never passed) is driven to ABORTED (SM-L8 `DEP_UNREACHABLE`) and the session COMPLETES, preserving work — replacing the old hard `DEADLOCK` abort that discarded the whole run.
+  - Runtime model switching: a `SwitchableModelGateway` + `/config` endpoint let the dashboard change the active Ollama model without a restart (single gateway reference preserved — MG-001).
+  - Dashboard usability: a Goals chat panel (persistent history + live status, no vanishing input), a Pending-Approval panel (approve/deny tool calls that parked the session at AWAITING_HUMAN), a Result panel (`/workspace/files` — the files the agent produced), workspace path + model selector in the header, honest "VERIFYING (done, unverified)" labeling, model list/download (`/models`, `/models/pull`), `/sessions` newest-first, and `Cache-Control: no-store` so UI changes always load.
 
 **Kernel integrity is mature and invariant-tested (144 base + 7 ME + 7 AU + 6 OB + 8 LE + 8 MI = 180 invariants).**
 

@@ -4,7 +4,7 @@
 > A phase passing its tests does NOT mean CodeForge is complete. This file records what the
 > software *actually does today*, verified against the source tree, not against phase labels.
 >
-> Last updated: 2026-09-14 · against commit `557a788` (Phase 12 close-out) · 1511 tests / 165 files green (Win + WSL).
+> Last updated: 2026-09-15 · post-eval runtime/UX hardening cycle · 1569 tests / 174 files green (Win + WSL).
 > Companion: `ROADMAP.md` (what's next) · per-phase detail in `PHASE_*_ROADMAP.md` / `PHASE_*_SIGNOFF.md`.
 
 ## What CodeForge is
@@ -158,6 +158,30 @@ next investment.
 5. **ArtifactStore is in-memory only.**
 6. **Product surface is minimal** (functional dashboard + thin VS Code client; no graph view).
 7. **Capability model is flat booleans**, not a dependency graph.
+8. **Vague goals produce vague results — by design.** A goal with no acceptance criteria and no
+   way to verify (e.g. "create a python script that multiplies two matrices") cannot be scored
+   PASSED (no evidence) and gives the agent no concrete target. This is the two-axis model
+   working, not a bug: Task Correctness is only measurable against a check. Goals that carry a
+   clear interface + acceptance criteria + a verification command (as the CF-001..010 benchmark
+   tasks do) are what the runtime can actually drive to a PASSED outcome. A future "goal
+   elaboration" step (agent proposes acceptance criteria before planning) is a candidate
+   improvement, not yet built.
+9. **Local small models (6–9B) are weak agents.** They plan acceptably but often under-perform
+   at execution (looping on reads, emitting malformed tool-call JSON, over-decomposing). The
+   runtime now mitigates this (anti-loop nudge, reasoning-model JSON handling, graceful-stop) but
+   cannot make a weak model competent. Agent quality is model-bound.
 
 None of these violate a kernel invariant — they are intelligence/product gaps, not integrity
 gaps. That distinction is the whole point of the two-axis model.
+
+## Recent hardening (post-eval dogfood cycle)
+
+Driven by running the real runtime against live goals:
+- **Reasoning-model JSON** — `extractJson` (strip `<think>`/fences/prose) + `think:false` to Ollama.
+  Fixes "model output is not valid JSON" when using qwen3 / deepseek-r1.
+- **Anti-loop** — `detectExplorationLoop` + a "bias to action" executor prompt.
+- **Orchestrator graceful-stop** — unschedulable dependents → ABORTED + session COMPLETES
+  (no more whole-run DEADLOCK abort).
+- **Runtime model switching** — `SwitchableModelGateway` + `GET/POST /config` (dashboard picker).
+- **Dashboard** — Goals chat history, Pending-Approval, Result (`/workspace/files`), workspace +
+  model in header, model list/download, honest VERIFYING labeling, no-store cache.
