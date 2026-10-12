@@ -60,8 +60,9 @@ import { SqliteFailureRepository }        from '../repositories/index.js';
 import { SqliteRecoveryActionRepository } from '../repositories/index.js';
 import { SqliteLearningStore }            from '../learning/index.js';
 import { Blake3GraphHasher }              from '../graph-hash/index.js';
-import { SwitchableModelGateway, RoutingModelGateway, loadModelRoutes, OllamaModelAdmin } from '../model/index.js';
-import type { ModelGateway } from '@codeforge/agent-core';
+import { SwitchableModelGateway, RoutingModelGateway, SwitchableRuntimeModelSelector, loadModelRoutes, OllamaModelAdmin } from '../model/index.js';
+import type { ModelGateway, RuntimeModelSelector } from '@codeforge/agent-core';
+import type { ProviderSpec } from '../model/index.js';
 import { NodeWorkspaceManager }           from '../workspace/index.js';
 import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
@@ -427,6 +428,25 @@ async function main(): Promise<void> {
     : undefined;
   console.log(`  Mission:    ${missionOn ? 'ON (advisory pre-planning: preflight + model routing + architecture gate)' : 'off (Phase 11 behavior)'}`);
 
+  // 8e. P12.9 mission-driven model routing. When the mission stage is ON and we're on the
+  // switchable gateway (i.e. NOT --model-routes, where per-purpose routing already governs the
+  // model), wire a selector so the mission's model choice is actually applied at runtime. The
+  // id→spec map holds only the models we know how to run; a mission choosing an id outside it is a
+  // no-op (fail-safe). Today the registry seeds just the configured model, so this becomes a real
+  // switch once ≥2 models are registered (future: /api/tags discovery or a routes-style config).
+  let modelSelector: RuntimeModelSelector | undefined;
+  if (missionOn && switchable !== undefined) {
+    const configuredSpec: ProviderSpec = provider === 'openai-compatible'
+      ? { provider: 'openai-compatible', model: modelName, endpoint: args['endpoint'] ?? 'https://api.openai.com/v1', ...(apiKey !== undefined ? { apiKey } : {}), timeoutMs: 300_000 }
+      : { provider: 'ollama', model: modelName, endpoint, timeoutMs: 300_000, options: { temperature: 0.2 } };
+    const specsById = new Map<string, ProviderSpec>([[modelName, configuredSpec]]);
+    modelSelector = new SwitchableRuntimeModelSelector({
+      gateway: switchable,
+      specsById,
+      onSwitch: (note) => console.log(`  [mission-routing] ${note}`),
+    });
+  }
+
   // 9. Orchestrator
   const orchestrator = new SessionOrchestrator({
     sessionService: sessionSvc, planner, graphCommitService: commitSvc,
@@ -442,6 +462,7 @@ async function main(): Promise<void> {
     verificationEvidenceProvider,
     ...learningDeps,
     ...(missionStage !== undefined ? { missionStage } : {}),
+    ...(modelSelector !== undefined ? { modelSelector } : {}),
     now: rt.now, nextId: rt.nextId,
   });
 

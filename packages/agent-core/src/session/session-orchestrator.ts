@@ -94,6 +94,23 @@ export interface MissionStageDecision {
    * (MI-008); absent ⇒ the executor uses its static default prompt (fail-safe parity).
    */
   readonly promptPlan?: PromptPlan;
+  /**
+   * P12.9 mission-driven routing: the model id the router chose for this mission. The orchestrator
+   * passes it to an optional RuntimeModelSelector so the runtime can switch the active model to fit
+   * the mission (MI-006 advisory → runtime applies). A plain id string — the orchestrator never
+   * knows the provider/endpoint/key (DC-002). Absent ⇒ no switch (fail-safe parity).
+   */
+  readonly selectedModelId?: string;
+}
+
+/**
+ * P12.9: optional hook that applies a mission-recommended model id at runtime. The orchestrator
+ * only passes the id; the implementation (infrastructure) maps it to a provider and switches the
+ * single gateway reference (MG-001). Must not throw — a selection failure is non-fatal (the run
+ * continues on the current model). Keeping the Goal/Graph untouched (MI-004).
+ */
+export interface RuntimeModelSelector {
+  selectModel(id: string): void;
 }
 export interface MissionStage {
   /** Analyze the goal for a specific session (sessionId scopes the MISSION_* audit events). */
@@ -174,6 +191,12 @@ export interface SessionOrchestratorDeps {
    * is advisory only — it never mutates the Goal and never creates Tasks/Graph (MI-004).
    */
   readonly missionStage?:        MissionStage;
+  /**
+   * P12.9: optional runtime model selector. When wired AND the mission stage returns a
+   * selectedModelId, the orchestrator applies it (switch the active model to fit the mission).
+   * Absent ⇒ the active model never changes (fail-safe parity).
+   */
+  readonly modelSelector?:       RuntimeModelSelector;
   readonly now:    () => string;
   readonly nextId: () => string;
 }
@@ -249,6 +272,12 @@ export class SessionOrchestrator {
       }
       if (decision !== undefined && decision.promptPlan !== undefined) {
         promptPlan = decision.promptPlan;
+      }
+      // P12.9: apply the mission-recommended model id, if any, to the active gateway (MI-006
+      // advisory → runtime applies). Best-effort: a selector failure must not break the run.
+      if (decision !== undefined && decision.selectedModelId !== undefined && this.deps.modelSelector !== undefined) {
+        try { this.deps.modelSelector.selectModel(decision.selectedModelId); }
+        catch { /* non-fatal: continue on the current model */ }
       }
       if (decision !== undefined && decision.proceed === false) {
         // ArchitectureGate BLOCKed: stop before planning and hand control to a human (MI-007).

@@ -88,7 +88,7 @@ next investment.
 | Model registry (capability metadata) | PARTIAL | `ModelRegistry` is an **injected list** (one model from CLI); no `/api/tags` discovery. |
 | Model requirement analysis + routing selection | DONE | `analyzeModelRequirement` + `routeModel`, MI-006. |
 | Per-purpose model routing | DONE | `RoutingModelGateway` routes each call to a provider/model chosen by its `ModelPurpose` (plan/architect on a strong model, execute/summarize on a cheaper/local one) behind the single gateway reference (MG-001). Config from a JSON file (`--model-routes`); API keys via env refs (`apiKeyEnv`), never in the file or logs; fail-safe (unmapped purpose → default; no file → single switchable gateway). The "shunt"-style cost/quality split. |
-| Routing applied automatically from the mission (`routeModel` → gateway) | PLANNED | Routing is now config-driven per purpose, but `routeModel`'s per-mission tier choice is still not auto-wired to pick the provider/model from the mission. |
+| Routing applied automatically from the mission (`routeModel` → gateway) | DONE (P12.9) | The mission stage exposes `selectedModelId` (from `routeModel`); the orchestrator passes it to an optional `RuntimeModelSelector` (agent-core, id-only — DC-002) which the infra `SwitchableRuntimeModelSelector` maps `id → ProviderSpec` and applies to the switchable gateway. Advisory → runtime applies; fail-safe (unknown id / no selector / `--model-routes` active → no switch). **Caveat: the registry seeds only the configured model today, so an auto-switch becomes real once ≥2 models are registered (future: /api/tags or a routes-style registry).** |
 | Model health / performance history | PLANNED | None. |
 
 ### Context system
@@ -163,11 +163,13 @@ next investment.
 2. **Task correctness is unmeasured.** No benchmark has ever run end-to-end; we cannot currently
    state a success rate for real goals. (The reason the eval system is being built now.)
 3. **REPLAN / ROLLBACK recovery are stubs.** The recovery vocabulary is only ~75% real.
-4. **Multi-provider + per-purpose routing exist; mission-driven auto-routing does not yet.** The
-   runtime runs Ollama OR any OpenAI-compatible provider (commercial/free cloud or local), and a
-   `--model-routes` file can route each PURPOSE (plan/execute/architect/…) to a different
-   provider/model (the shunt-style cost/quality split). What's still missing: `routeModel`'s
-   per-mission tier choice is not auto-applied to pick the model from the mission at runtime.
+4. **Model routing is fully wired; its real-world effect is gated by how many models you register.**
+   The runtime runs Ollama OR any OpenAI-compatible provider; a `--model-routes` file routes each
+   PURPOSE (plan/execute/architect/…) to a different provider/model (shunt-style cost/quality split);
+   and the mission router's per-mission choice is now applied at runtime via a `RuntimeModelSelector`
+   (P12.9). The remaining caveat is data, not plumbing: the model **registry seeds only the configured
+   model today**, so mission-driven auto-switching only changes anything once ≥2 models are registered
+   (future: `/api/tags` discovery or a registry config). Real-model success impact is still unmeasured.
 5. **ArtifactStore is in-memory only.**
 6. **Product surface is minimal** (functional dashboard + thin VS Code client; no graph view).
 7. **Capability model is flat booleans**, not a dependency graph.

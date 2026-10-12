@@ -19,3 +19,6 @@ export { RoutingModelGateway } from './routing-gateway.js';
 export type { RoutingGatewayConfig } from './routing-gateway.js';
 // Load per-purpose routing from a JSON file (API keys via env refs, never in the file).
 export { loadModelRoutes, parseModelRoutes, ModelRoutesConfigError } from './model-routes-config.js';
+// P12.9: apply a mission-recommended model id by switching the switchable gateway (id→ProviderSpec).
+export { SwitchableRuntimeModelSelector } from './model-selector.js';
+export type { SwitchableRuntimeModelSelectorConfig } from './model-selector.js';

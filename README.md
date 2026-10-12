@@ -200,6 +200,12 @@ npm start -- --workspace /path/to/project --model-routes examples/model-routes.e
 Valid purposes: `plan`, `critique`, `replan`, `execute`, `analyze_failure`, `summarize`,
 `architect`. Any purpose not listed uses `default`.
 
+There is also **mission-driven routing**: with `--mission on` (and without `--model-routes`), the
+Mission Intelligence stage picks a model to fit the task (trivial → fast/cheap, complex →
+stronger) and the runtime switches the active model to it. This only changes anything once more
+than one model is registered — today the registry seeds just the configured model, so it is a
+no-op by default. Routing stays deterministic and runtime-decided (the LLM never picks its own model).
+
 ### Package the CLI (single file)
 
 ```bash

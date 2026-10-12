@@ -116,6 +116,14 @@ export interface MissionStageOutcome {
   readonly promptPlan: PromptPlan;
   /** The selected model routing (undefined when no registry was wired). */
   readonly routing?: RoutingOutcome;
+  /**
+   * P12.9 mission-driven routing: the model id the router chose for this mission (from `routing`
+   * when kind is 'selected' or 'fallback'; undefined on 'escalate' or when no registry was wired).
+   * The orchestrator passes this id to an optional RuntimeModelSelector so the runtime can switch
+   * the active model to fit the mission. Advisory (MI-006): a recommendation the runtime applies;
+   * the id is a plain string — the agent-core layer never knows the provider/endpoint/key (DC-002).
+   */
+  readonly selectedModelId?: string;
   readonly expertProfile: ExpertProfile;
   readonly preflight?: PreflightReport;
   readonly architecture?: Architecture;
@@ -254,6 +262,9 @@ export class MissionIntelligence {
         reason: routing.reason,
       });
     }
+    // P12.9: the model id to apply at runtime (undefined on escalate / no registry). Fail-safe.
+    const selectedModelId: string | undefined =
+      routing !== undefined && routing.kind !== 'escalate' ? routing.model.id : undefined;
 
     // ── Architecture + gate (MI-001 proposal, MI-007 deterministic verdict) ──────
     let architecture: Architecture | undefined;
@@ -282,6 +293,7 @@ export class MissionIntelligence {
             mission, contextStrategy, contextPlan, promptPlan, expertProfile,
             architecture, gate, blockers: gate.blockers,
             ...(routing !== undefined ? { routing } : {}),
+            ...(selectedModelId !== undefined ? { selectedModelId } : {}),
             ...(preflight !== undefined ? { preflight } : {}),
             ...(clarification !== undefined ? { clarification } : {}),
             ...(assumptionStatements.length > 0 ? { assumptions: assumptionStatements } : {}),
@@ -298,6 +310,7 @@ export class MissionIntelligence {
       mission, contextStrategy, contextPlan, promptPlan, expertProfile,
       blockers: [],
       ...(routing !== undefined ? { routing } : {}),
+      ...(selectedModelId !== undefined ? { selectedModelId } : {}),
       ...(preflight !== undefined ? { preflight } : {}),
       ...(architecture !== undefined ? { architecture } : {}),
       ...(gate !== undefined ? { gate } : {}),
