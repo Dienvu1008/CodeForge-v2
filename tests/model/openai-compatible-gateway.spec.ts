@@ -1,0 +1,146 @@
+// OpenAiCompatibleModelGateway — adapter for any OpenAI Chat Completions-compatible provider.
+// Tests the success path, request shape (messages/response_format/Authorization), token usage,
+// and the error mappings. Uses vi.stubGlobal to mock global fetch — no real network / key.
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { OpenAiCompatibleModelGateway, type OpenAiCompatibleConfig } from '@codeforge/infrastructure';
+import { ModelError } from '@codeforge/agent-core';
+import type { ModelRequest } from '@codeforge/agent-core';
+
+const CONFIG: OpenAiCompatibleConfig = {
+  baseUrl: 'https://api.example.com/v1',
+  model: 'gpt-test',
+  apiKey: 'sk-secret-123',
+  timeoutMs: 500,
+};
+
+function req(overrides: Partial<ModelRequest> = {}): ModelRequest {
+  return {
+    purpose: 'plan',
+    systemPrompt: 'You are a coding agent.',
+    taskPrompt: 'Plan the feature.',
+    maxOutputTokens: 512,
+    temperature: 0,
+    ...overrides,
+  };
+}
+
+/** A minimal OpenAI chat-completion JSON body with the given assistant content. */
+function completion(content: string): string {
+  return JSON.stringify({
+    choices: [{ message: { role: 'assistant', content } }],
+    usage: { prompt_tokens: 11, completion_tokens: 7 },
+  });
+}
+
+/** Capture the last fetch call so request-shape assertions are possible. */
+let lastCall: { url: string; init: RequestInit } | undefined;
+
+function stubFetch(status: number, body: string, opts: { delay?: number } = {}): void {
+  lastCall = undefined;
+  vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+    lastCall = { url, init: init ?? {} };
+    if (opts.delay !== undefined) await new Promise<void>((r) => setTimeout(r, opts.delay));
+    if (init?.signal?.aborted) {
+      const e = new Error('aborted'); e.name = 'AbortError'; throw e;
+    }
+    return new Response(body, { status });
+  });
+}
+
+afterEach(() => { vi.unstubAllGlobals(); lastCall = undefined; });
+
+describe('OpenAiCompatibleModelGateway — success path', () => {
+  it('returns the assistant content as raw untrusted text + token usage', async () => {
+    stubFetch(200, completion('{"type":"done","summary":"ok"}'));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    const result = await gw.generate(req());
+    expect(result.raw).toBe('{"type":"done","summary":"ok"}');
+    expect(result.model.name).toBe('gpt-test');
+    expect(result.model.endpoint).toBe('https://api.example.com/v1');
+    expect(result.promptTokens).toBe(11);
+    expect(result.outputTokens).toBe(7);
+  });
+
+  it('POSTs to <baseUrl>/chat/completions with system+user messages', async () => {
+    stubFetch(200, completion('{}'));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    await gw.generate(req());
+    expect(lastCall?.url).toBe('https://api.example.com/v1/chat/completions');
+    const body = JSON.parse(String(lastCall?.init.body));
+    expect(body.model).toBe('gpt-test');
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'You are a coding agent.' },
+      { role: 'user', content: 'Plan the feature.' },
+    ]);
+    expect(body.stream).toBe(false);
+  });
+
+  it('sends the API key only in the Authorization header (never in the body)', async () => {
+    stubFetch(200, completion('{}'));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    await gw.generate(req());
+    const headers = lastCall?.init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer sk-secret-123');
+    expect(String(lastCall?.init.body)).not.toContain('sk-secret-123');
+  });
+
+  it('requests a JSON object response_format when a responseSchema is supplied', async () => {
+    stubFetch(200, completion('{}'));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    await gw.generate(req({ responseSchema: { type: 'object' } }));
+    const body = JSON.parse(String(lastCall?.init.body));
+    expect(body.response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('omits response_format when no schema is supplied', async () => {
+    stubFetch(200, completion('{}'));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    await gw.generate(req());
+    const body = JSON.parse(String(lastCall?.init.body));
+    expect(body.response_format).toBeUndefined();
+  });
+
+  it('works keyless (no Authorization header) for local servers', async () => {
+    stubFetch(200, completion('{}'));
+    const gw = new OpenAiCompatibleModelGateway({ baseUrl: 'http://localhost:1234/v1', model: 'local' });
+    await gw.generate(req());
+    const headers = lastCall?.init.headers as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
+  });
+});
+
+describe('OpenAiCompatibleModelGateway — error mapping', () => {
+  it('maps a timeout to MODEL_TIMEOUT', async () => {
+    stubFetch(200, completion('{}'), { delay: 50 });
+    const gw = new OpenAiCompatibleModelGateway({ ...CONFIG, timeoutMs: 1 });
+    await expect(gw.generate(req())).rejects.toMatchObject({ code: 'MODEL_TIMEOUT' });
+  });
+
+  it('maps a non-2xx (e.g. 401) to MODEL_UNAVAILABLE without leaking the key', async () => {
+    stubFetch(401, JSON.stringify({ error: { message: 'invalid api key' } }));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    let caught: unknown;
+    try { await gw.generate(req()); } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(ModelError);
+    expect((caught as ModelError).code).toBe('MODEL_UNAVAILABLE');
+    expect((caught as ModelError).message).not.toContain('sk-secret-123');
+  });
+
+  it('maps an unparseable body to MODEL_OUTPUT_INVALID', async () => {
+    stubFetch(200, 'not json at all');
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    await expect(gw.generate(req())).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
+  });
+
+  it('maps a missing content field to MODEL_OUTPUT_INVALID', async () => {
+    stubFetch(200, JSON.stringify({ choices: [{ message: {} }] }));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    await expect(gw.generate(req())).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
+  });
+
+  it('surfaces a provider error field as MODEL_UNAVAILABLE', async () => {
+    stubFetch(200, JSON.stringify({ error: { message: 'rate limited' } }));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    await expect(gw.generate(req())).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
+  });
+});

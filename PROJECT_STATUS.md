@@ -83,10 +83,11 @@ next investment.
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| ModelGateway contract + Ollama adapter | DONE | `model/gateway.ts`, `infrastructure/model/`. |
+| ModelGateway contract + adapters | DONE | `model/gateway.ts` (provider-agnostic contract). Adapters: `OllamaModelGateway` (local) + `OpenAiCompatibleModelGateway` (any OpenAI Chat Completions API — OpenAI, OpenRouter, Groq, Together, DeepSeek, Mistral, LM Studio, llama.cpp, vLLM, LiteLLM). |
+| Multi-provider gateway + runtime switch | DONE | `SwitchableModelGateway` holds ONE gateway reference (MG-001) and can switch model AND provider at runtime via `setProvider({provider, model, endpoint, apiKey})`; fail-safe (an invalid spec throws before replacing the live adapter). CLI: `--provider ollama\|openai-compatible`, `--endpoint`, `--api-key`/`CODEFORGE_API_KEY` (never logged). Dashboard provider-switch UI still pending (model-only switch exists). |
 | Model registry (capability metadata) | PARTIAL | `ModelRegistry` is an **injected list** (one model from CLI); no `/api/tags` discovery. |
 | Model requirement analysis + routing selection | DONE | `analyzeModelRequirement` + `routeModel`, MI-006. |
-| Runtime model switching (execute with routed model) | PLANNED | Runtime executes the single configured gateway; routing is advisory. |
+| Routing applied at execution (auto per-mission model) | PLANNED | The gateway can now run any provider, but `routeModel`'s choice is still not auto-applied — the active provider/model is chosen by config/CLI, not by the mission router. |
 | Model health / performance history | PLANNED | None. |
 
 ### Context system
@@ -161,7 +162,10 @@ next investment.
 2. **Task correctness is unmeasured.** No benchmark has ever run end-to-end; we cannot currently
    state a success rate for real goals. (The reason the eval system is being built now.)
 3. **REPLAN / ROLLBACK recovery are stubs.** The recovery vocabulary is only ~75% real.
-4. **Model routing selects an id but doesn't switch the executing model.**
+4. **Multi-provider gateway exists; mission routing still doesn't auto-switch the model.** The
+   runtime can now run Ollama OR any OpenAI-compatible provider (commercial/free cloud or local),
+   switchable at runtime, selected by config/CLI. But `routeModel`'s per-mission choice is still
+   advisory — it is not yet applied to pick the executing provider/model automatically.
 5. **ArtifactStore is in-memory only.**
 6. **Product surface is minimal** (functional dashboard + thin VS Code client; no graph view).
 7. **Capability model is flat booleans**, not a dependency graph.

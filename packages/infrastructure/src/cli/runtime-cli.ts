@@ -9,8 +9,14 @@
 //
 // Options:
 //   --workspace <path>   Project root (default: cwd)
-//   --model <name>       Ollama model name (default: qwen2.5-coder)
-//   --endpoint <url>     Ollama server URL (default: http://localhost:11434)
+//   --model <name>       Model name/id (default: qwen2.5-coder). For a cloud provider this is the
+//                        provider's model id, e.g. gpt-4o-mini or anthropic/claude-3.5-sonnet.
+//   --provider <name>    ollama (default, local) | openai-compatible (any OpenAI Chat Completions
+//                        API: OpenAI, OpenRouter, Groq, Together, DeepSeek, LM Studio, …).
+//   --endpoint <url>     For ollama: server URL (default http://localhost:11434). For
+//                        openai-compatible: the …/v1 base URL (default https://api.openai.com/v1).
+//   --api-key <key>      API key for a cloud provider. PREFER the CODEFORGE_API_KEY env var so the
+//                        key stays out of shell history. Never logged.
 //   --goal <description> The FIRST goal. The runtime stays alive after it; POST /goal
 //                        {"description":"..."} enqueues more goals (P10.9).
 //   --port <number>      HTTP server port for the dashboard (default: 9500)
@@ -170,6 +176,14 @@ async function main(): Promise<void> {
   // orchestrator is byte-identical to Phase 11 (MI-002 fail-safe parity). `--mission on` wires an
   // advisory analysis + verified preflight + architecture gate that runs ONCE before planning.
   const missionOn = (args['mission'] ?? 'off').toLowerCase() === 'on';
+  // Multi-provider: default 'ollama' (local). 'openai-compatible' targets any OpenAI Chat
+  // Completions API (OpenAI, OpenRouter, Groq, Together, DeepSeek, LM Studio, …). For a cloud
+  // provider pass the …/v1 base URL via --endpoint and the key via CODEFORGE_API_KEY (preferred,
+  // keeps it out of shell history) or --api-key.
+  const providerArg = (args['provider'] ?? 'ollama').toLowerCase();
+  const provider: 'ollama' | 'openai-compatible' =
+    providerArg === 'openai-compatible' || providerArg === 'openai' ? 'openai-compatible' : 'ollama';
+  const apiKey = process.env['CODEFORGE_API_KEY'] ?? args['api-key'];
 
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║         CodeForge v2 Runtime              ║');
@@ -218,7 +232,22 @@ async function main(): Promise<void> {
     timeoutMs: 300_000,
     options: { temperature: 0.2 },
   });
-  console.log(`  Ollama model gateway: ${modelName} @ ${endpoint} (switchable at runtime)`);
+  // When a non-default provider is requested, switch the one gateway reference to it (MG-001).
+  // For openai-compatible, --endpoint must be the provider's …/v1 base URL.
+  if (provider === 'openai-compatible') {
+    const base = args['endpoint'] ?? 'https://api.openai.com/v1';
+    model.setProvider({
+      provider: 'openai-compatible',
+      model: modelName,
+      endpoint: base,
+      ...(apiKey !== undefined ? { apiKey } : {}),
+      timeoutMs: 300_000,
+    });
+    // NEVER log the key — only the provider, model, endpoint, and whether a key is present.
+    console.log(`  Model gateway: openai-compatible '${modelName}' @ ${base} (key: ${apiKey !== undefined ? 'set' : 'none'})`);
+  } else {
+    console.log(`  Ollama model gateway: ${modelName} @ ${endpoint} (switchable at runtime)`);
+  }
 
   // 4. Domain services
   const hasher     = new Blake3GraphHasher();

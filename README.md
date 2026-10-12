@@ -91,8 +91,9 @@ infrastructure / models / tools; no cycles).
 ### Prerequisites
 
 - **Node.js ≥ 20**
-- **[Ollama](https://ollama.com/)** running locally (default `http://localhost:11434`) with at
-  least one model pulled, e.g. `ollama pull qwen2.5-coder`.
+- **A model provider.** CodeForge talks to models through a provider-agnostic gateway, so you can use either:
+  - **[Ollama](https://ollama.com/)** locally (default) — `http://localhost:11434` with a model pulled, e.g. `ollama pull qwen2.5-coder`; or
+  - **Any OpenAI Chat Completions-compatible provider** — commercial or free cloud (OpenAI, OpenRouter, Groq, Together, DeepSeek, Mistral, …) or a local server (LM Studio, llama.cpp, vLLM, LiteLLM). Pass `--provider openai-compatible`, the `…/v1` base URL via `--endpoint`, and the key via the `CODEFORGE_API_KEY` env var.
 
 ### Install & build
 
@@ -132,14 +133,32 @@ curl -X POST http://localhost:9500/goal \
   -d '{"description":"Write a test for the reverse() function"}'
 ```
 
+To use a cloud provider instead of local Ollama:
+
+```bash
+$env:CODEFORGE_API_KEY = "sk-..."   # PowerShell (or: export CODEFORGE_API_KEY=sk-...)
+npm start -- \
+  --workspace /path/to/your/project \
+  --provider openai-compatible \
+  --endpoint https://api.openai.com/v1 \
+  --model gpt-4o-mini \
+  --goal "Add an isEven helper to src/util.js" \
+  --autonomy edits
+```
+
+(For OpenRouter use `--endpoint https://openrouter.ai/api/v1` and a model id like
+`anthropic/claude-3.5-sonnet`; for a local LM Studio server, `--endpoint http://localhost:1234/v1`.)
+
 #### CLI options
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--workspace <path>` | cwd | Project root the agent operates on. |
 | `--goal <text>` | — | The first goal. The runtime stays alive afterward; `POST /goal` enqueues more. |
-| `--model <name>` | `qwen2.5-coder` | Ollama model name. |
-| `--endpoint <url>` | `http://localhost:11434` | Ollama server URL. |
+| `--provider <name>` | `ollama` | `ollama` (local) or `openai-compatible` (any OpenAI Chat Completions API). |
+| `--model <name>` | `qwen2.5-coder` | Model name/id (for a cloud provider, that provider's model id). |
+| `--endpoint <url>` | provider default | Ollama server URL, or the cloud provider's `…/v1` base URL. |
+| `--api-key <key>` | — | API key for a cloud provider. Prefer the `CODEFORGE_API_KEY` env var. Never logged. |
 | `--port <number>` | `9500` | Dashboard HTTP port. |
 | `--db <path>` | `.codeforge/runtime.db` | SQLite database file. |
 | `--max-steps <n>` | `40` | Max orchestrator iterations. |
