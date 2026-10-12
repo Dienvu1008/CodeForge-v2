@@ -17,6 +17,12 @@
 //                        openai-compatible: the …/v1 base URL (default https://api.openai.com/v1).
 //   --api-key <key>      API key for a cloud provider. PREFER the CODEFORGE_API_KEY env var so the
 //                        key stays out of shell history. Never logged.
+//   --model-routes <path> JSON file mapping each PURPOSE (plan/execute/architect/…) to a provider
+//                        + model, so reasoning-heavy work can run on a strong (e.g. commercial)
+//                        model and mechanical work on a cheaper/local one. The file holds no keys —
+//                        each cloud entry names an env var via "apiKeyEnv". When set, this REPLACES
+//                        --provider/--model/--endpoint (and the dashboard model switch is disabled;
+//                        routing is config-driven). Absent → single switchable gateway (default).
 //   --goal <description> The FIRST goal. The runtime stays alive after it; POST /goal
 //                        {"description":"..."} enqueues more goals (P10.9).
 //   --port <number>      HTTP server port for the dashboard (default: 9500)
@@ -54,7 +60,8 @@ import { SqliteFailureRepository }        from '../repositories/index.js';
 import { SqliteRecoveryActionRepository } from '../repositories/index.js';
 import { SqliteLearningStore }            from '../learning/index.js';
 import { Blake3GraphHasher }              from '../graph-hash/index.js';
-import { SwitchableModelGateway, OllamaModelAdmin } from '../model/index.js';
+import { SwitchableModelGateway, RoutingModelGateway, loadModelRoutes, OllamaModelAdmin } from '../model/index.js';
+import type { ModelGateway } from '@codeforge/agent-core';
 import { NodeWorkspaceManager }           from '../workspace/index.js';
 import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
@@ -224,29 +231,40 @@ async function main(): Promise<void> {
   const failures   = new SqliteFailureRepository(db);
   const recoveryActions = new SqliteRecoveryActionRepository(db);
 
-  // 3. Model gateway (Ollama) — SWITCHABLE so the user can pick a different model at runtime
-  // from the dashboard without restarting (MG-001: still one gateway reference everywhere).
-  const model = new SwitchableModelGateway({
-    endpoint,
-    initialModel: modelName,
-    timeoutMs: 300_000,
-    options: { temperature: 0.2 },
-  });
-  // When a non-default provider is requested, switch the one gateway reference to it (MG-001).
-  // For openai-compatible, --endpoint must be the provider's …/v1 base URL.
-  if (provider === 'openai-compatible') {
-    const base = args['endpoint'] ?? 'https://api.openai.com/v1';
-    model.setProvider({
-      provider: 'openai-compatible',
-      model: modelName,
-      endpoint: base,
-      ...(apiKey !== undefined ? { apiKey } : {}),
-      timeoutMs: 300_000,
-    });
-    // NEVER log the key — only the provider, model, endpoint, and whether a key is present.
-    console.log(`  Model gateway: openai-compatible '${modelName}' @ ${base} (key: ${apiKey !== undefined ? 'set' : 'none'})`);
+  // 3. Model gateway (MG-001: ONE gateway reference everywhere). Two shapes:
+  //   (a) --model-routes <file>: a RoutingModelGateway that routes each call to a provider/model
+  //       chosen by its PURPOSE (plan/architect on a strong model, execute/summarize on a cheaper
+  //       one). The file never holds API keys — they come from env vars named by `apiKeyEnv`.
+  //   (b) otherwise: a SwitchableModelGateway (runtime model/provider switch from the dashboard).
+  // `switchable` is kept non-null only in case (b), so runtime model-switch stays available there.
+  let model: ModelGateway;
+  let switchable: SwitchableModelGateway | undefined;
+  const routesPath = args['model-routes'];
+  if (routesPath !== undefined) {
+    const routesCfg = loadModelRoutes(routesPath);
+    const routing = new RoutingModelGateway(routesCfg);
+    model = routing;
+    const routed = Object.keys(routesCfg.routes ?? {});
+    console.log(`  Model gateway: per-purpose routing from ${routesPath} (default '${routing.identity.name}'` +
+      (routed.length > 0 ? `, routed: ${routed.join(', ')})` : ')'));
   } else {
-    console.log(`  Ollama model gateway: ${modelName} @ ${endpoint} (switchable at runtime)`);
+    switchable = new SwitchableModelGateway({ endpoint, initialModel: modelName, timeoutMs: 300_000, options: { temperature: 0.2 } });
+    // When a non-default provider is requested, switch the one gateway reference to it (MG-001).
+    if (provider === 'openai-compatible') {
+      const base = args['endpoint'] ?? 'https://api.openai.com/v1';
+      switchable.setProvider({
+        provider: 'openai-compatible',
+        model: modelName,
+        endpoint: base,
+        ...(apiKey !== undefined ? { apiKey } : {}),
+        timeoutMs: 300_000,
+      });
+      // NEVER log the key — only the provider, model, endpoint, and whether a key is present.
+      console.log(`  Model gateway: openai-compatible '${modelName}' @ ${base} (key: ${apiKey !== undefined ? 'set' : 'none'})`);
+    } else {
+      console.log(`  Ollama model gateway: ${modelName} @ ${endpoint} (switchable at runtime)`);
+    }
+    model = switchable;
   }
 
   // 4. Domain services
@@ -449,8 +467,15 @@ async function main(): Promise<void> {
     // Runtime config (GET /config, POST /config/model): report workspace + active model and let
     // the dashboard switch the model at runtime (the switchable gateway swaps the target model).
     runtimeConfig: {
-      get: () => ({ workspaceRoot, model: model.model, endpoint }),
-      setModel: (m: string) => model.setModel(m),
+      get: () => ({ workspaceRoot, model: model.identity.name, endpoint }),
+      // Runtime model switch is only available with the switchable gateway (case b). With
+      // per-purpose routing (case a) the mapping is fixed by the config file — report that.
+      setModel: (m: string) => {
+        if (switchable === undefined) {
+          throw new Error('model switching is disabled while --model-routes is active (routing is config-driven)');
+        }
+        return switchable.setModel(m);
+      },
     },
     now: rt.now, nextId: rt.nextId,
   });

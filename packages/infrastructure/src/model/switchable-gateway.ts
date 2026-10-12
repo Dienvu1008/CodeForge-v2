@@ -12,30 +12,10 @@
 // (default provider = 'ollama'), so existing callers (runtime CLI, observability service) are
 // unchanged. New: setProvider(spec) switches provider+model+endpoint+key in one call.
 import type { ModelGateway, ModelRequest, ModelResponse, ModelIdentity } from '@codeforge/agent-core';
-import { OllamaModelGateway, type OllamaConfig } from './ollama-gateway.js';
-import { OpenAiCompatibleModelGateway, type OpenAiCompatibleConfig } from './openai-compatible-gateway.js';
+import { buildAdapter, type ProviderSpec, type ModelProvider } from './provider-adapter.js';
 
-/** Which adapter family a ProviderSpec targets. */
-export type ModelProvider = 'ollama' | 'openai-compatible';
-
-/**
- * A full description of what to run: which provider, which model, where, and (for cloud providers)
- * the API key + optional extra headers. The key is held only to construct the adapter; it is never
- * logged (the adapters send it only in the Authorization header).
- */
-export interface ProviderSpec {
-  readonly provider: ModelProvider;
-  readonly model: string;
-  /** Ollama base URL, or the OpenAI-compatible base URL (…/v1). Provider-specific default used when omitted. */
-  readonly endpoint?: string;
-  /** API key for a cloud/OpenAI-compatible provider (ignored by Ollama). */
-  readonly apiKey?: string;
-  readonly timeoutMs?: number;
-  /** Ollama generation options (temperature, num_ctx, …). */
-  readonly options?: Readonly<Record<string, unknown>>;
-  /** Extra headers for an OpenAI-compatible provider (e.g. OpenRouter attribution). */
-  readonly headers?: Readonly<Record<string, string>>;
-}
+// Re-export so existing importers of these types from switchable-gateway keep working.
+export type { ProviderSpec, ModelProvider } from './provider-adapter.js';
 
 export interface SwitchableGatewayConfig {
   readonly endpoint: string;
@@ -43,8 +23,6 @@ export interface SwitchableGatewayConfig {
   readonly timeoutMs?: number;
   readonly options?: Readonly<Record<string, unknown>>;
 }
-
-const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434';
 
 export class SwitchableModelGateway implements ModelGateway {
   private current: ModelGateway;
@@ -62,7 +40,7 @@ export class SwitchableModelGateway implements ModelGateway {
       ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
       ...(config.options !== undefined ? { options: config.options } : {}),
     };
-    this.current = this.build(this._spec);
+    this.current = buildAdapter(this._spec);
   }
 
   /** The model id currently in effect. */
@@ -99,7 +77,7 @@ export class SwitchableModelGateway implements ModelGateway {
       ...(spec.timeoutMs === undefined && this._defaultTimeoutMs !== undefined ? { timeoutMs: this._defaultTimeoutMs } : {}),
       ...(spec.options === undefined && this._defaultOptions !== undefined ? { options: this._defaultOptions } : {}),
     };
-    const built = this.build(next); // may throw for an unknown provider — current adapter untouched
+    const built = buildAdapter(next); // may throw for an unknown provider — current adapter untouched
     this._spec = next;
     this.current = built;
     return this._spec.model;
@@ -107,34 +85,5 @@ export class SwitchableModelGateway implements ModelGateway {
 
   generate(request: ModelRequest): Promise<ModelResponse> {
     return this.current.generate(request);
-  }
-
-  // ── adapter construction ─────────────────────────────────────────────────────
-
-  private build(spec: ProviderSpec): ModelGateway {
-    if (spec.provider === 'ollama') {
-      const cfg: OllamaConfig = {
-        endpoint: spec.endpoint ?? DEFAULT_OLLAMA_ENDPOINT,
-        model: spec.model,
-        ...(spec.timeoutMs !== undefined ? { timeoutMs: spec.timeoutMs } : {}),
-        ...(spec.options !== undefined ? { options: spec.options } : {}),
-      };
-      return new OllamaModelGateway(cfg);
-    }
-    if (spec.provider === 'openai-compatible') {
-      if (spec.endpoint === undefined || spec.endpoint.trim().length === 0) {
-        throw new Error("openai-compatible provider requires an endpoint (the …/v1 base URL)");
-      }
-      const cfg: OpenAiCompatibleConfig = {
-        baseUrl: spec.endpoint,
-        model: spec.model,
-        ...(spec.apiKey !== undefined ? { apiKey: spec.apiKey } : {}),
-        ...(spec.timeoutMs !== undefined ? { timeoutMs: spec.timeoutMs } : {}),
-        ...(spec.headers !== undefined ? { headers: spec.headers } : {}),
-      };
-      return new OpenAiCompatibleModelGateway(cfg);
-    }
-    // Exhaustiveness: an unknown provider is a programming error, surfaced before swapping.
-    throw new Error(`unknown model provider: ${String((spec as { provider: unknown }).provider)}`);
   }
 }

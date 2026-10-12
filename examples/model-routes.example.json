@@ -1,0 +1,28 @@
+{
+  "_comment": "Per-purpose model routing for CodeForge. Pass with --model-routes <path>. The file holds NO API keys: each cloud entry names an environment variable via apiKeyEnv, read at startup. Any purpose not listed under routes uses default. Valid purposes: plan, critique, replan, execute, analyze_failure, summarize, architect.",
+  "default": {
+    "provider": "ollama",
+    "model": "qwen2.5-coder",
+    "endpoint": "http://localhost:11434"
+  },
+  "routes": {
+    "plan": {
+      "provider": "openai-compatible",
+      "model": "gpt-4o-mini",
+      "endpoint": "https://api.openai.com/v1",
+      "apiKeyEnv": "OPENAI_API_KEY"
+    },
+    "architect": {
+      "provider": "openai-compatible",
+      "model": "gpt-4o",
+      "endpoint": "https://api.openai.com/v1",
+      "apiKeyEnv": "OPENAI_API_KEY"
+    },
+    "critique": {
+      "provider": "openai-compatible",
+      "model": "gpt-4o-mini",
+      "endpoint": "https://api.openai.com/v1",
+      "apiKeyEnv": "OPENAI_API_KEY"
+    }
+  }
+}

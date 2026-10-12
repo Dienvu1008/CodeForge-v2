@@ -87,7 +87,8 @@ next investment.
 | Multi-provider gateway + runtime switch | DONE | `SwitchableModelGateway` holds ONE gateway reference (MG-001) and can switch model AND provider at runtime via `setProvider({provider, model, endpoint, apiKey})`; fail-safe (an invalid spec throws before replacing the live adapter). CLI: `--provider ollama\|openai-compatible`, `--endpoint`, `--api-key`/`CODEFORGE_API_KEY` (never logged). Dashboard provider-switch UI still pending (model-only switch exists). |
 | Model registry (capability metadata) | PARTIAL | `ModelRegistry` is an **injected list** (one model from CLI); no `/api/tags` discovery. |
 | Model requirement analysis + routing selection | DONE | `analyzeModelRequirement` + `routeModel`, MI-006. |
-| Routing applied at execution (auto per-mission model) | PLANNED | The gateway can now run any provider, but `routeModel`'s choice is still not auto-applied — the active provider/model is chosen by config/CLI, not by the mission router. |
+| Per-purpose model routing | DONE | `RoutingModelGateway` routes each call to a provider/model chosen by its `ModelPurpose` (plan/architect on a strong model, execute/summarize on a cheaper/local one) behind the single gateway reference (MG-001). Config from a JSON file (`--model-routes`); API keys via env refs (`apiKeyEnv`), never in the file or logs; fail-safe (unmapped purpose → default; no file → single switchable gateway). The "shunt"-style cost/quality split. |
+| Routing applied automatically from the mission (`routeModel` → gateway) | PLANNED | Routing is now config-driven per purpose, but `routeModel`'s per-mission tier choice is still not auto-wired to pick the provider/model from the mission. |
 | Model health / performance history | PLANNED | None. |
 
 ### Context system
@@ -162,10 +163,11 @@ next investment.
 2. **Task correctness is unmeasured.** No benchmark has ever run end-to-end; we cannot currently
    state a success rate for real goals. (The reason the eval system is being built now.)
 3. **REPLAN / ROLLBACK recovery are stubs.** The recovery vocabulary is only ~75% real.
-4. **Multi-provider gateway exists; mission routing still doesn't auto-switch the model.** The
-   runtime can now run Ollama OR any OpenAI-compatible provider (commercial/free cloud or local),
-   switchable at runtime, selected by config/CLI. But `routeModel`'s per-mission choice is still
-   advisory — it is not yet applied to pick the executing provider/model automatically.
+4. **Multi-provider + per-purpose routing exist; mission-driven auto-routing does not yet.** The
+   runtime runs Ollama OR any OpenAI-compatible provider (commercial/free cloud or local), and a
+   `--model-routes` file can route each PURPOSE (plan/execute/architect/…) to a different
+   provider/model (the shunt-style cost/quality split). What's still missing: `routeModel`'s
+   per-mission tier choice is not auto-applied to pick the model from the mission at runtime.
 5. **ArtifactStore is in-memory only.**
 6. **Product surface is minimal** (functional dashboard + thin VS Code client; no graph view).
 7. **Capability model is flat booleans**, not a dependency graph.

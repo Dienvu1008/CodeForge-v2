@@ -165,10 +165,40 @@ npm start -- \
 | `--autonomy <level>` | `edits` | `full` / `edits` / `readonly` — which tool risk classes auto-approve vs. require a human decision. |
 | `--mission <on\|off>` | `off` | Advisory Mission Intelligence stage before planning. |
 | `--learning <on\|off>` | `off` | Advisory learning plane for recovery ordering. |
+| `--model-routes <path>` | — | JSON file routing each purpose to a provider/model (see below). Replaces `--provider`/`--model`/`--endpoint`. |
 
 > Tip for a smooth demo with a small local model: `--autonomy full` avoids approval prompts for
 > commands. With weaker models, prefer concrete, well-specified goals (acceptance criteria the
 > runtime can verify) — see the limitations below.
+
+### Per-purpose model routing (cost/quality split)
+
+Instead of one model for everything, you can route each kind of work to a different
+provider/model: run reasoning-heavy purposes (`plan`, `architect`) on a strong (e.g. commercial)
+model and mechanical / I/O-heavy purposes (`execute`, `summarize`) on a cheaper or local one. All
+behind the single gateway the runtime uses — routing is deterministic and config-driven (the LLM
+never picks its own model).
+
+Point `--model-routes` at a JSON file (see `examples/model-routes.example.json`). The file holds
+**no API keys** — each cloud entry names an environment variable via `apiKeyEnv`:
+
+```json
+{
+  "default": { "provider": "ollama", "model": "qwen2.5-coder", "endpoint": "http://localhost:11434" },
+  "routes": {
+    "plan":      { "provider": "openai-compatible", "model": "gpt-4o-mini", "endpoint": "https://api.openai.com/v1", "apiKeyEnv": "OPENAI_API_KEY" },
+    "architect": { "provider": "openai-compatible", "model": "gpt-4o",      "endpoint": "https://api.openai.com/v1", "apiKeyEnv": "OPENAI_API_KEY" }
+  }
+}
+```
+
+```bash
+$env:OPENAI_API_KEY = "sk-..."
+npm start -- --workspace /path/to/project --model-routes examples/model-routes.example.json --goal "..." --mission on
+```
+
+Valid purposes: `plan`, `critique`, `replan`, `execute`, `analyze_failure`, `summarize`,
+`architect`. Any purpose not listed uses `default`.
 
 ### Package the CLI (single file)
 
