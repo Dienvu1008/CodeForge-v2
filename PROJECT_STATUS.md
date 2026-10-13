@@ -190,10 +190,18 @@ next investment.
    qwen2.5-coder nailed a one-line bugfix (fix correct, test green) but, on a multi-file refactor,
    created the new module as an EMPTY file and never wired the import — i.e. it half-did the harder
    task. The runtime stayed intact (graceful-stop, session COMPLETED, existing code unbroken).
-10. **Complexity estimation under-scores some hard goals.** A multi-file REFACTOR with explicit
-    module-boundary design was scored complexity LOW, so mission-driven routing did not escalate it
-    to a stronger model. The routing mechanism is correct; the `complexity-analyzer` signals need
-    refining (breadth of a refactor / "extract module" / "no dependency" cues) to feed it better.
+10. **Complexity estimation under-scored structural refactors — FIXED (P12.10).** A multi-file
+    REFACTOR with explicit module-boundary design used to score LOW (the fixed `-1` light-type
+    discount cancelled the one breadth hit). Now `extractSignals` emits structural signals
+    (module restructure / dependency boundary / interface change / cross-file consistency /
+    behavior preservation) + a `pathCount`, the analyzer scores them (capped, deduped), and the
+    light-type discount is withheld when structural evidence is present — so the regression case
+    now lands HIGH and routes to a stronger model. **Residual (not addressed):** complexity rests
+    on surface signals, so a *conceptually* hard task with no structural wording (e.g. "fix the
+    race condition") still scores LOW — the analyzer cannot read reasoning difficulty from prose.
+    Separately, a goal that says both "refactor" and "add tests" still classifies as TESTING in
+    mission-intake (TESTING precedes REFACTOR in the taxonomy); complexity is now correct regardless
+    because structural signals are type-independent, but the type label itself is still off.
 
 None of these violate a kernel invariant — they are intelligence/product gaps, not integrity
 gaps. That distinction is the whole point of the two-axis model.
