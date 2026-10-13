@@ -11,7 +11,13 @@ import type { OutputSchema } from '../security/structured-output-validator.js';
 export interface RawTaskProposal {
   readonly id: string;           // caller-scoped temporary id (e.g. "T1", "T2")
   readonly description: string;
-  readonly strategy: 'generate' | 'refactor' | 'fix' | 'test' | 'migrate' | 'custom';
+  /**
+   * Advisory strategy hint from the model. The runtime taxonomy is
+   * 'generate' | 'refactor' | 'fix' | 'test' | 'migrate' | 'custom', but a model may emit a
+   * label outside it (e.g. "analyze", "code"). Typed as `string` because this is untrusted
+   * model output; the Planner normalizes it to a known kind (unknown ⇒ 'custom').
+   */
+  readonly strategy?: string;
   readonly notes?: string;
   readonly priority?: number;
   readonly acceptanceCriteria?: string[]; // short strings, optional

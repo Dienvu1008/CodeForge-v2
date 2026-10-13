@@ -448,6 +448,59 @@ describe('P10.4 Planner — multi-task decomposition', () => {
   });
 });
 
+describe('Planner — advisory strategy normalization (fail-safe)', () => {
+  /** A capable model emits strategy labels outside the runtime taxonomy. */
+  const OUT_OF_TAXONOMY_PLAN = JSON.stringify({
+    tasks: [
+      { id: 'T1', description: 'analyze the failing module', strategy: 'analyze', acceptanceCriteria: ['root cause found'] },
+      { id: 'T2', description: 'write the patch', strategy: 'code' },
+      { id: 'T3', description: 'confirm the fix', strategy: 'verify' },
+    ],
+    edges: [
+      { from: 'T2', to: 'T1', kind: 'depends_on' },
+      { from: 'T3', to: 'T2', kind: 'depends_on' },
+    ],
+    reason: 'analyze -> code -> verify',
+  });
+
+  it('does NOT fail the plan when a task carries an unknown strategy label', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, OUT_OF_TAXONOMY_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+    const addTasks = mutation.operations.filter((op) => op.kind === 'ADD_TASK');
+    expect(addTasks).toHaveLength(3);
+  });
+
+  it('normalizes an unknown strategy to "custom" and keeps the original label in notes', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, OUT_OF_TAXONOMY_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+    const first = mutation.operations.find((op) => op.kind === 'ADD_TASK') as
+      { task: { strategy: { kind: string; notes?: string } } };
+    expect(first.task.strategy.kind).toBe('custom');
+    expect(first.task.strategy.notes).toContain('analyze');
+  });
+
+  it('preserves a known strategy unchanged', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+
+    const mutation = await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+    const tasks3 = mutation.operations.filter((op) => op.kind === 'ADD_TASK') as
+      Array<{ task: { strategy: { kind: string } } }>;
+    // MULTI_TASK_PLAN uses generate/generate/test — all in taxonomy, untouched.
+    expect(tasks3.map((t) => t.task.strategy.kind)).toEqual(['generate', 'generate', 'test']);
+  });
+});
+
 describe('P10.4 Planner — bounded PlanCritic refinement (MG-006)', () => {
   it('re-plans once when the critic flags a weak plan, keeping the refined plan', async () => {
     const fake = new FakeModel();

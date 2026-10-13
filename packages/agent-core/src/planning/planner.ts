@@ -36,6 +36,32 @@ import type { TaskStrategy, AcceptanceCriterion } from '../domain/common.js';
 import type { PlanCritic, CritiqueResult } from './plan-critic.js';
 import type { PromptPlan } from '../mission/prompt-composer.js';
 
+// ── Strategy taxonomy (fail-safe normalization) ────────────────────────────────
+
+/**
+ * The closed set of task-strategy kinds the runtime understands (domain/common.ts
+ * `TaskStrategy['kind']`). The `strategy` field in a model's plan is an ADVISORY hint,
+ * not authority: a capable model occasionally emits a label outside this taxonomy
+ * (e.g. "analyze", "code", "verify"). Rather than fail the whole plan on an advisory
+ * mismatch, `normalizeStrategyKind` maps any unknown value to 'custom' and the caller
+ * keeps the original label in the task notes. "LLM proposes, the runtime decides."
+ */
+const KNOWN_STRATEGY_KINDS: ReadonlySet<string> = new Set<TaskStrategy['kind']>([
+  'generate',
+  'refactor',
+  'fix',
+  'test',
+  'migrate',
+  'custom',
+]);
+
+/** Map an advisory strategy label to a known kind; unknown/absent ⇒ 'custom' (fail-safe). */
+function normalizeStrategyKind(strategy?: string): TaskStrategy['kind'] {
+  return strategy !== undefined && KNOWN_STRATEGY_KINDS.has(strategy)
+    ? (strategy as TaskStrategy['kind'])
+    : 'custom';
+}
+
 // ── PlannerError ──────────────────────────────────────────────────────────────
 
 export class PlannerError extends Error {
@@ -373,8 +399,14 @@ export class Planner {
 
   private rawToTask(taskId: string, raw: RawTaskProposal): Task {
     const strategy: TaskStrategy = {
-      kind: (raw.strategy ?? 'generate') as TaskStrategy['kind'],
-      ...(raw.notes !== undefined ? { notes: raw.notes } : {}),
+      // The strategy is an advisory hint, not authority. A capable model sometimes invents a
+      // strategy name outside the taxonomy (e.g. "analyze", "code", "verify"); normalizing an
+      // unknown value to 'custom' keeps the whole plan usable instead of rejecting it downstream
+      // (fail-safe — "LLM proposes, the runtime decides"). The original label is kept in notes.
+      kind: normalizeStrategyKind(raw.strategy),
+      ...(raw.notes !== undefined ? { notes: raw.notes }
+        : (raw.strategy !== undefined && !KNOWN_STRATEGY_KINDS.has(raw.strategy)
+            ? { notes: `proposed strategy: ${raw.strategy}` } : {})),
     };
 
     const acceptanceCriteria: AcceptanceCriterion[] = (raw.acceptanceCriteria ?? []).map((desc) => ({
