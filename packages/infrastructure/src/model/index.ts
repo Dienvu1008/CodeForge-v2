@@ -22,3 +22,6 @@ export { loadModelRoutes, parseModelRoutes, ModelRoutesConfigError } from './mod
 // P12.9: apply a mission-recommended model id by switching the switchable gateway (id→ProviderSpec).
 export { SwitchableRuntimeModelSelector } from './model-selector.js';
 export type { SwitchableRuntimeModelSelectorConfig } from './model-selector.js';
+// Multi-model registry from a JSON file: feeds BOTH the router (ModelRegistry) and the selector.
+export { loadModelRegistry, parseModelRegistry, ModelRegistryConfigError } from './model-registry-config.js';
+export type { LoadedModelRegistry } from './model-registry-config.js';

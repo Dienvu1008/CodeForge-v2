@@ -17,6 +17,11 @@
 //                        openai-compatible: the …/v1 base URL (default https://api.openai.com/v1).
 //   --api-key <key>      API key for a cloud provider. PREFER the CODEFORGE_API_KEY env var so the
 //                        key stays out of shell history. Never logged.
+//   --model-registry <path> JSON file listing MULTIPLE models (id + tier + capabilities + how to
+//                        run each). Gives mission-driven routing (--mission on) more than one model
+//                        to choose from: trivial goals route to a fast/cheap model, complex ones to
+//                        a stronger one. The gateway starts on the registry's default/preferred id.
+//                        Holds no keys (apiKeyEnv per cloud entry). See examples/model-registry.example.json.
 //   --model-routes <path> JSON file mapping each PURPOSE (plan/execute/architect/…) to a provider
 //                        + model, so reasoning-heavy work can run on a strong (e.g. commercial)
 //                        model and mechanical work on a cheaper/local one. The file holds no keys —
@@ -60,9 +65,9 @@ import { SqliteFailureRepository }        from '../repositories/index.js';
 import { SqliteRecoveryActionRepository } from '../repositories/index.js';
 import { SqliteLearningStore }            from '../learning/index.js';
 import { Blake3GraphHasher }              from '../graph-hash/index.js';
-import { SwitchableModelGateway, RoutingModelGateway, SwitchableRuntimeModelSelector, loadModelRoutes, OllamaModelAdmin } from '../model/index.js';
+import { SwitchableModelGateway, RoutingModelGateway, SwitchableRuntimeModelSelector, loadModelRoutes, loadModelRegistry, OllamaModelAdmin } from '../model/index.js';
 import type { ModelGateway, RuntimeModelSelector } from '@codeforge/agent-core';
-import type { ProviderSpec } from '../model/index.js';
+import type { ProviderSpec, LoadedModelRegistry } from '../model/index.js';
 import { NodeWorkspaceManager }           from '../workspace/index.js';
 import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
@@ -167,7 +172,7 @@ function listWorkspaceFiles(root: string): { path: string; sizeBytes: number }[]
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   const workspaceRoot = resolve(args['workspace'] ?? process.cwd());
-  const modelName     = args['model']    ?? 'qwen2.5-coder';
+  let modelName       = args['model']    ?? 'qwen2.5-coder';
   const endpoint      = args['endpoint'] ?? 'http://localhost:11434';
   const goalDesc      = args['goal']     ?? 'Describe what CodeForge should do with --goal "..."';
   const port          = parseInt(args['port'] ?? '9500', 10);
@@ -192,6 +197,12 @@ async function main(): Promise<void> {
   const provider: 'ollama' | 'openai-compatible' =
     providerArg === 'openai-compatible' || providerArg === 'openai' ? 'openai-compatible' : 'ollama';
   const apiKey = process.env['CODEFORGE_API_KEY'] ?? args['api-key'];
+  // Optional multi-model registry (P12.9): lets mission-driven routing choose among several models
+  // by tier/capabilities. Loaded eagerly so its default id can seed the gateway's starting model.
+  const modelRegistryConfig: LoadedModelRegistry | undefined =
+    args['model-registry'] !== undefined ? loadModelRegistry(args['model-registry']) : undefined;
+  // With a registry, the gateway starts on its default model (overrides --model).
+  if (modelRegistryConfig !== undefined) modelName = modelRegistryConfig.defaultModelId;
 
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║         CodeForge v2 Runtime              ║');
@@ -408,9 +419,10 @@ async function main(): Promise<void> {
           now: rt.now,
           nowMs: () => Date.now(),
         }),
-        // The configured Ollama model is the one model we KNOW is available (injected list,
-        // not /api/tags — P12.4 decision). Tagged with mid-tier capabilities as a safe default.
-        modelRegistry: new ModelRegistry([
+        // Model registry for routing. With --model-registry, use the multi-model list from the
+        // file (so routeModel can pick by tier/capabilities). Otherwise the single configured model
+        // (injected list, not /api/tags — P12.4), tagged mid-tier as a safe default.
+        modelRegistry: modelRegistryConfig?.registry ?? new ModelRegistry([
           {
             id: modelName, tier: 'MEDIUM',
             capabilities: {
@@ -419,7 +431,7 @@ async function main(): Promise<void> {
             },
           },
         ]),
-        preferredModelId: modelName,
+        preferredModelId: modelRegistryConfig?.preferredModelId ?? modelName,
         architect: new MissionArchitect({ gateway: model, now: rt.now, newProvenanceId: rt.nextId }),
         // Tier B1: when a goal is under-specified, make explicit assumptions (option (ii)) instead
         // of stopping to ask — shown in the dashboard as the agent's reasoning.
@@ -436,10 +448,14 @@ async function main(): Promise<void> {
   // switch once ≥2 models are registered (future: /api/tags discovery or a routes-style config).
   let modelSelector: RuntimeModelSelector | undefined;
   if (missionOn && switchable !== undefined) {
-    const configuredSpec: ProviderSpec = provider === 'openai-compatible'
-      ? { provider: 'openai-compatible', model: modelName, endpoint: args['endpoint'] ?? 'https://api.openai.com/v1', ...(apiKey !== undefined ? { apiKey } : {}), timeoutMs: 300_000 }
-      : { provider: 'ollama', model: modelName, endpoint, timeoutMs: 300_000, options: { temperature: 0.2 } };
-    const specsById = new Map<string, ProviderSpec>([[modelName, configuredSpec]]);
+    // With a registry, the selector can switch among ALL listed models (keyed by id). Otherwise it
+    // only knows the single configured model (so a routed id outside it is a no-op — fail-safe).
+    const specsById = modelRegistryConfig?.specsById ?? new Map<string, ProviderSpec>([[
+      modelName,
+      provider === 'openai-compatible'
+        ? { provider: 'openai-compatible', model: modelName, endpoint: args['endpoint'] ?? 'https://api.openai.com/v1', ...(apiKey !== undefined ? { apiKey } : {}), timeoutMs: 300_000 }
+        : { provider: 'ollama', model: modelName, endpoint, timeoutMs: 300_000, options: { temperature: 0.2 } },
+    ]]);
     modelSelector = new SwitchableRuntimeModelSelector({
       gateway: switchable,
       specsById,

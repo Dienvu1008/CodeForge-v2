@@ -1,0 +1,27 @@
+{
+  "_comment": "Multi-model registry for mission-driven routing. Pass with --model-registry <path> and --mission on. The router (routeModel) picks the cheapest model whose capabilities meet the mission's needs; a trivial goal routes to the SMALL/FAST model, a complex one to the STRONG model. The gateway starts on 'preferred'. No API keys here — a cloud entry would name an env var via apiKeyEnv. All three below are local Ollama models.",
+  "preferred": "qwen2.5-coder:latest",
+  "models": [
+    {
+      "id": "qwen2.5-coder:latest",
+      "tier": "SMALL",
+      "provider": "ollama",
+      "endpoint": "http://localhost:11434",
+      "capabilities": { "reasoning": "LOW", "coding": "MEDIUM", "architecture": "LOW", "context": "SMALL", "toolUse": "MEDIUM", "speed": "FAST" }
+    },
+    {
+      "id": "deepseek-coder:6.7b",
+      "tier": "MEDIUM",
+      "provider": "ollama",
+      "endpoint": "http://localhost:11434",
+      "capabilities": { "reasoning": "MEDIUM", "coding": "MEDIUM", "architecture": "MEDIUM", "context": "MEDIUM", "toolUse": "MEDIUM", "speed": "MEDIUM" }
+    },
+    {
+      "id": "deepseek-r1:14b",
+      "tier": "STRONG",
+      "provider": "ollama",
+      "endpoint": "http://localhost:11434",
+      "capabilities": { "reasoning": "HIGH", "coding": "HIGH", "architecture": "HIGH", "context": "LARGE", "toolUse": "HIGH", "speed": "SLOW" }
+    }
+  ]
+}

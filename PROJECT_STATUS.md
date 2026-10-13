@@ -85,10 +85,10 @@ next investment.
 |---|---|---|
 | ModelGateway contract + adapters | DONE | `model/gateway.ts` (provider-agnostic contract). Adapters: `OllamaModelGateway` (local) + `OpenAiCompatibleModelGateway` (any OpenAI Chat Completions API — OpenAI, OpenRouter, Groq, Together, DeepSeek, Mistral, LM Studio, llama.cpp, vLLM, LiteLLM). |
 | Multi-provider gateway + runtime switch | DONE | `SwitchableModelGateway` holds ONE gateway reference (MG-001) and can switch model AND provider at runtime via `setProvider({provider, model, endpoint, apiKey})`; fail-safe (an invalid spec throws before replacing the live adapter). CLI: `--provider ollama\|openai-compatible`, `--endpoint`, `--api-key`/`CODEFORGE_API_KEY` (never logged). Dashboard provider-switch UI still pending (model-only switch exists). |
-| Model registry (capability metadata) | PARTIAL | `ModelRegistry` is an **injected list** (one model from CLI); no `/api/tags` discovery. |
+| Model registry (capability metadata) | DONE (config) | `ModelRegistry` can now be seeded from a `--model-registry` JSON file listing MULTIPLE models (id + tier + capabilities + how to run each), feeding BOTH the router and the selector from one source. Keys via env refs. Still no `/api/tags` auto-discovery (the list is declared, not probed). |
 | Model requirement analysis + routing selection | DONE | `analyzeModelRequirement` + `routeModel`, MI-006. |
 | Per-purpose model routing | DONE | `RoutingModelGateway` routes each call to a provider/model chosen by its `ModelPurpose` (plan/architect on a strong model, execute/summarize on a cheaper/local one) behind the single gateway reference (MG-001). Config from a JSON file (`--model-routes`); API keys via env refs (`apiKeyEnv`), never in the file or logs; fail-safe (unmapped purpose → default; no file → single switchable gateway). The "shunt"-style cost/quality split. |
-| Routing applied automatically from the mission (`routeModel` → gateway) | DONE (P12.9) | The mission stage exposes `selectedModelId` (from `routeModel`); the orchestrator passes it to an optional `RuntimeModelSelector` (agent-core, id-only — DC-002) which the infra `SwitchableRuntimeModelSelector` maps `id → ProviderSpec` and applies to the switchable gateway. Advisory → runtime applies; fail-safe (unknown id / no selector / `--model-routes` active → no switch). **Caveat: the registry seeds only the configured model today, so an auto-switch becomes real once ≥2 models are registered (future: /api/tags or a routes-style registry).** |
+| Routing applied automatically from the mission (`routeModel` → gateway) | DONE (P12.9) | The mission stage exposes `selectedModelId` (from `routeModel`); the orchestrator passes it to an optional `RuntimeModelSelector` (agent-core, id-only — DC-002) which the infra `SwitchableRuntimeModelSelector` maps `id → ProviderSpec` and applies to the switchable gateway. Advisory → runtime applies; fail-safe. **Verified live with ≥2 Ollama models via `--model-registry`:** a trivial bugfix routed to the SMALL/FAST model as designed. Known gap surfaced by this live run: the complexity analyzer scores a multi-file REFACTOR as LOW, so a genuinely harder goal does NOT yet escalate to the STRONG model — the routing mechanism is correct; its *input* (complexity estimation) needs refining. |
 | Model health / performance history | PLANNED | None. |
 
 ### Context system
@@ -186,7 +186,14 @@ next investment.
 9. **Local small models (6–9B) are weak agents.** They plan acceptably but often under-perform
    at execution (looping on reads, emitting malformed tool-call JSON, over-decomposing). The
    runtime now mitigates this (anti-loop nudge, reasoning-model JSON handling, graceful-stop) but
-   cannot make a weak model competent. Agent quality is model-bound.
+   cannot make a weak model competent. Agent quality is model-bound. **Live-confirmed (P12.9 run):**
+   qwen2.5-coder nailed a one-line bugfix (fix correct, test green) but, on a multi-file refactor,
+   created the new module as an EMPTY file and never wired the import — i.e. it half-did the harder
+   task. The runtime stayed intact (graceful-stop, session COMPLETED, existing code unbroken).
+10. **Complexity estimation under-scores some hard goals.** A multi-file REFACTOR with explicit
+    module-boundary design was scored complexity LOW, so mission-driven routing did not escalate it
+    to a stronger model. The routing mechanism is correct; the `complexity-analyzer` signals need
+    refining (breadth of a refactor / "extract module" / "no dependency" cues) to feed it better.
 
 None of these violate a kernel invariant — they are intelligence/product gaps, not integrity
 gaps. That distinction is the whole point of the two-axis model.
