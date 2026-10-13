@@ -10,6 +10,7 @@
       "title": "One-line off-by-one fix",
       "description": "sumToN(n) in src/math.js should return 1+2+...+n but stops one short. Fix it.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/math.js": "function sumToN(n) {\n  let total = 0;\n  for (let i = 1; i < n; i++) total += i;\n  return total;\n}\nmodule.exports = { sumToN };\n",
         "test.js": "const assert = require('node:assert');\nconst { sumToN } = require('./src/math.js');\nassert.strictEqual(sumToN(5), 15);\nassert.strictEqual(sumToN(1), 1);\nassert.strictEqual(sumToN(0), 0);\nconsole.log('ok');\n"
       },
@@ -26,6 +27,7 @@
       "title": "Add a pure helper, keep existing exports",
       "description": "Add an exported function clamp(n, lo, hi) to src/num.js that returns n bounded to [lo, hi]. Keep the existing exports intact.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/num.js": "function isPositive(n) { return n > 0; }\nmodule.exports = { isPositive };\n",
         "test.js": "const assert = require('node:assert');\nconst { clamp, isPositive } = require('./src/num.js');\nassert.strictEqual(clamp(5, 0, 10), 5);\nassert.strictEqual(clamp(-3, 0, 10), 0);\nassert.strictEqual(clamp(42, 0, 10), 10);\nassert.strictEqual(isPositive(1), true);\nconsole.log('ok');\n"
       },
@@ -42,6 +44,7 @@
       "title": "Rename a function and update its one caller",
       "description": "Rename calc to computeTotal in src/order.js and update the caller in src/index.js. Behavior unchanged.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/order.js": "function calc(items) {\n  return items.reduce((a, b) => a + b, 0);\n}\nmodule.exports = { calc };\n",
         "src/index.js": "const { calc } = require('./order.js');\nmodule.exports = { total: (xs) => calc(xs) };\n",
         "test.js": "const assert = require('node:assert');\nconst { computeTotal } = require('./src/order.js');\nconst idx = require('./src/index.js');\nassert.strictEqual(computeTotal([1,2,3]), 6);\nassert.strictEqual(idx.total([4,5]), 9);\nconsole.log('ok');\n"
@@ -59,6 +62,7 @@
       "title": "Fix a thrown error on empty input",
       "description": "Running `node run.js` throws because parseConfig returns undefined for empty input. Make parseConfig return an empty object for empty/whitespace input so run.js prints the port.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/config.js": "function parseConfig(raw) {\n  if (raw.trim().length === 0) return undefined;\n  return JSON.parse(raw);\n}\nmodule.exports = { parseConfig };\n",
         "run.js": "const { parseConfig } = require('./src/config.js');\nconst cfg = parseConfig('');\nconsole.log('port=' + (cfg.port || 3000));\n",
         "test.js": "const assert = require('node:assert');\nconst { parseConfig } = require('./src/config.js');\nconst empty = parseConfig('');\nassert.ok(empty !== null && typeof empty === 'object', 'parseConfig(\\'\\') must be an object');\nassert.deepStrictEqual(parseConfig('   '), {});\nassert.deepStrictEqual(parseConfig('{\"port\":8080}'), { port: 8080 });\nconsole.log('ok');\n"
@@ -79,6 +83,7 @@
       "title": "Add a feature spanning two modules",
       "description": "Add discount(price, pct) to src/pricing.js and use it in src/checkout.js so checkoutTotal applies the discount then tax. Keep pct=0 behavior identical.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/pricing.js": "function tax(price) { return price * 0.1; }\nmodule.exports = { tax };\n",
         "src/checkout.js": "const { tax } = require('./pricing.js');\nfunction checkoutTotal(price, pct) {\n  return price + tax(price);\n}\nmodule.exports = { checkoutTotal };\n",
         "test.js": "const assert = require('node:assert');\nconst { discount } = require('./src/pricing.js');\nconst { checkoutTotal } = require('./src/checkout.js');\nassert.strictEqual(discount(100, 10), 90);\nassert.strictEqual(Math.round(checkoutTotal(100, 0)), 110);\nassert.strictEqual(Math.round(checkoutTotal(100, 50)), 55);\nconsole.log('ok');\n"
@@ -96,6 +101,7 @@
       "title": "Extract a module with a one-way dependency boundary",
       "description": "Extract the summation logic in src/math.js into a new module src/sum-core.js that exports a pure sum(xs) function with NO dependency on math.js. Have src/math.js import sum-core and re-export sumToN built on it. Behavior must stay identical; the test must still pass.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/math.js": "function sumToN(n) {\n  let total = 0;\n  for (let i = 1; i <= n; i++) total += i;\n  return total;\n}\nmodule.exports = { sumToN };\n",
         "test.js": "const assert = require('node:assert');\nconst { sumToN } = require('./src/math.js');\nconst { sum } = require('./src/sum-core.js');\nassert.strictEqual(sumToN(5), 15);\nassert.strictEqual(sum([1,2,3,4]), 10);\nconsole.log('ok');\n"
       },
@@ -115,6 +121,7 @@
       "title": "Extract a shared constant used by multiple modules",
       "description": "src/a.js and src/b.js both hardcode 'http://localhost:3000'. Extract it to src/config.js as BASE_URL and have both modules import it. Behavior unchanged.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/a.js": "const BASE = 'http://localhost:3000';\nmodule.exports = { aUrl: () => BASE + '/a' };\n",
         "src/b.js": "const BASE = 'http://localhost:3000';\nmodule.exports = { bUrl: () => BASE + '/b' };\n",
         "test.js": "const assert = require('node:assert');\nconst { BASE_URL } = require('./src/config.js');\nconst { aUrl } = require('./src/a.js');\nconst { bUrl } = require('./src/b.js');\nassert.strictEqual(BASE_URL, 'http://localhost:3000');\nassert.strictEqual(aUrl(), 'http://localhost:3000/a');\nassert.strictEqual(bUrl(), 'http://localhost:3000/b');\nconsole.log('ok');\n"
@@ -135,6 +142,7 @@
       "title": "Public API change: rename an exported function across all call sites",
       "description": "Rename the exported function fetchUser to getUser in src/user.js, and update every call site in src/profile.js and src/admin.js. Keep behavior identical.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/user.js": "function fetchUser(id) { return { id, name: 'u' + id }; }\nmodule.exports = { fetchUser };\n",
         "src/profile.js": "const { fetchUser } = require('./user.js');\nmodule.exports = { profileName: (id) => fetchUser(id).name };\n",
         "src/admin.js": "const { fetchUser } = require('./user.js');\nmodule.exports = { adminId: (id) => fetchUser(id).id };\n",
@@ -156,6 +164,7 @@
       "title": "Separate domain logic from the HTTP layer",
       "description": "src/app.js mixes HTTP handling and business logic. Move the pure business logic (the add function) into src/domain.js and have src/app.js import it. The handle() behavior and the test must still pass.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/app.js": "function add(a, b) { return a + b; }\nfunction handle(req) { return { body: String(add(req.a, req.b)) }; }\nmodule.exports = { handle };\n",
         "test.js": "const assert = require('node:assert');\nconst { add } = require('./src/domain.js');\nconst { handle } = require('./src/app.js');\nassert.strictEqual(add(2, 3), 5);\nassert.strictEqual(handle({ a: 2, b: 3 }).body, '5');\nconsole.log('ok');\n"
       },
@@ -175,6 +184,7 @@
       "title": "Reasoning-heavy bug: closure captures the loop variable",
       "description": "makeAdders(n) in src/adders.js should return an array of n functions where the i-th adds i, but they all add the same value. Fix the closure bug so makeAdders(3)[1](10) === 11.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/adders.js": "function makeAdders(n) {\n  var fns = [];\n  for (var i = 0; i < n; i++) {\n    fns.push(function (x) { return x + i; });\n  }\n  return fns;\n}\nmodule.exports = { makeAdders };\n",
         "test.js": "const assert = require('node:assert');\nconst { makeAdders } = require('./src/adders.js');\nconst fns = makeAdders(3);\nassert.strictEqual(fns[0](10), 10);\nassert.strictEqual(fns[1](10), 11);\nassert.strictEqual(fns[2](10), 12);\nconsole.log('ok');\n"
       },
@@ -191,6 +201,7 @@
       "title": "Reasoning-heavy bug: async ordering with shared state",
       "description": "src/queue.js has a process() that should run the queued async tasks in order and collect their results, but results come back out of order (it fires them concurrently). Fix process() so results are in the order the tasks were enqueued.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/queue.js": "class Queue {\n  constructor() { this.tasks = []; }\n  add(fn) { this.tasks.push(fn); }\n  async process() {\n    return Promise.all(this.tasks.map((fn) => fn()));\n  }\n}\nmodule.exports = { Queue };\n",
         "test.js": "const assert = require('node:assert');\nconst { Queue } = require('./src/queue.js');\nconst delay = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));\n(async () => {\n  const q = new Queue();\n  q.add(() => delay(30, 'a'));\n  q.add(() => delay(5, 'b'));\n  q.add(() => delay(15, 'c'));\n  const out = await q.process();\n  assert.deepStrictEqual(out, ['a', 'b', 'c']);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
       },
@@ -207,6 +218,7 @@
       "title": "Introduce a validator and wire it through two layers consistently",
       "description": "Add src/validate.js exporting isValidEmail(s) (basic: contains exactly one '@' with non-empty local and domain parts). Then have src/signup.js use it so signup(email) returns { ok: false } for invalid emails and { ok: true, email } for valid ones. Do not change the existing createUser export in src/signup.js.",
       "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/signup.js": "function createUser(email) { return { email }; }\nfunction signup(email) { return { ok: true, email }; }\nmodule.exports = { createUser, signup };\n",
         "test.js": "const assert = require('node:assert');\nconst { isValidEmail } = require('./src/validate.js');\nconst { signup, createUser } = require('./src/signup.js');\nassert.strictEqual(isValidEmail('a@b.com'), true);\nassert.strictEqual(isValidEmail('bad'), false);\nassert.strictEqual(isValidEmail('@b.com'), false);\nassert.strictEqual(isValidEmail('a@'), false);\nassert.deepStrictEqual(signup('bad'), { ok: false });\nassert.deepStrictEqual(signup('a@b.com'), { ok: true, email: 'a@b.com' });\nassert.strictEqual(typeof createUser('x@y.z').email, 'string');\nconsole.log('ok');\n"
       },
