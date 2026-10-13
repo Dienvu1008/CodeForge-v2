@@ -1,0 +1,57 @@
+// Progressive benchmark dataset guard (Tier A). CI-safe: validates the difficulty-graded dataset
+// loads, is well-formed, and is difficulty-ordered. It does NOT run a model (that is the manual
+// scripts/run-progressive.mjs capability-curve tool) — this just stops the dataset from rotting.
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { validateBenchmark, type BenchmarkDifficulty } from '@codeforge/agent-core';
+
+const PATH = join(__dirname, '..', '..', 'benchmarks', 'codeforge-progressive', 'benchmark.json');
+const RANK: Record<BenchmarkDifficulty, number> = { TRIVIAL: 0, EASY: 1, MEDIUM: 2, HARD: 3, EXPERT: 4 };
+
+describe('codeforge-progressive dataset', () => {
+  const raw = JSON.parse(readFileSync(PATH, 'utf8'));
+  const result = validateBenchmark(raw);
+
+  it('validates without errors', () => {
+    if (!result.ok) console.log(JSON.stringify(result.errors, null, 2));
+    expect(result.ok).toBe(true);
+  });
+
+  it('has at least 12 difficulty-graded tasks spanning TRIVIAL→EXPERT', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const tasks = result.value.tasks;
+    expect(tasks.length).toBeGreaterThanOrEqual(12);
+    const diffs = new Set(tasks.map((t) => t.difficulty));
+    expect(diffs.has('TRIVIAL')).toBe(true);
+    expect(diffs.has('HARD')).toBe(true);
+    expect(diffs.has('EXPERT')).toBe(true);
+  });
+
+  it('every task has a deterministic command/build check (external verdict authority)', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const t of result.value.tasks) {
+      const hasExec = t.verification.some((c) => c.kind === 'command' || c.kind === 'build' || c.kind === 'no_regression');
+      expect(hasExec, `${t.id} must have a command/build check`).toBe(true);
+    }
+  });
+
+  it('task ids are unique', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const ids = result.value.tasks.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('is broadly ordered by non-decreasing difficulty (a readable capability curve)', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const ranks = result.value.tasks.map((t) => RANK[t.difficulty]);
+    // Allow small local dips but require the back half to be harder than the front half.
+    const half = Math.floor(ranks.length / 2);
+    const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    expect(avg(ranks.slice(half))).toBeGreaterThan(avg(ranks.slice(0, half)));
+  });
+});

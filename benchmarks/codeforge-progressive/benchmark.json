@@ -1,0 +1,223 @@
+{
+  "id": "codeforge-progressive",
+  "version": "0.1.0",
+  "description": "A difficulty-graded benchmark (Tier A). Unlike the codeforge-native seed suite (which only validates the eval harness), this one is designed to draw a CAPABILITY CURVE: how hard a task can get before a given model + the CodeForge runtime stops solving it. Every task is small JS/TS with a deterministic Node-only check (no external deps, fast), so the signal is model+runtime capability, not environment setup. Tasks escalate from one-line edits to multi-file refactors, module extraction with a dependency boundary, cross-file consistency, public-API changes with call sites, and reasoning-heavy bug fixes. Behavior-verified by hidden checks; never by an expected patch.",
+  "tasks": [
+    {
+      "id": "PG-01",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "One-line off-by-one fix",
+      "description": "sumToN(n) in src/math.js should return 1+2+...+n but stops one short. Fix it.",
+      "seedFiles": {
+        "src/math.js": "function sumToN(n) {\n  let total = 0;\n  for (let i = 1; i < n; i++) total += i;\n  return total;\n}\nmodule.exports = { sumToN };\n",
+        "test.js": "const assert = require('node:assert');\nconst { sumToN } = require('./src/math.js');\nassert.strictEqual(sumToN(5), 15);\nassert.strictEqual(sumToN(1), 1);\nassert.strictEqual(sumToN(0), 0);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node test.js", "description": "sumToN sums 1..n inclusive" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "TRIVIAL",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-02",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Add a pure helper, keep existing exports",
+      "description": "Add an exported function clamp(n, lo, hi) to src/num.js that returns n bounded to [lo, hi]. Keep the existing exports intact.",
+      "seedFiles": {
+        "src/num.js": "function isPositive(n) { return n > 0; }\nmodule.exports = { isPositive };\n",
+        "test.js": "const assert = require('node:assert');\nconst { clamp, isPositive } = require('./src/num.js');\nassert.strictEqual(clamp(5, 0, 10), 5);\nassert.strictEqual(clamp(-3, 0, 10), 0);\nassert.strictEqual(clamp(42, 0, 10), 10);\nassert.strictEqual(isPositive(1), true);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node test.js", "description": "clamp works and isPositive still exported" }],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-03",
+      "version": 1,
+      "category": "REFACTOR",
+      "title": "Rename a function and update its one caller",
+      "description": "Rename calc to computeTotal in src/order.js and update the caller in src/index.js. Behavior unchanged.",
+      "seedFiles": {
+        "src/order.js": "function calc(items) {\n  return items.reduce((a, b) => a + b, 0);\n}\nmodule.exports = { calc };\n",
+        "src/index.js": "const { calc } = require('./order.js');\nmodule.exports = { total: (xs) => calc(xs) };\n",
+        "test.js": "const assert = require('node:assert');\nconst { computeTotal } = require('./src/order.js');\nconst idx = require('./src/index.js');\nassert.strictEqual(computeTotal([1,2,3]), 6);\nassert.strictEqual(idx.total([4,5]), 9);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node test.js", "description": "renamed function + caller both work" }],
+      "expected": { "missionType": "REFACTOR", "maxFilesChanged": 2 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-04",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Fix a thrown error on empty input",
+      "description": "Running `node run.js` throws because parseConfig returns undefined for empty input. Make parseConfig return an empty object for empty/whitespace input so run.js prints the port.",
+      "seedFiles": {
+        "src/config.js": "function parseConfig(raw) {\n  if (raw.trim().length === 0) return undefined;\n  return JSON.parse(raw);\n}\nmodule.exports = { parseConfig };\n",
+        "run.js": "const { parseConfig } = require('./src/config.js');\nconst cfg = parseConfig('');\nconsole.log('port=' + (cfg.port || 3000));\n",
+        "test.js": "const assert = require('node:assert');\nconst { parseConfig } = require('./src/config.js');\nconst empty = parseConfig('');\nassert.ok(empty !== null && typeof empty === 'object', 'parseConfig(\\'\\') must be an object');\nassert.deepStrictEqual(parseConfig('   '), {});\nassert.deepStrictEqual(parseConfig('{\"port\":8080}'), { port: 8080 });\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node run.js", "description": "run.js no longer throws" },
+        { "kind": "command", "target": "node test.js", "description": "parseConfig('') returns an object; JSON still parses" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-05",
+      "version": 1,
+      "category": "MULTI_FILE",
+      "title": "Add a feature spanning two modules",
+      "description": "Add discount(price, pct) to src/pricing.js and use it in src/checkout.js so checkoutTotal applies the discount then tax. Keep pct=0 behavior identical.",
+      "seedFiles": {
+        "src/pricing.js": "function tax(price) { return price * 0.1; }\nmodule.exports = { tax };\n",
+        "src/checkout.js": "const { tax } = require('./pricing.js');\nfunction checkoutTotal(price, pct) {\n  return price + tax(price);\n}\nmodule.exports = { checkoutTotal };\n",
+        "test.js": "const assert = require('node:assert');\nconst { discount } = require('./src/pricing.js');\nconst { checkoutTotal } = require('./src/checkout.js');\nassert.strictEqual(discount(100, 10), 90);\nassert.strictEqual(Math.round(checkoutTotal(100, 0)), 110);\nassert.strictEqual(Math.round(checkoutTotal(100, 50)), 55);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node test.js", "description": "discount + checkout integration pass" }],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-06",
+      "version": 1,
+      "category": "REFACTOR",
+      "title": "Extract a module with a one-way dependency boundary",
+      "description": "Extract the summation logic in src/math.js into a new module src/sum-core.js that exports a pure sum(xs) function with NO dependency on math.js. Have src/math.js import sum-core and re-export sumToN built on it. Behavior must stay identical; the test must still pass.",
+      "seedFiles": {
+        "src/math.js": "function sumToN(n) {\n  let total = 0;\n  for (let i = 1; i <= n; i++) total += i;\n  return total;\n}\nmodule.exports = { sumToN };\n",
+        "test.js": "const assert = require('node:assert');\nconst { sumToN } = require('./src/math.js');\nconst { sum } = require('./src/sum-core.js');\nassert.strictEqual(sumToN(5), 15);\nassert.strictEqual(sum([1,2,3,4]), 10);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "src/sum-core.js", "description": "sum-core module created" },
+        { "kind": "command", "target": "node test.js", "description": "sumToN + extracted sum both work" }
+      ],
+      "expected": { "missionType": "REFACTOR", "maxFilesChanged": 2 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "PG-07",
+      "version": 1,
+      "category": "MIGRATION",
+      "title": "Extract a shared constant used by multiple modules",
+      "description": "src/a.js and src/b.js both hardcode 'http://localhost:3000'. Extract it to src/config.js as BASE_URL and have both modules import it. Behavior unchanged.",
+      "seedFiles": {
+        "src/a.js": "const BASE = 'http://localhost:3000';\nmodule.exports = { aUrl: () => BASE + '/a' };\n",
+        "src/b.js": "const BASE = 'http://localhost:3000';\nmodule.exports = { bUrl: () => BASE + '/b' };\n",
+        "test.js": "const assert = require('node:assert');\nconst { BASE_URL } = require('./src/config.js');\nconst { aUrl } = require('./src/a.js');\nconst { bUrl } = require('./src/b.js');\nassert.strictEqual(BASE_URL, 'http://localhost:3000');\nassert.strictEqual(aUrl(), 'http://localhost:3000/a');\nassert.strictEqual(bUrl(), 'http://localhost:3000/b');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "src/config.js", "description": "config module created" },
+        { "kind": "command", "target": "node test.js", "description": "both modules use the shared BASE_URL" }
+      ],
+      "expected": { "missionType": "MIGRATION", "maxFilesChanged": 3 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "PG-08",
+      "version": 1,
+      "category": "REFACTOR",
+      "title": "Public API change: rename an exported function across all call sites",
+      "description": "Rename the exported function fetchUser to getUser in src/user.js, and update every call site in src/profile.js and src/admin.js. Keep behavior identical.",
+      "seedFiles": {
+        "src/user.js": "function fetchUser(id) { return { id, name: 'u' + id }; }\nmodule.exports = { fetchUser };\n",
+        "src/profile.js": "const { fetchUser } = require('./user.js');\nmodule.exports = { profileName: (id) => fetchUser(id).name };\n",
+        "src/admin.js": "const { fetchUser } = require('./user.js');\nmodule.exports = { adminId: (id) => fetchUser(id).id };\n",
+        "test.js": "const assert = require('node:assert');\nconst { getUser } = require('./src/user.js');\nconst { profileName } = require('./src/profile.js');\nconst { adminId } = require('./src/admin.js');\nassert.strictEqual(getUser(7).name, 'u7');\nassert.strictEqual(profileName(3), 'u3');\nassert.strictEqual(adminId(9), 9);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node test.js", "description": "renamed export + all call sites updated" },
+        { "kind": "file_contains", "target": "src/user.js", "expect": "getUser", "description": "the export was actually renamed" }
+      ],
+      "expected": { "missionType": "REFACTOR", "maxFilesChanged": 3 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "PG-09",
+      "version": 1,
+      "category": "ARCHITECTURE",
+      "title": "Separate domain logic from the HTTP layer",
+      "description": "src/app.js mixes HTTP handling and business logic. Move the pure business logic (the add function) into src/domain.js and have src/app.js import it. The handle() behavior and the test must still pass.",
+      "seedFiles": {
+        "src/app.js": "function add(a, b) { return a + b; }\nfunction handle(req) { return { body: String(add(req.a, req.b)) }; }\nmodule.exports = { handle };\n",
+        "test.js": "const assert = require('node:assert');\nconst { add } = require('./src/domain.js');\nconst { handle } = require('./src/app.js');\nassert.strictEqual(add(2, 3), 5);\nassert.strictEqual(handle({ a: 2, b: 3 }).body, '5');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "src/domain.js", "description": "domain layer created" },
+        { "kind": "command", "target": "node test.js", "description": "domain extracted; app still works" }
+      ],
+      "expected": { "missionType": "ARCHITECTURE", "maxFilesChanged": 2 },
+      "difficulty": "HARD",
+      "risk": "MEDIUM",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "PG-10",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Reasoning-heavy bug: closure captures the loop variable",
+      "description": "makeAdders(n) in src/adders.js should return an array of n functions where the i-th adds i, but they all add the same value. Fix the closure bug so makeAdders(3)[1](10) === 11.",
+      "seedFiles": {
+        "src/adders.js": "function makeAdders(n) {\n  var fns = [];\n  for (var i = 0; i < n; i++) {\n    fns.push(function (x) { return x + i; });\n  }\n  return fns;\n}\nmodule.exports = { makeAdders };\n",
+        "test.js": "const assert = require('node:assert');\nconst { makeAdders } = require('./src/adders.js');\nconst fns = makeAdders(3);\nassert.strictEqual(fns[0](10), 10);\nassert.strictEqual(fns[1](10), 11);\nassert.strictEqual(fns[2](10), 12);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node test.js", "description": "each adder captures its own index" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-11",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Reasoning-heavy bug: async ordering with shared state",
+      "description": "src/queue.js has a process() that should run the queued async tasks in order and collect their results, but results come back out of order (it fires them concurrently). Fix process() so results are in the order the tasks were enqueued.",
+      "seedFiles": {
+        "src/queue.js": "class Queue {\n  constructor() { this.tasks = []; }\n  add(fn) { this.tasks.push(fn); }\n  async process() {\n    return Promise.all(this.tasks.map((fn) => fn()));\n  }\n}\nmodule.exports = { Queue };\n",
+        "test.js": "const assert = require('node:assert');\nconst { Queue } = require('./src/queue.js');\nconst delay = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));\n(async () => {\n  const q = new Queue();\n  q.add(() => delay(30, 'a'));\n  q.add(() => delay(5, 'b'));\n  q.add(() => delay(15, 'c'));\n  const out = await q.process();\n  assert.deepStrictEqual(out, ['a', 'b', 'c']);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [{ "kind": "command", "target": "node test.js", "description": "results preserve enqueue order" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EXPERT",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-12",
+      "version": 1,
+      "category": "MULTI_FILE",
+      "title": "Introduce a validator and wire it through two layers consistently",
+      "description": "Add src/validate.js exporting isValidEmail(s) (basic: contains exactly one '@' with non-empty local and domain parts). Then have src/signup.js use it so signup(email) returns { ok: false } for invalid emails and { ok: true, email } for valid ones. Do not change the existing createUser export in src/signup.js.",
+      "seedFiles": {
+        "src/signup.js": "function createUser(email) { return { email }; }\nfunction signup(email) { return { ok: true, email }; }\nmodule.exports = { createUser, signup };\n",
+        "test.js": "const assert = require('node:assert');\nconst { isValidEmail } = require('./src/validate.js');\nconst { signup, createUser } = require('./src/signup.js');\nassert.strictEqual(isValidEmail('a@b.com'), true);\nassert.strictEqual(isValidEmail('bad'), false);\nassert.strictEqual(isValidEmail('@b.com'), false);\nassert.strictEqual(isValidEmail('a@'), false);\nassert.deepStrictEqual(signup('bad'), { ok: false });\nassert.deepStrictEqual(signup('a@b.com'), { ok: true, email: 'a@b.com' });\nassert.strictEqual(typeof createUser('x@y.z').email, 'string');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "src/validate.js", "description": "validator module created" },
+        { "kind": "command", "target": "node test.js", "description": "validator wired through signup; createUser preserved" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    }
+  ]
+}

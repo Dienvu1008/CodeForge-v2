@@ -137,12 +137,13 @@ next investment.
 | Benchmark loader + validator | DONE | `agent-core/evaluation/benchmark-loader.ts`. |
 | Isolated benchmark runner | DONE | `infrastructure/evaluation/` — temp-dir isolation, real runtime via injected `AgentRunner`, no parallel unsafe path. |
 | Deterministic evaluator + metrics + trace integration | DONE | `agent-core/evaluation/{evaluator,metrics}.ts`; agent is NOT the authority; failure classification from the trace. |
-| Native seed dataset (CF-001..010) | DONE | `benchmarks/codeforge-native/benchmark.json`, 10 tasks across 10 categories. |
+| Native seed dataset (CF-001..010) | DONE | `benchmarks/codeforge-native/benchmark.json`, 10 tasks across 10 categories (harness-validation fixture). |
+| Progressive capability-curve dataset (PG-01..12) | DONE (Tier A) | `benchmarks/codeforge-progressive/benchmark.json` — 12 difficulty-graded tasks (TRIVIAL→EXPERT) with Node-only deterministic checks. Every task proven solvable by a hand-written golden solution (`scripts/verify-progressive-golden.mjs`, 12/12). `scripts/run-progressive.mjs` runs it through the real kernel + a real model to draw a capability curve. CI guard: `tests/evaluation/progressive-benchmark.spec.ts` (dataset well-formed, difficulty-ordered) — does NOT call a model. |
 | Level-1 component eval | DONE | `tests/evaluation/component-eval-level1.spec.ts` (classifier/complexity accuracy over labeled fixtures). |
 | Baseline + regression detection + report | DONE | `agent-core/evaluation/regression.ts` + `infrastructure/evaluation/baseline-store.ts`. First baseline recorded (see ROADMAP). |
 | Real-runtime E2E run | DONE | `tests/evaluation/real-runtime-e2e.spec.ts` — 3/10 FakeModel baseline through the real kernel. |
 | External benchmark adapters (SWE-bench, …) | DEFERRED | Interface shape designed; integration later. |
-| Real-Ollama evaluation run | PLANNED | Harness ready; needs a local model + a measured run. |
+| Real-Ollama evaluation run | DONE (first curve) | First real-model capability curve measured: `qwen2.5-coder:latest` on the progressive benchmark scored **2/12** (TRIVIAL 0/1, EASY 0/2, MEDIUM 0/2, HARD 1/6, EXPERT 1/1). The curve is NON-MONOTONE — it failed PG-01 (a one-line off-by-one) by reading the file then declaring "done" WITHOUT a write_file, yet passed two HARD tasks. Finding: a weak local model is unreliable even on trivial fixes (not a smooth capability curve); this is the Task-Correctness evidence that motivates stronger models + the model-routing work. Runtime stayed intact (checks correctly caught every miss). |
 
 ### Documentation / continuity
 
