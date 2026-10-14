@@ -313,12 +313,23 @@ endpoint 404s for AI Studio keys and Gemini's native wire shape differs, so a de
 `GeminiModelGateway` was added (native `x-goog-api-key` + `contents`/`parts` + `generateContent`;
 same `ModelGateway` contract, infrastructure only, no domain change; 13 unit tests).
 
-Live progressive-benchmark result (`gemini-3.5-flash-lite`, edit_file + P12.11 + recovery,
-`--delay-ms 5000`): **6/12** — the best any model has scored here. It passed PG-01 (TRIVIAL, with
-edit_file), PG-02/PG-03 (EASY add/rename), PG-09/PG-10 (HARD — including PG-10's closure-capture
-logic bug that gpt-oss-120b missed), and PG-11 (EXPERT). The five failures were all
-`PLANNING_FAILURE` = HTTP 429 (free-tier RPM throttling at the planner call), NOT bad plans — so
-6/12 is a floor, not a ceiling. This is the clean hosted curve the Groq quota blocked.
+Live progressive-benchmark result (`gemini-3.5-flash-lite`, edit_file + P12.11 + recovery). A first
+run at `--delay-ms 5000` scored 6/12 but hit free-tier RPM 429s at five planner calls. Re-run at
+`--delay-ms 20000` to remove the throttling: **8/12 with ZERO 429 and ZERO PLANNING_FAILURE** —
+`{VERIFICATION_FAILURE: 4}`, i.e. every plan committed, every case ran to verification, and the
+four losses are genuine model capability (red checks), not infrastructure noise. This is the first
+undistorted hosted curve.
+
+- By difficulty: TRIVIAL 1/1, EASY 1/2, MEDIUM 1/2, HARD 4/6, EXPERT 1/1.
+- PASS: PG-01 (edit_file in-place fix), PG-02 (add helper), PG-04 (MEDIUM), PG-06/PG-07/PG-09/PG-10
+  (HARD — module extraction, shared-constant, domain layer, and PG-10's closure-capture bug that
+  gpt-oss-120b missed), PG-11 (EXPERT).
+- FAIL: PG-03/PG-08 (cross-file rename + update all call sites), PG-05 (discount/checkout
+  integration), PG-12 (validator wiring) — the cross-file-consistency cluster is flash-lite's
+  ceiling here.
+- Standings: gemini-3.5-flash-lite **8/12** > gpt-oss-120b 5/12 > deepseek-r1:14b / qwen2.5-coder
+  2–3/12. Gemini + the runtime (edit_file + premature-done gate + recovery) is the strongest
+  combination measured; a bigger Gemini (pro) is untested (slower, timeout-prone on free tier).
 
 Operational notes from the probe (for whoever runs it next): Gemini **2.5** models now 404 "no
 longer available to new users" (use a 3.x id); some 3.x **flash** models were slow/overloaded
