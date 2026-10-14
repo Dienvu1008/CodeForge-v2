@@ -96,13 +96,14 @@ describe('P5-RE1 — RecoveryEngine', () => {
     expect(r.shouldRetry).toBe(true);
   });
 
-  it('REPLAN → shouldRetry=false, outcome=PENDING (Phase 5.5 deferred)', async () => {
+  it('REPLAN → shouldReplan=true, shouldRetry=false, outcome=PENDING (caller commits the mutation)', async () => {
     const r = await engine.execute(await seedInput('REPLAN'));
+    expect(r.shouldReplan).toBe(true);
     expect(r.shouldRetry).toBe(false);
     expect(r.recoveryAction.outcome).toBe('PENDING');
   });
 
-  it('ROLLBACK → shouldRetry=false, outcome=PENDING (Phase 5.5 deferred)', async () => {
+  it('ROLLBACK → shouldRetry=false, outcome=PENDING (deferred — caller implements the revert)', async () => {
     const r = await engine.execute(await seedInput('ROLLBACK'));
     expect(r.shouldRetry).toBe(false);
     expect(r.recoveryAction.outcome).toBe('PENDING');

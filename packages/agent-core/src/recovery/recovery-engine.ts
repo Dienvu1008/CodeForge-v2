@@ -9,13 +9,15 @@
 // Phase 5 implementations per action:
 //   RETRY    — re-run the same task (caller triggers a new TaskExecutor run).
 //   FIX      — request a fix context from model; caller re-runs with failure evidence.
-//   REPLAN   — GraphMutation via Planner with failure context (Phase 5.5 — deferred).
-//   ROLLBACK — revert workspace to last checkpoint revision (Phase 5.5 — deferred).
+//   REPLAN   — authorised here (shouldReplan=true); the caller commits a GraphMutation that
+//              SUPERSEDEs the failing task with a fresh one carrying the failure evidence
+//              (GI-009 via GraphCommitService; RC-005 a new version, never an overwrite).
+//   ROLLBACK — revert workspace to last checkpoint revision (still deferred — caller implements).
 //   ESCALATE — session → AWAITING_HUMAN (RC-007).
 //   ABORT    — session → ABORTED via CANCEL_REQUESTED.
 //
-// REPLAN and ROLLBACK return PENDING outcome — callers must implement the action
-// themselves (Phase 5.5). RETRY and FIX also return PENDING: the attempt is authorised but
+// REPLAN returns PENDING + shouldReplan; ROLLBACK returns PENDING (caller implements the revert).
+// RETRY and FIX also return PENDING: the attempt is authorised but
 // its success is unknown until the retried run is verified — the orchestrator retroactively
 // finalizes the outcome (SUCCEEDED/FAILED) then (P11.6+). ESCALATE/ABORT return SUCCEEDED
 // (the state transition itself is the action and it completed).
@@ -66,12 +68,20 @@ export interface ExecuteInput {
 export interface ExecuteResult {
   readonly recoveryAction:  RecoveryAction;
   /**
-   * For RETRY/FIX: the caller should re-execute the task.
+   * For RETRY/FIX: the caller should re-execute the SAME task.
    * For ESCALATE/ABORT: session state changed.
-   * For REPLAN/ROLLBACK: caller must implement the action (Phase 5.5).
+   * For ROLLBACK: caller must implement the workspace revert (still deferred).
    */
   readonly shouldRetry:     boolean;
   readonly sessionEscalated: boolean;
+  /**
+   * For REPLAN: the engine authorised a re-plan; the caller (SessionOrchestrator) must perform
+   * it by committing a GraphMutation (GI-009: via GraphCommitService, never a direct graph write;
+   * RC-005: a new mutation/version, not an overwrite). The engine stays domain-pure and does not
+   * call the Planner / GraphCommitService itself. Outcome stays PENDING until the re-planned task
+   * run is verified, exactly like RETRY/FIX.
+   */
+  readonly shouldReplan:    boolean;
 }
 
 // ── RecoveryEngine ────────────────────────────────────────────────────────────
@@ -90,6 +100,7 @@ export class RecoveryEngine {
     let outcome: RecoveryOutcome = 'PENDING';
     let shouldRetry = false;
     let sessionEscalated = false;
+    let shouldReplan = false;
 
     switch (input.action) {
       case 'RETRY':
@@ -126,9 +137,12 @@ export class RecoveryEngine {
         break;
 
       case 'REPLAN':
-        // Phase 5.5: requires Replanner with LLM context — caller implements.
+        // Authorise a re-plan. The caller performs it by committing a GraphMutation (lightweight
+        // REPLAN = SUPERSEDE the failing task with a fresh one carrying the failure evidence; GI-009
+        // via GraphCommitService; RC-005 a new version, not an overwrite). Outcome stays PENDING —
+        // the orchestrator finalizes it when the re-planned run is verified (like RETRY/FIX).
         outcome = 'PENDING';
-        shouldRetry = false;
+        shouldReplan = true;
         break;
 
       case 'ROLLBACK':
@@ -165,7 +179,7 @@ export class RecoveryEngine {
     // Emit event (RC-006: every action must be auditable).
     await this.emitRecoveryAction(input, recoveryAction);
 
-    return { recoveryAction, shouldRetry, sessionEscalated };
+    return { recoveryAction, shouldRetry, sessionEscalated, shouldReplan };
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────

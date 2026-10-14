@@ -6,7 +6,9 @@
 import type { Goal }                    from '../domain/goal.js';
 import type { WorkspaceRevision }       from '../domain/workspace-revision.js';
 import type { TaskState, BudgetState }  from '../state-machine/states.js';
-import type { TaskGraph }               from '../graph/types.js';
+import type { TaskGraph, GraphMutation, GraphOperation } from '../graph/types.js';
+import type { Task }                    from '../domain/task.js';
+import type { Provenance }              from '../domain/provenance.js';
 import type { SessionService }          from './session-service.js';
 import type { Planner }                 from '../planning/planner.js';
 import type { GraphCommitService }      from '../graph/graph-commit-service.js';
@@ -498,6 +500,22 @@ export class SessionOrchestrator {
             // finalized when the next run of this task is known (PASSED → SUCCEEDED;
             // failed again → FAILED above).
             pendingRecoveryAction.set(task.taskId, reResult.recoveryAction.actionId);
+          } else if (reResult.shouldReplan) {
+            // REPLAN (lightweight): SUPERSEDE the failing task with a fresh one that carries the
+            // failure evidence in its description, committed as a GraphMutation (GI-009 via
+            // GraphCommitService; RC-005 a new version). The successor inherits the dependency
+            // wiring (rewire) and lands READY, so the scheduler re-runs the replanned task next
+            // iteration. The pending recovery outcome is tracked against the NEW taskId.
+            const newTaskId = await this.performReplan(input.sessionId, task, evidenceText);
+            if (newTaskId !== undefined) {
+              if (evidenceText.length > 0) priorFailureEvidence.set(newTaskId, evidenceText);
+              pendingRecoveryAction.set(newTaskId, reResult.recoveryAction.actionId);
+            } else {
+              // Replan could not be committed (e.g. validation/version conflict) — finalize the
+              // recovery action as FAILED so the signal stays truthful; the task is left non-passed
+              // and the finish path reports it.
+              await this.finalizePendingRecovery(task.taskId, new Map([[task.taskId, reResult.recoveryAction.actionId]]), 'FAILED');
+            }
           }
         } catch { /* recovery failure is non-fatal — continue */ }
       }
@@ -601,6 +619,75 @@ export class SessionOrchestrator {
    * changes a decision. No-op when nothing is pending or the repository is not wired. A
    * failure to persist is swallowed — the recovery loop must not break on a bookkeeping write.
    */
+  /**
+   * Lightweight REPLAN: SUPERSEDE the failing task with a fresh successor that carries the
+   * failure evidence in its description, committed as a GraphMutation via GraphCommitService
+   * (GI-009 — never a direct graph write; RC-005 — a new version, not an overwrite; GI-007 —
+   * the old task becomes SUPERSEDED). The successor inherits the old task's acceptance criteria,
+   * constraints, strategy, and priority, and (via SUPERSEDE_TASK rewire) its dependency edges, so
+   * it lands schedulable in the new graph. Returns the new taskId, or undefined if the mutation
+   * could not be committed (version conflict / validation reject) — the caller treats that as a
+   * failed replan.
+   */
+  private async performReplan(
+    sessionId: string,
+    failing: Task,
+    evidenceText: string,
+  ): Promise<string | undefined> {
+    const base = await this.deps.graphRepository.getCurrent(sessionId);
+    const newTaskId = this.deps.nextId();
+    const evidenceNote = evidenceText.trim().length > 0
+      ? `\n\n[REPLAN] The previous attempt failed verification:\n${evidenceText.slice(0, 1500)}`
+      : '\n\n[REPLAN] The previous attempt failed verification. Rework the approach.';
+    const newTask: Task = {
+      taskId:             newTaskId,
+      description:        failing.description + evidenceNote,
+      acceptanceCriteria: failing.acceptanceCriteria,
+      constraints:        failing.constraints,
+      priority:           failing.priority,
+      strategy:           failing.strategy,
+      createdAt:          this.deps.now(),
+      createdBy:          'replanner',
+    };
+    const operations: GraphOperation[] = [
+      { kind: 'SUPERSEDE_TASK', oldTaskId: failing.taskId, newTask, rewire: true },
+    ];
+    const provenance: Provenance = {
+      provenanceId: this.deps.nextId(),
+      source: { kind: 'runtime', id: 'recovery-replan' },
+      inputs: [],
+      reason: 'REPLAN: supersede failing task with an evidence-carrying successor',
+      at:     this.deps.now(),
+    };
+    const mutation: GraphMutation = {
+      mutationId:  this.deps.nextId(),
+      sessionId,
+      baseVersion: base.version,
+      operations,
+      proposedBy:  'replanner',
+      reason:      'recovery REPLAN (lightweight supersede)',
+      provenance,
+      createdAt:   this.deps.now(),
+      status:      'PROPOSED',
+    };
+    // Persist the new Task row FIRST: the commit writes a task_graph_nodes row and (GI-007) sets
+    // tasks.superseded_by = newTaskId, both of which FK-reference tasks(task_id). The successor
+    // must exist before the graph transaction runs.
+    try { await this.deps.taskRepository.create(newTask); } catch { /* already exists */ }
+    try {
+      const result = await this.deps.graphCommitService.commit(mutation);
+      if (result.status !== 'COMMITTED') return undefined;
+    } catch {
+      return undefined; // version conflict / validation reject — caller finalizes recovery as FAILED
+    }
+    // Initialise the successor's projection, then make it schedulable.
+    const existing = await this.deps.executionRepository.getByTask(newTaskId);
+    if (existing === null) await this.deps.executionCoordinator.init(newTaskId);
+    try { await this.deps.executionCoordinator.setState(newTaskId, 'READY'); }
+    catch { /* scheduler will promote it from PENDING when deps are satisfied */ }
+    return newTaskId;
+  }
+
   private async finalizePendingRecovery(
     taskId: string,
     pending: Map<string, string>,

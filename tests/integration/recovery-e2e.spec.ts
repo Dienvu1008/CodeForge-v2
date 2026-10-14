@@ -70,7 +70,7 @@ describe('P5-I1 — Recovery E2E', () => {
   afterEach(() => db.close());
 
   // ── Helper: build full orchestrator with recovery ───────────────────────────
-  async function buildOrchestrator(model: FakeModel, executor: ToolExecutor) {
+  async function buildOrchestrator(model: FakeModel, executor: ToolExecutor, recoveryPolicy?: import('@codeforge/agent-core').RecoveryPolicyConfig) {
     const c = makeCounters();
     const events   = new SqliteEventLog(db);
     const sessions = new SqliteSessionRepository(db);
@@ -116,7 +116,8 @@ describe('P5-I1 — Recovery E2E', () => {
       graphRepository: graphs, taskRepository: tasks, executionRepository: execs,
       executionCoordinator: coord, taskExecutor, checkpointService: checkSvc,
       failureAnalyzer, recoveryEngine, failureRepository: failRep,
-      taskRunRepository: taskRuns,
+      taskRunRepository: taskRuns, recoveryActionRepository: recRep,
+      ...(recoveryPolicy !== undefined ? { recoveryPolicy } : {}),
       maxIterations: 8, now: c.now, nextId: c.nextId,
     });
 
@@ -224,5 +225,43 @@ describe('P5-I1 — Recovery E2E', () => {
     expect(rows.length).toBe(0);
     const frows = db.query<{ failure_id: string }>('SELECT failure_id FROM failures');
     expect(frows.length).toBe(0);
+  });
+
+  // ── Scenario 5: REPLAN supersedes the failing task (lightweight re-plan) ──
+
+  it('RC-005/GI-007: REPLAN supersedes the failing task with a replanner successor', async () => {
+    const model = new FakeModel();
+    model.setSequence([PLAN]);
+    model.setResponse(/./, 'not valid json {{'); // executor fails → recovery
+
+    const executor: ToolExecutor = {
+      execute: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+    };
+
+    // Force REPLAN as the first recovery action for every class (then ESCALATE as the bound).
+    const allClasses = ['TRANSIENT','DEPENDENCY','SYNTAX','LOGIC','ENVIRONMENT','TOOL','PERMISSION','TIMEOUT','CONTEXT','BUDGET_EXHAUSTED','MODEL_OUTPUT_INVALID','MODEL_TIMEOUT','MODEL_UNAVAILABLE','MODEL_CONTEXT_OVERFLOW','MODEL_TOOL_CALL_INVALID','UNKNOWN'];
+    // decide() uses history.length as the attempt index, and the analyzer persists the failure
+    // BEFORE recovery decides, so the first recovery sees attemptsSoFar=1 → index 1. Put REPLAN at
+    // index 0 AND 1 so the first recovery picks REPLAN (then ESCALATE as the bound).
+    const rule = { actions: ['REPLAN', 'REPLAN', 'ESCALATE'], maxAttempts: 3, rollbackAllowed: false };
+    const replanPolicy = Object.fromEntries(allClasses.map((cl) => [cl, rule])) as unknown as import('@codeforge/agent-core').RecoveryPolicyConfig;
+
+    const { orchestrator } = await buildOrchestrator(model, executor, replanPolicy);
+    await orchestrator.run({ sessionId: 'S-P5', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
+
+    // The graph advanced past the planner's v2 (seed=1, plan=2) because REPLAN committed a
+    // SUPERSEDE_TASK mutation → v3+.
+    const g = db.query<{ version: number }>('SELECT MAX(version) AS version FROM task_graph_versions WHERE session_id = ?', ['S-P5']);
+    expect((g[0]?.version ?? 0)).toBeGreaterThanOrEqual(3);
+
+    // A replanner-created successor task exists, and the original is SUPERSEDED.
+    const replannerTasks = db.query<{ task_id: string }>("SELECT task_id FROM tasks WHERE created_by = 'replanner'");
+    expect(replannerTasks.length).toBeGreaterThanOrEqual(1);
+    const superseded = db.query<{ eid: string }>("SELECT event_id AS eid FROM events WHERE session_id = ? AND type = 'TASK_SUPERSEDED'", ['S-P5']);
+    expect(superseded.length).toBeGreaterThanOrEqual(1);
+
+    // A REPLAN recovery action was recorded (RC-006).
+    const replanActions = db.query<{ action: string }>("SELECT action FROM recovery_actions WHERE action = 'REPLAN'");
+    expect(replanActions.length).toBeGreaterThanOrEqual(1);
   });
 });
