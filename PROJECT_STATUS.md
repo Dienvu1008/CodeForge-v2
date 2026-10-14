@@ -251,6 +251,10 @@ Driven by running the real runtime against live goals:
   rewrote the entire file. Added through existing seams (ToolRegistry MODIFY_WORKSPACE +
   content-hash, FilesystemExecutor, MUTATING_TOOLS, executor prompt "prefer edit_file"); no
   contract change (ToolCall.toolName is already an open string, DC/§12.1).
+- **Google Gemini provider (`GeminiModelGateway`)** — a native-wire adapter (`x-goog-api-key` +
+  `contents`/`parts` + `:generateContent`), since Gemini's OpenAI-compat endpoint 404s for AI Studio
+  keys. Same `ModelGateway` contract, infrastructure only. `--provider gemini` in the runner;
+  `gemini` is a `ModelProvider` in buildAdapter. First hosted provider not gated by Groq's quota.
 
 ## First hosted-model capability measurement (honest)
 
@@ -304,10 +308,19 @@ blows instantly; the llama chat models are no longer offered. So the `edit_file`
 on LOCAL models (the qwen2.5-coder PG-01 pass above), which need no quota; a fresh hosted curve
 needs a new daily quota or a paid tier.
 
-**Google Gemini — probed, needs a new adapter.** A Gemini (AI Studio) key was validated: it lists
-models and `generateContent` works via the NATIVE API (`x-goog-api-key` + `/v1beta/models/<id>:generateContent`,
-e.g. `gemini-flash-latest`). But our `OpenAiCompatibleModelGateway` (Bearer + `/chat/completions`)
-gets 404 against Gemini's OpenAI-compat endpoint for this key type, and the native wire shape
-(`contents`/`parts`) differs from OpenAI's. So driving the kernel with Gemini needs a dedicated
-`GeminiModelGateway` adapter (infrastructure only, same `ModelGateway` contract) — not just a config
-change. Not built yet.
+**Google Gemini — adapter built and measured (highest hosted score so far).** Groq's OpenAI-compat
+endpoint 404s for AI Studio keys and Gemini's native wire shape differs, so a dedicated
+`GeminiModelGateway` was added (native `x-goog-api-key` + `contents`/`parts` + `generateContent`;
+same `ModelGateway` contract, infrastructure only, no domain change; 13 unit tests).
+
+Live progressive-benchmark result (`gemini-3.5-flash-lite`, edit_file + P12.11 + recovery,
+`--delay-ms 5000`): **6/12** — the best any model has scored here. It passed PG-01 (TRIVIAL, with
+edit_file), PG-02/PG-03 (EASY add/rename), PG-09/PG-10 (HARD — including PG-10's closure-capture
+logic bug that gpt-oss-120b missed), and PG-11 (EXPERT). The five failures were all
+`PLANNING_FAILURE` = HTTP 429 (free-tier RPM throttling at the planner call), NOT bad plans — so
+6/12 is a floor, not a ceiling. This is the clean hosted curve the Groq quota blocked.
+
+Operational notes from the probe (for whoever runs it next): Gemini **2.5** models now 404 "no
+longer available to new users" (use a 3.x id); some 3.x **flash** models were slow/overloaded
+(60s timeouts, 503 "high demand"); **`gemini-3.5-flash-lite`** worked reliably. A higher
+`--delay-ms` (or a paid tier) would remove the 429s and likely raise the score.
