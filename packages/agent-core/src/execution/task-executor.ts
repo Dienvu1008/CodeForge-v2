@@ -115,6 +115,9 @@ RULES (follow strictly — these are enforced; wasted steps make the task FAIL):
   6. VERIFY THEN STOP: after you write the code, if the project has a check (e.g. a test
      command) run it ONCE; then respond with done. If there is no check to run, respond with
      done as soon as the file(s) are written. Do NOT keep exploring after the work is done.
+     READING IS NOT DOING: a task that asks you to fix/create/edit code is NOT complete until
+     you have actually called write_file (or delete_file/move_file). Reading a file and
+     understanding the fix is NOT enough — you must WRITE the change before you say done.
   7. WHEN IN DOUBT, FINISH: if you are unsure what else to do, prefer write_file (to produce
      the result) or done (if the result already exists) over another read-only call.`;
 
@@ -122,6 +125,13 @@ RULES (follow strictly — these are enforced; wasted steps make the task FAIL):
 
 /** Read-only tools: "looking", not "doing". Repeating these is the hallmark of a stuck model. */
 const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'git_status', 'git_log', 'git_diff']);
+
+/**
+ * Tools that actually CHANGE the workspace. A coding task that finishes without ever calling one
+ * of these produced no artifact — the model "read then declared done" (a common weak/reasoning
+ * model failure). The executor uses this to challenge a premature `done` ONCE (see the loop).
+ */
+const MUTATING_TOOLS: ReadonlySet<string> = new Set(['write_file', 'delete_file', 'move_file']);
 
 /**
  * ContextItem kinds that represent CODEBASE context (files/symbols/memory/RAG), as opposed to
@@ -551,6 +561,15 @@ export class TaskExecutor {
     let finalState: 'SUCCEEDED' | 'FAILED' | 'TIMEOUT' = 'FAILED';
     let summary: string | undefined;
     let pendingApprovalToolCallIdRef: string | undefined;
+    /** Count of SUCCESSFUL workspace-mutating tool calls (write/delete/move) this run. */
+    let mutatingWriteCount = 0;
+    /**
+     * P12.11: whether we have already challenged a premature `done`. The executor rejects the
+     * FIRST `done` that arrives before any workspace mutation (the "read then done" failure) and
+     * nudges the model to actually write — but only ONCE, so a task that genuinely needs no file
+     * change (or a model that insists) still terminates. Fail-safe: never blocks more than once.
+     */
+    let doneChallengedOnce = false;
 
     // P10.6: announce which model drives this run (display-only progress).
     await this.emitProgress(req.sessionId, runId, 'MODEL_SELECTED', {
@@ -631,6 +650,31 @@ export class TaskExecutor {
 
       // ── 3c. Handle model response ───────────────────────────────────────────
       if (output.type === 'done') {
+        // P12.11: challenge a PREMATURE done — the model says "done" having never changed the
+        // workspace (the "read the file, understand the fix, then declare done without writing"
+        // failure seen on both weak and strong models). Reject it ONCE: record the challenge in
+        // the transcript (so the model sees WHY) and give it another step to actually write. We
+        // do this at most once (doneChallengedOnce) so a task that truly needs no file change —
+        // or a model that insists — still terminates; verification + recovery remain the real
+        // authority on correctness, this only stops the agent abandoning the task unstarted.
+        if (mutatingWriteCount === 0 && !doneChallengedOnce) {
+          doneChallengedOnce = true;
+          await this.emitProgress(req.sessionId, runId, 'DECISION_COMPLETED', {
+            step: i + 1,
+            decision: 'done_rejected_no_change',
+          });
+          transcript.push({
+            step: transcript.length + 1,
+            toolName: '(runtime)',
+            arguments: {},
+            result: 'You responded "done" but you have NOT changed any file yet (no write_file / '
+              + 'delete_file / move_file this run). Reading a file is not completing the task. If the '
+              + 'task needs a code change, call write_file now with the full corrected file content. '
+              + 'Only respond done AFTER the change is written.',
+            exitCode: null,
+          });
+          continue;
+        }
         summary    = output.summary;
         finalState = 'SUCCEEDED';
         loopDone   = true;
@@ -819,6 +863,13 @@ export class TaskExecutor {
         result: resultForTranscript,
         exitCode: execResult?.exitCode ?? null,
       });
+
+      // P12.11: count a SUCCESSFUL workspace mutation (write/delete/move). This is what the
+      // premature-done challenge checks: a run that never mutates produced no artifact.
+      const toolSucceeded = execResult?.exitCode === 0 || execResult?.exitCode === null;
+      if (toolSucceeded && MUTATING_TOOLS.has(proposal.toolName)) {
+        mutatingWriteCount++;
+      }
 
       // Propagate timeout (fatal — tool timed out).
       if (executedCall.state === 'TIMEOUT') {

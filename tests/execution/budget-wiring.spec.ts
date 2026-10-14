@@ -78,7 +78,7 @@ describe('P4-BW1 — BudgetWiring', () => {
   it('no budgetRepository: run succeeds without debit', async () => {
     const { req, base } = await setup();
     const m = new FakeModel();
-    m.setSequence([JSON.stringify({ type: 'done', summary: 'ok' })]);
+    m.setSequence([JSON.stringify({ type: 'done', summary: 'ok' }), JSON.stringify({ type: 'done', summary: 'ok' })]);
     const r = await new TaskExecutor({ ...base, gateway: m }).execute(req);
     expect(r.finalState).toBe('SUCCEEDED');
   });
@@ -125,8 +125,9 @@ describe('P4-BW1 — BudgetWiring', () => {
       createdAt: now(), updatedAt: now(),
     });
     const m = new FakeModel();
+    // write_file (a mutation) so the premature-done gate does not challenge the trailing done.
     m.setSequence([
-      JSON.stringify({ type: 'tool_call', toolName: 'read_file', arguments: { path: 'x.ts' } }),
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'x.ts', content: 'ok' } }),
       JSON.stringify({ type: 'done', summary: 'done' }),
     ]);
     const r = await new TaskExecutor({ ...base, gateway: m, budgetRepository: budgets, budgetId }).execute(req);
@@ -146,7 +147,7 @@ describe('P4-BW1 — BudgetWiring', () => {
       createdAt: now(), updatedAt: now(),
     });
     const m = new FakeModel();
-    m.setSequence([JSON.stringify({ type: 'done', summary: 'fast' })]);
+    m.setSequence([JSON.stringify({ type: 'done', summary: 'fast' }), JSON.stringify({ type: 'done', summary: 'fast' })]);
     const r = await new TaskExecutor({ ...base, gateway: m, budgetRepository: budgets, budgetId }).execute(req);
     expect(r.finalState).toBe('SUCCEEDED');
     const updated = await budgets.getById(budgetId);

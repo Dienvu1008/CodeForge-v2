@@ -282,9 +282,12 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   // ── success: model signals done immediately ────────────────────────────────
 
-  it('SUCCEEDED when model returns {type:"done"} on first call', async () => {
+  it('SUCCEEDED when model returns {type:"done"} (after the premature-done challenge)', async () => {
+    // P12.11: the FIRST done (with no prior write) is challenged once; the model repeats done and
+    // the run then completes. No tool call is made (the challenge is a transcript note, not a call).
     const { deps, task } = await makeTestDeps();
     model.setSequence([
+      JSON.stringify({ type: 'done', summary: 'Task complete: wrote the file.' }),
       JSON.stringify({ type: 'done', summary: 'Task complete: wrote the file.' }),
     ]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
@@ -294,11 +297,40 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     expect(result.summary).toBe('Task complete: wrote the file.');
   });
 
+  // ── P12.11: premature-done challenge ───────────────────────────────────────
+
+  it('challenges a done that arrives before any write, then accepts the second done', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([
+      JSON.stringify({ type: 'done', summary: 'nothing changed' }),
+      JSON.stringify({ type: 'done', summary: 'still nothing' }),
+    ]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    const result = await executor.execute(makeReq(task));
+    // Challenged once (so the model was asked twice), accepted the second time.
+    expect(model.callCount).toBe(2);
+    expect(result.finalState).toBe('SUCCEEDED');
+  });
+
+  it('does NOT challenge done when the model already wrote a file', async () => {
+    const { deps, task } = await makeTestDeps();
+    // write_file succeeds (fakeExec returns exitCode 0) → a mutation happened → done accepted immediately.
+    model.setSequence([
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'src/x.js', content: 'ok' } }),
+      JSON.stringify({ type: 'done', summary: 'wrote it' }),
+    ]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    const result = await executor.execute(makeReq(task));
+    expect(model.callCount).toBe(2); // tool_call + done, no extra challenge round
+    expect(result.finalState).toBe('SUCCEEDED');
+    expect(result.toolCallCount).toBe(1);
+  });
+
   // ── Tier B2: stated assumptions are injected into the task prompt ──────────
 
   it('injects a STATED_ASSUMPTIONS section when goalAssumptions are present', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     await executor.execute(makeReq(task, {
       goalAssumptions: [
@@ -316,7 +348,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('omits the STATED_ASSUMPTIONS section when no goalAssumptions are given (fail-safe)', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     await executor.execute(makeReq(task)); // no goalAssumptions
     expect(model.lastPrompt ?? '').not.toContain('STATED_ASSUMPTIONS');
@@ -324,7 +356,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('omits the STATED_ASSUMPTIONS section when goalAssumptions is empty/blank', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     await executor.execute(makeReq(task, { goalAssumptions: ['', '   '] }));
     expect(model.lastPrompt ?? '').not.toContain('STATED_ASSUMPTIONS');
@@ -338,7 +370,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     const real = deps.contextBuilder;
     let capturedPolicy: { availableTokens: number; maxItems: number; policyId: string } | undefined;
     const spy = { build: (req: Parameters<typeof real.build>[0]) => { capturedPolicy = req.policy; return real.build(req); } };
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, contextBuilder: spy as typeof real, executor: fakeExec });
     await executor.execute(makeReq(task, { contextPlan: { scope: 'TASK', maxFiles: 3, repositoryWide: false } }));
     expect(capturedPolicy).toBeDefined();
@@ -352,7 +384,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     const real = deps.contextBuilder;
     let sawPolicyKey = true;
     const spy = { build: (req: Parameters<typeof real.build>[0]) => { sawPolicyKey = req.policy !== undefined; return real.build(req); } };
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, contextBuilder: spy as typeof real, executor: fakeExec });
     await executor.execute(makeReq(task)); // no contextPlan
     expect(sawPolicyKey).toBe(false);
@@ -362,7 +394,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('injects EXPERT_PERSONA, TASK_TYPE_GUIDANCE and EXAMPLE sections when a promptPlan is present', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     await executor.execute(makeReq(task, {
       promptPlan: {
@@ -382,7 +414,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('guarded verbosity adds a small-model addendum to the system prompt', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     await executor.execute(makeReq(task, { promptPlan: { verbosity: 'guarded' } }));
     const sys = model.history[model.history.length - 1]?.request.systemPrompt ?? '';
@@ -391,7 +423,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('no promptPlan ⇒ no persona/guidance sections and the base system prompt (fail-safe)', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     await executor.execute(makeReq(task));
     expect(model.lastPrompt ?? '').not.toContain('EXPERT_PERSONA');
@@ -402,13 +434,13 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('a promptPlan makes the task prompt larger (the steering costs some tokens — measured)', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const base = new TaskExecutor({ ...deps, executor: fakeExec });
     await base.execute(makeReq(task));
     const before = (model.lastPrompt ?? '').length;
 
     model.reset();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'done' }), JSON.stringify({ type: 'done', summary: 'done' })]);
     const shaped = new TaskExecutor({ ...deps, executor: fakeExec });
     await shaped.execute(makeReq(task, {
       promptPlan: {
@@ -427,8 +459,10 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('SUCCEEDED after one tool call + done signal', async () => {
     const { deps, task } = await makeTestDeps();
+    // Use write_file so the run has a real mutation (a read_file + done would be challenged by the
+    // premature-done gate; that path is covered by its own test).
     model.setSequence([
-      JSON.stringify({ type: 'tool_call', toolName: 'read_file', arguments: { path: 'README.md' }, reasoning: 'check file' }),
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'out.txt', content: 'hi' }, reasoning: 'write result' }),
       JSON.stringify({ type: 'done', summary: 'All done.' }),
     ]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
@@ -546,6 +580,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     const endRev = makeRevision('/end');
     model.setSequence([
       JSON.stringify({ type: 'done', summary: 'done' }),
+      JSON.stringify({ type: 'done', summary: 'done' }),
     ]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     const req = makeReq(task, { workspaceRevisionAtEnd: endRev });
@@ -559,6 +594,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
   it('projection state is VERIFYING after SUCCEEDED run', async () => {
     const { deps, task } = await makeTestDeps();
     model.setSequence([
+      JSON.stringify({ type: 'done', summary: 'done' }),
       JSON.stringify({ type: 'done', summary: 'done' }),
     ]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
@@ -608,7 +644,7 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
 
   it('reports durationMs >= 0', async () => {
     const { deps, task } = await makeTestDeps();
-    model.setSequence([JSON.stringify({ type: 'done', summary: 'fast' })]);
+    model.setSequence([JSON.stringify({ type: 'done', summary: 'fast' }), JSON.stringify({ type: 'done', summary: 'fast' })]);
     const executor = new TaskExecutor({ ...deps, executor: fakeExec });
     const result = await executor.execute(makeReq(task));
     expect(result.durationMs).toBeGreaterThanOrEqual(0);

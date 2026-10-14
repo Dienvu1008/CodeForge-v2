@@ -195,7 +195,7 @@ describe('P4-VW1 — VerificationWiring', () => {
 
   it('SUCCEEDED run, 0 checks: verificationStatus=PASS, taskPassed=false (CompletionGate blocks NO_CHECKS_EXECUTED)', async () => {
     const f = await makeFixture(DEFAULT_VERIFICATION_POLICY, 0);
-    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' })]);
+    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' }), JSON.stringify({ type: 'done', summary: 'ok' })]);
     const exec = new TaskExecutor(f.deps);
     const result = await exec.execute(makeReq(f));
 
@@ -212,7 +212,7 @@ describe('P4-VW1 — VerificationWiring', () => {
 
   it('SUCCEEDED run, 1 passing check: verificationStatus=PASS, taskPassed=true, projection=PASSED', async () => {
     const f = await makeFixture(undefined, 1, true);
-    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' })]);
+    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' }), JSON.stringify({ type: 'done', summary: 'ok' })]);
     const exec = new TaskExecutor(f.deps);
     const result = await exec.execute(makeReq(f));
 
@@ -229,7 +229,7 @@ describe('P4-VW1 — VerificationWiring', () => {
 
   it('SUCCEEDED run, 1 failing check: verificationStatus=FAIL, taskPassed=false', async () => {
     const f = await makeFixture(undefined, 1, false);
-    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' })]);
+    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' }), JSON.stringify({ type: 'done', summary: 'ok' })]);
     const exec = new TaskExecutor(f.deps);
     const result = await exec.execute(makeReq(f));
 
@@ -262,7 +262,7 @@ describe('P4-VW1 — VerificationWiring', () => {
     // Remove verificationEngine from deps.
     const { verificationEngine: _ve, completionGate: _cg, ...depsWithout } = f.deps;
     const deps: TaskExecutorDeps = depsWithout;
-    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' })]);
+    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' }), JSON.stringify({ type: 'done', summary: 'ok' })]);
     const exec = new TaskExecutor(deps);
     const result = await exec.execute(makeReq(f));
 
@@ -278,7 +278,7 @@ describe('P4-VW1 — VerificationWiring', () => {
 
   it('projection.attempts is 1 after one PASSED run', async () => {
     const f = await makeFixture(undefined, 1, true);
-    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' })]);
+    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' }), JSON.stringify({ type: 'done', summary: 'ok' })]);
     const exec = new TaskExecutor(f.deps);
     await exec.execute(makeReq(f));
 
@@ -291,7 +291,7 @@ describe('P4-VW1 — VerificationWiring', () => {
 
   it('verificationId is a non-empty string when verification runs', async () => {
     const f = await makeFixture(undefined, 1, true);
-    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' })]);
+    f.model.setSequence([JSON.stringify({ type: 'done', summary: 'ok' }), JSON.stringify({ type: 'done', summary: 'ok' })]);
     const exec = new TaskExecutor(f.deps);
     const result = await exec.execute(makeReq(f));
 

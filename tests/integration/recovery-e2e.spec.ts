@@ -206,8 +206,11 @@ describe('P5-I1 — Recovery E2E', () => {
 
   it('No recovery actions when task SUCCEEDS', async () => {
     const model = new FakeModel();
+    // The executor's first done is challenged once by the premature-done gate (no write), then
+    // confirmed — so the task still SUCCEEDS with no recovery.
     model.setSequence([
       PLAN,
+      JSON.stringify({ type: 'done', summary: 'all done' }),
       JSON.stringify({ type: 'done', summary: 'all done' }),
     ]);
     const executor: ToolExecutor = {

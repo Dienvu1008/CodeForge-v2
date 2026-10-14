@@ -225,7 +225,10 @@ describe('P3-I1 Task Execution E2E (real fs + git + NodeProcessSupervisor)', () 
     f.model.setSequence([
       // Model proposes: read README.md
       JSON.stringify({ type: 'tool_call', toolName: 'read_file', arguments: { path: 'README.md' } }),
-      // Model signals done after seeing the content.
+      // Model signals done after seeing the content. The premature-done gate challenges this
+      // (no write happened), so the model confirms done once more; the run then completes. This
+      // exercises the read_file tool round-trip, which is the point of the test.
+      JSON.stringify({ type: 'done', summary: 'README read successfully.' }),
       JSON.stringify({ type: 'done', summary: 'README read successfully.' }),
     ]);
 
@@ -264,6 +267,8 @@ describe('P3-I1 Task Execution E2E (real fs + git + NodeProcessSupervisor)', () 
   it('SUCCEEDED: model lists real workspace directory', async () => {
     f.model.setSequence([
       JSON.stringify({ type: 'tool_call', toolName: 'list_dir', arguments: { path: '' } }),
+      // list_dir is read-only → the premature-done gate challenges the first done once.
+      JSON.stringify({ type: 'done', summary: 'Directory listed.' }),
       JSON.stringify({ type: 'done', summary: 'Directory listed.' }),
     ]);
 
@@ -300,6 +305,8 @@ describe('P3-I1 Task Execution E2E (real fs + git + NodeProcessSupervisor)', () 
 
     f.model.setSequence([
       JSON.stringify({ type: 'tool_call', toolName: 'git_status', arguments: {} }),
+      // git_status is read-only → the premature-done gate challenges the first done once.
+      JSON.stringify({ type: 'done', summary: 'Status checked.' }),
       JSON.stringify({ type: 'done', summary: 'Status checked.' }),
     ]);
 
@@ -379,6 +386,7 @@ describe('P3-I1 Task Execution E2E (real fs + git + NodeProcessSupervisor)', () 
   it('ExecutionCoordinator projection becomes VERIFYING after SUCCEEDED run', async () => {
     f.model.setSequence([
       JSON.stringify({ type: 'done', summary: 'done' }),
+      JSON.stringify({ type: 'done', summary: 'done' }),
     ]);
 
     await f.executor.execute(makeReq(f));
@@ -432,6 +440,7 @@ describe('P3-I1 Task Execution E2E (real fs + git + NodeProcessSupervisor)', () 
 
   it('durationMs is non-negative for all outcomes', async () => {
     f.model.setSequence([
+      JSON.stringify({ type: 'done', summary: 'fast done' }),
       JSON.stringify({ type: 'done', summary: 'fast done' }),
     ]);
     const result = await f.executor.execute(makeReq(f));
