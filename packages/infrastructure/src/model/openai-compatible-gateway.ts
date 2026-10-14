@@ -67,27 +67,35 @@ interface ToolCall {
   readonly function?: { readonly name?: string; readonly arguments?: string };
 }
 
+interface ChatMessageOut {
+  readonly content?: string | null;
+  readonly tool_calls?: ReadonlyArray<ToolCall>;
+  /** Some reasoning models (Groq gpt-oss) put the whole answer here and leave content empty. */
+  readonly reasoning?: string | null;
+}
+
 interface ChatCompletionResponse {
-  readonly choices?: ReadonlyArray<{
-    readonly message?: {
-      readonly content?: string | null;
-      readonly tool_calls?: ReadonlyArray<ToolCall>;
-    };
-  }>;
+  readonly choices?: ReadonlyArray<{ readonly message?: ChatMessageOut }>;
   readonly usage?: { readonly prompt_tokens?: number; readonly completion_tokens?: number };
   readonly error?: { readonly message?: string };
 }
 
 /**
- * Extract the structured-output string from a chat choice: prefer plain `content`, else fall back
- * to the first tool call's `arguments` (a JSON string). Returns undefined when neither is present.
- * A tool-native model (e.g. Groq gpt-oss) sometimes puts its answer in a tool call, not content.
+ * Extract the structured-output string from a chat choice, in priority order:
+ *   1. plain `content` (the normal case);
+ *   2. the first tool call's `arguments` (a JSON string) — tool-native models answer here;
+ *   3. the `reasoning` field — Groq's gpt-oss reasoning models leave `content` EMPTY and put the
+ *      whole answer (prose + the JSON object) in `reasoning`. We return it verbatim; the caller's
+ *      StructuredOutputParser (extractJson) slices the embedded JSON object out of the prose.
+ * Returns undefined when none is present. The returned string is still untrusted (SE-010).
  */
-function extractRaw(message: { content?: string | null; tool_calls?: ReadonlyArray<ToolCall> } | undefined): string | undefined {
+function extractRaw(message: ChatMessageOut | undefined): string | undefined {
   if (message === undefined) return undefined;
   if (typeof message.content === 'string' && message.content.length > 0) return message.content;
   const args = message.tool_calls?.find((tc) => typeof tc.function?.arguments === 'string')?.function?.arguments;
-  return typeof args === 'string' && args.length > 0 ? args : undefined;
+  if (typeof args === 'string' && args.length > 0) return args;
+  if (typeof message.reasoning === 'string' && message.reasoning.length > 0) return message.reasoning;
+  return undefined;
 }
 
 /**
@@ -146,9 +154,17 @@ export class OpenAiCompatibleModelGateway implements ModelGateway {
       temperature: request.temperature,
       max_tokens: request.maxOutputTokens,
       stream: false,
-      // Ask for a JSON object when the caller supplies a schema. Providers that don't support
-      // response_format ignore it; the caller still validates the text deterministically.
-      ...(wantsJson ? { response_format: { type: 'json_object' } } : {}),
+      // JSON mode. For a tool-native reasoning model (Groq gpt-oss) `response_format: json_object`
+      // is REJECTED (the model answers in its reasoning channel, leaving content empty, so the
+      // provider returns 400 json_validate_failed). Instead, for preferToolJson we DON'T force a
+      // format and nudge `reasoning_effort: 'low'` so the model emits the JSON (in `reasoning`,
+      // which extractRaw reads) rather than wandering into an unsolicited tool call. A plain
+      // provider still gets response_format and is unaffected (preferToolJson defaults off).
+      ...(wantsJson
+        ? (this._preferToolJson
+            ? { reasoning_effort: 'low' }
+            : { response_format: { type: 'json_object' } })
+        : {}),
       ...this._extraBody,
     };
 

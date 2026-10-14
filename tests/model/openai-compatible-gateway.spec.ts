@@ -136,14 +136,26 @@ describe('OpenAiCompatibleModelGateway — tool-native JSON (Groq gpt-oss family
     expect(result.raw).toBe('{"from":"content"}');
   });
 
-  it('preferToolJson never forces a tool call — it still sends plain response_format', async () => {
+  it('preferToolJson drops response_format and nudges reasoning_effort=low (never forces a tool)', async () => {
     stubFetch(200, completion('{"ok":true}'));
     const gw = new OpenAiCompatibleModelGateway({ ...CONFIG, preferToolJson: true });
     await gw.generate(req({ responseSchema: { type: 'object' } }));
     const body = JSON.parse(String(lastCall?.init.body));
-    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(body.response_format).toBeUndefined();
+    expect(body.reasoning_effort).toBe('low');
     expect(body.tools).toBeUndefined();
     expect(body.tool_choice).toBeUndefined();
+  });
+
+  it('reads JSON from the reasoning field when content is empty (gpt-oss reasoning channel)', async () => {
+    // gpt-oss leaves content empty and puts "prose + {json}" in reasoning; extractRaw returns it
+    // and the caller's extractJson slices the object out.
+    stubFetch(200, JSON.stringify({
+      choices: [{ message: { content: '', reasoning: 'We need to read file.{"type":"tool_call","toolName":"read_file","arguments":{"path":"src/math.js"}}' } }],
+    }));
+    const gw = new OpenAiCompatibleModelGateway({ ...CONFIG, preferToolJson: true });
+    const result = await gw.generate(req({ responseSchema: { type: 'object' } }));
+    expect(result.raw).toContain('"toolName":"read_file"');
   });
 
   it('preferToolJson recovers JSON from a 400 tool_use_failed failed_generation', async () => {
