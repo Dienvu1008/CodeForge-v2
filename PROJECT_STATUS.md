@@ -223,3 +223,29 @@ Driven by running the real runtime against live goals:
   reasoning (MISSION_* events as readable "thinking" lines, commercial-agent style). **Tier B2:
   those assumptions now steer the agent** — threaded orchestrator → `TaskExecutorRequest.goalAssumptions`
   → a TRUSTED `STATED_ASSUMPTIONS` section in the executor prompt (fail-safe when absent; Goal never mutated, MI-004).
+- **Tolerate tool-native OpenAI-compatible models** — Groq's `gpt-oss-*` answer via a tool call and
+  reject a bare `response_format` turn with HTTP 400 `tool_use_failed`, even when they produced
+  correct JSON (stashed in `error.failed_generation`). The adapter now (a) reads tool-call
+  `arguments` when `content` is empty and (b) recovers a JSON-parseable `failed_generation` on a
+  400 (opt-in `preferToolJson`, auto-on for `*.groq.com`). Measured effect on the progressive
+  benchmark: gpt-oss-20b PLANNING_FAILURE 8 → 2. Fix is confined to the infrastructure adapter;
+  no domain/core change.
+
+## First hosted-model capability measurement (honest)
+
+Progressive benchmark (Tier A, 12 difficulty-graded JS tasks, real kernel + verify + recovery),
+Groq `openai/gpt-oss-120b` via the OpenAI-compatible adapter, `--delay-ms 35000` to stay under the
+free-tier 8000 TPM cap:
+
+- **3/12 success**, failure classes `{IMPLEMENTATION_FAILURE: 9}` — **0 PLANNING_FAILURE**, so
+  every plan committed and ran; the shortfall is now execution quality, not harness/wire issues.
+- Passed **PG-06 and PG-07 (HARD)** — module extraction with a dependency boundary — which no
+  local Ollama model except deepseek-r1:14b managed, plus PG-11 (EXPERT).
+- Still fails **PG-01 (TRIVIAL, `<`→`<=`)**, which points at an execution/verification quirk on
+  tiny edits rather than reasoning capability — the next thing to investigate.
+- Local Ollama baselines on the same benchmark: deepseek-r1:14b 3/12, qwen2.5-coder 2/12,
+  deepseek-coder:6.7b 1/12, llama3:8b 1/12.
+
+Caveat: before the tool-native fix the same model scored 1/12 with 7 "PLANNING_FAILURE" that were
+actually rate-limit (429) + `tool_use_failed`, NOT model weakness — a reminder that an unmeasured
+harness lies. The 3/12 is the first number we trust.
