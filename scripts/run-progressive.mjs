@@ -32,6 +32,12 @@ const provider = flag('provider', 'ollama');
 const endpoint = flag('endpoint', provider === 'ollama' ? 'http://localhost:11434' : 'https://api.openai.com/v1');
 const model = flag('model', argv[0] && !argv[0].startsWith('--') ? argv[0] : 'qwen2.5-coder:latest');
 const apiKey = process.env.CODEFORGE_API_KEY;
+// Optional per-case delay (ms) to stay under a provider's tokens-per-minute rate limit
+// (e.g. Groq free tier caps gpt-oss-120b at 8000 TPM — without a pause the planner call of
+// later cases gets HTTP 429, which the runtime reports as PLAN_FAILED → PLANNING_FAILURE,
+// masking the model's real capability). Default 0 (no delay) for local Ollama.
+const delayMs = Number(flag('delay-ms', '0')) || 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let counter = 0;
 function counters() { let t = 0; let n = 0; return { now: () => '2026-01-01T00:00:' + String(t++ % 60).padStart(2, '0') + '.000Z', nextId: () => 'ID-' + String(n++).padStart(5, '0') }; }
@@ -46,6 +52,7 @@ function makeGateway() {
 function makeRealAgentRunner() {
   return {
     async run({ workspaceRoot, task }) {
+      if (delayMs > 0) await sleep(delayMs);
       const db = new SqliteDatabaseAdapter(':memory:');
       db.open();
       try {
@@ -82,7 +89,8 @@ function makeRealAgentRunner() {
         await graphs.commit({ graphId: 'GR', sessionId: sid, version: 1, nodes: [], edges: [], createdAt: 't', createdBy: 'planner', canonicalHash: 'seed', schemaVersion: 1, canonicalFormVersion: 'v1' }, { mutationId: 'M0', sessionId: sid, baseVersion: 0, operations: [], proposedBy: 'planner', reason: 'seed', provenance: { provenanceId: 'P', source: { kind: 'runtime', id: 'init' }, inputs: [], reason: 'seed', at: 't' }, createdAt: 't', status: 'COMMITTED' });
         const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, now: c.now, nextId: c.nextId });
         const goal = { goalId: 'G', version: 1, description: task.description, constraints: [], acceptanceCriteria: [{ criterionId: 'a', description: 'done', mandatory: true }], createdAt: c.now(), createdBy: 'user' };
-        try { await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 }); } catch { /* checks decide the verdict */ }
+        try { await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 }); }
+        catch (err) { if (process.env.CF_DEBUG) console.error(`  [orch error] ${task.description.slice(0, 40)} :: ${err?.code ?? ''} ${err?.message ?? String(err)}`); }
         return { events: await events.query({ sessionId: sid }), traceRef: sid };
       } finally { db.close(); }
     },
