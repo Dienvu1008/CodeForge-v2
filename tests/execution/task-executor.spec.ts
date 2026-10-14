@@ -339,6 +339,70 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     expect(result.toolCallCount).toBe(1);
   });
 
+  // ── P12.13: multi-file half-done challenge ─────────────────────────────────
+
+  it('challenges done when the task names a file the model never wrote (multi-file half-done)', async () => {
+    const { deps, task } = await makeTestDeps();
+    // Task names TWO source files; the model writes only one, then declares done. The guard must
+    // reject that done once, naming the missing file, and give the model another step to write it.
+    const described = { ...task, description: 'Add src/validate.js isValidEmail and wire it into src/signup.js' };
+    model.setSequence([
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'src/signup.js', content: 'ok' } }),
+      JSON.stringify({ type: 'done', summary: 'wired signup' }),           // ← rejected: validate.js missing
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'src/validate.js', content: 'ok' } }),
+      JSON.stringify({ type: 'done', summary: 'added validate + wired' }), // ← now accepted
+    ]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    const result = await executor.execute(makeReq(described));
+    expect(result.finalState).toBe('SUCCEEDED');
+    expect(result.toolCallCount).toBe(2); // both files written
+    expect(model.callCount).toBe(4);      // write, done(rejected), write, done(accepted)
+  });
+
+  it('accepts done once every named file has been written (no challenge)', async () => {
+    const { deps, task } = await makeTestDeps();
+    const described = { ...task, description: 'Add src/validate.js and wire it into src/signup.js' };
+    model.setSequence([
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'src/validate.js', content: 'ok' } }),
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'src/signup.js', content: 'ok' } }),
+      JSON.stringify({ type: 'done', summary: 'both written' }),
+    ]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    const result = await executor.execute(makeReq(described));
+    expect(result.finalState).toBe('SUCCEEDED');
+    expect(result.toolCallCount).toBe(2);
+    expect(model.callCount).toBe(3); // no extra challenge round
+  });
+
+  it('challenges the missing-path done at most once, then terminates (fail-safe)', async () => {
+    const { deps, task } = await makeTestDeps();
+    // The model wrote one named file but insists done without writing the second. After ONE
+    // challenge the run must still complete (verification + recovery are the real authority).
+    const described = { ...task, description: 'Rename across src/user.js and src/profile.js' };
+    model.setSequence([
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'src/user.js', content: 'ok' } }),
+      JSON.stringify({ type: 'done', summary: 'first attempt' }),  // ← challenged (profile.js missing)
+      JSON.stringify({ type: 'done', summary: 'insisting done' }), // ← accepted, no second challenge
+    ]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    const result = await executor.execute(makeReq(described));
+    expect(result.finalState).toBe('SUCCEEDED');
+    expect(model.callCount).toBe(3); // write, done(challenged), done(accepted)
+  });
+
+  it('does not fire when the task names no source-file path (guard inert — fail-safe)', async () => {
+    const { deps, task } = await makeTestDeps();
+    // Default description ("Write a hello world file") names no path → mentionedPaths empty.
+    model.setSequence([
+      JSON.stringify({ type: 'tool_call', toolName: 'write_file', arguments: { path: 'hello.js', content: 'ok' } }),
+      JSON.stringify({ type: 'done', summary: 'done' }),
+    ]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    const result = await executor.execute(makeReq(task));
+    expect(result.finalState).toBe('SUCCEEDED');
+    expect(model.callCount).toBe(2); // write + done, no challenge
+  });
+
   // ── Tier B2: stated assumptions are injected into the task prompt ──────────
 
   it('injects a STATED_ASSUMPTIONS section when goalAssumptions are present', async () => {

@@ -138,6 +138,38 @@ const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'g
 const MUTATING_TOOLS: ReadonlySet<string> = new Set(['write_file', 'edit_file', 'delete_file', 'move_file']);
 
 /**
+ * Extract workspace-relative file paths explicitly named in a task description — e.g.
+ * "Add src/validate.js" / "update src/profile.js and src/admin.js". A token counts only when it
+ * clearly looks like a source file (has a known extension). Pure + deterministic.
+ *
+ * Used by the "multi-file half-done" guard (P12.13): if the task names a file the agent never
+ * touched, challenge a premature `done` once. Conservative on purpose — prose that merely mentions
+ * a module name without an extension does not false-fire.
+ */
+const PATH_TOKEN_RE = /(?:^|[\s"'`(])([A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,5})(?=$|[\s"'`.,;:)])/g;
+const SOURCE_EXT_RE = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs|py|dart|go|rs|java|rb|json|yaml|yml|md|txt|toml|css|html)$/i;
+export function extractMentionedPaths(description: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of description.matchAll(PATH_TOKEN_RE)) {
+    const raw = m[1];
+    if (raw === undefined || !SOURCE_EXT_RE.test(raw)) continue;
+    out.add(raw.replace(/\\/g, '/').replace(/^\.\//, '')); // '/'-separated, strip leading "./"
+  }
+  return out;
+}
+
+/** True if `written` contains a path matching `mentioned` (suffix match tolerates dir prefixes). */
+function pathWasWritten(mentioned: string, written: ReadonlySet<string>): boolean {
+  const norm = (p: string): string => p.replace(/\\/g, '/').replace(/^\.\//, '');
+  const want = norm(mentioned);
+  for (const w of written) {
+    const got = norm(w);
+    if (got === want || got.endsWith('/' + want) || want.endsWith('/' + got)) return true;
+  }
+  return false;
+}
+
+/**
  * ContextItem kinds that represent CODEBASE context (files/symbols/memory/RAG), as opposed to
  * the pinned task/goal/graph/failure items rendered elsewhere. Used both to render the codebase
  * block for the model and to count "codebase items" for the CONTEXT_SNAPSHOT_BUILT metric.
@@ -565,8 +597,19 @@ export class TaskExecutor {
     let finalState: 'SUCCEEDED' | 'FAILED' | 'TIMEOUT' = 'FAILED';
     let summary: string | undefined;
     let pendingApprovalToolCallIdRef: string | undefined;
-    /** Count of SUCCESSFUL workspace-mutating tool calls (write/delete/move) this run. */
+    /** Count of SUCCESSFUL workspace-mutating tool calls (write/delete/move/edit) this run. */
     let mutatingWriteCount = 0;
+    /** Workspace-relative paths SUCCESSFULLY mutated this run (for the multi-file half-done guard). */
+    const writtenPaths = new Set<string>();
+    /**
+     * P12.13: file paths the task description explicitly names (e.g. "Add src/validate.js").
+     * Computed once. If the model says `done` having written SOME files but not one of these named
+     * paths, the executor challenges it once (the "multi-file half-done" failure — e.g. created the
+     * caller edit but never the new module). Empty ⇒ guard inert (fail-safe parity).
+     */
+    const mentionedPaths = extractMentionedPaths(req.task.description);
+    /** Whether the multi-file half-done challenge has already fired (at most once, like P12.11). */
+    let missingPathChallengedOnce = false;
     /**
      * P12.11: whether we have already challenged a premature `done`. The executor rejects the
      * FIRST `done` that arrives before any workspace mutation (the "read then done" failure) and
@@ -678,6 +721,36 @@ export class TaskExecutor {
             exitCode: null,
           });
           continue;
+        }
+        // P12.13: challenge a MULTI-FILE half-done — the model wrote SOME file(s) and declared
+        // done, but the task description explicitly names one or more source-file paths it never
+        // touched (the "edited the signup caller but never created src/validate.js" / "renamed in
+        // user.js but not profile.js / admin.js" failure). Reject it ONCE: name the missing files
+        // in the transcript and give one more step to write them. At-most-once (missingPath-
+        // ChallengedOnce) so a mislabelled path or a model that insists still terminates;
+        // verification + recovery remain the authority on correctness. Fail-safe: if the task
+        // names no source paths (mentionedPaths empty), this never fires.
+        if (!missingPathChallengedOnce) {
+          const missing = [...mentionedPaths].filter((p) => !pathWasWritten(p, writtenPaths));
+          if (missing.length > 0) {
+            missingPathChallengedOnce = true;
+            await this.emitProgress(req.sessionId, runId, 'DECISION_COMPLETED', {
+              step: i + 1,
+              decision: 'done_rejected_missing_paths',
+            });
+            const list = missing.join(', ');
+            transcript.push({
+              step: transcript.length + 1,
+              toolName: '(runtime)',
+              arguments: {},
+              result: 'You responded "done" but the task names these file(s) you have NOT created '
+                + `or edited this run: ${list}. A multi-file change is only complete when EVERY `
+                + 'named file is written. Call write_file (or edit_file) now for each missing file '
+                + 'with its full correct content, then respond done.',
+              exitCode: null,
+            });
+            continue;
+          }
         }
         summary    = output.summary;
         finalState = 'SUCCEEDED';
@@ -873,6 +946,12 @@ export class TaskExecutor {
       const toolSucceeded = execResult?.exitCode === 0 || execResult?.exitCode === null;
       if (toolSucceeded && MUTATING_TOOLS.has(proposal.toolName)) {
         mutatingWriteCount++;
+        // P12.13: record the path touched (write/edit/delete/move all take a "path" argument;
+        // move_file's destination is "to"). Used by the multi-file half-done guard.
+        const args = proposal.arguments as Record<string, unknown>;
+        const touched = typeof args['path'] === 'string' ? args['path']
+          : typeof args['to'] === 'string' ? args['to'] : undefined;
+        if (touched !== undefined) writtenPaths.add(touched);
       }
 
       // Propagate timeout (fatal — tool timed out).

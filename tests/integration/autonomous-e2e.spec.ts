@@ -206,11 +206,14 @@ describe('P4-I1 — Full Autonomous Vertical Slice', () => {
 
     const planner = new Planner({ gateway: model, now: c.now, nextId: c.nextId });
 
-    // FakeModel: first call for Planner, second for TaskExecutor
-    // Planner call, then the executor. The executor's first done is challenged by the
-    // premature-done gate (no write happened), so it confirms done once more.
+    // FakeModel: first call for Planner, then the executor. The executor's `done` is challenged
+    // TWICE here (both gates are deliberately exercised because the model never writes):
+    //   • P12.11 premature-done — the first done arrives with zero workspace mutations.
+    //   • P12.13 multi-file half-done — the task names a source file (`greeting.ts`) that was
+    //     never written. Each gate fires at most once, so a third `done` terminates the run.
     model.setSequence([
       PLAN_JSON,
+      JSON.stringify({ type: 'done', summary: 'greeting.ts written' }),
       JSON.stringify({ type: 'done', summary: 'greeting.ts written' }),
       JSON.stringify({ type: 'done', summary: 'greeting.ts written' }),
     ]);
@@ -327,10 +330,12 @@ describe('P4-I1 — Full Autonomous Vertical Slice', () => {
       now: c.now, nextId: c.nextId,
     });
 
-    // Model: done (challenged once by the premature-done gate, then confirmed) → no tool calls
-    // → budget never hit.
+    // Model: done, challenged by BOTH done-gates (P12.11 zero-mutation + P12.13 named-file
+    // `greeting.ts` never written), then confirmed on the third done → no tool calls → budget
+    // never hit.
     model.setSequence([
       PLAN_JSON,
+      JSON.stringify({ type: 'done', summary: 'fast finish' }),
       JSON.stringify({ type: 'done', summary: 'fast finish' }),
       JSON.stringify({ type: 'done', summary: 'fast finish' }),
     ]);

@@ -197,10 +197,12 @@ next investment.
 9. **Models (weak AND strong) under-perform at execution; the runtime mitigates but cannot force
    competence.** Local 6–9B models loop on reads, emit malformed tool-call JSON, or over-decompose.
    The runtime mitigates this (anti-loop nudge, reasoning-model JSON handling, graceful-stop,
-   tool-native adapter, and the P12.11 premature-done gate). Agent quality is still model-bound.
+   tool-native adapter, the P12.11 premature-done gate, and the P12.13 multi-file half-done guard).
+   Agent quality is still model-bound.
    **Live-confirmed, two failure modes:**
    - (P12.9) qwen2.5-coder nailed a one-line bugfix but, on a multi-file refactor, created the new
-     module as an EMPTY file and never wired the import — it half-did the harder task.
+     module as an EMPTY file and never wired the import — it half-did the harder task. The P12.13
+     guard now challenges this specific shape (a `done` that leaves a named source file unwritten).
    - (PG-01 investigation) BOTH qwen2.5-coder and Groq gpt-oss-120b, on the trivial off-by-one fix,
      `read_file` then declared `done` WITHOUT writing. P12.11 now challenges that first done (the
      model is told it has changed nothing and must write) — but the gate only forces another
@@ -377,9 +379,8 @@ residual losses are sampling variance on the harder MEDIUM/HARD cases, not a run
 
 The arc is the whole point: 8/12 (context-blind) → 9/12 (context, quota-cut) → 11–12/12 (context +
 RPM throttle). Every point came from closing a benchmark-harness gap so the curve measures the real
-runtime, not from changing the model. qwen2.5-coder still half-does PG-08 (a
-model limit: context + the premature-done gate give it every chance, but the gate already sees one
-mutation so it cannot challenge a half-done multi-file edit).
+runtime, not from changing the model. The multi-file half-done case (qwen on PG-08, Gemini's one
+PG-12 miss) is now addressed by the **multi-file half-done guard (P12.13)** — see below.
 
 **Focused re-run of the three variable cases (REPLAN now active, gemini-3.5-flash-lite x3 each).**
 To see where the variance lives and whether REPLAN helps:
@@ -388,14 +389,29 @@ To see where the variance lives and whether REPLAN helps:
 |---|---|---|---|
 | PG-08 (HARD, cross-file rename) | **3/3 PASS** | 0 | Stabilised (was 2/3). contextProvider lets the model see the caller files and get it right first try — no replan needed. |
 | PG-05 (MEDIUM, discount-then-tax order) | 2/3 PASS | 0 | A subtle arithmetic-order logic bug the model gets right ~2/3 of the time. |
-| PG-12 (HARD, validator + wire + keep export) | 1/3 PASS | 0 | Flakiest; one run didn't even create `src/validate.js` (multi-file half-done). |
+| PG-12 (HARD, validator + wire + keep export) | 1/3 PASS | 0 | Flakiest; one run didn't even create `src/validate.js` (multi-file half-done) — now targeted by the P12.13 guard. |
 
 Two honest takeaways: (1) the one case that was really a harness gap (PG-08 cross-file) is now
 solid thanks to context. (2) REPLAN did NOT fire on PG-05/PG-12 (`replans=0`): a test failure
 classifies as LOGIC, whose policy is FIX→RETRY→ESCALATE (no REPLAN), so REPLAN doesn't touch these
 — their variance is genuine model logic/half-done error, not something the recovery vocabulary
 closes. PG-12's "validate.js missing" run is the same multi-file-half-done shape as qwen on PG-08:
-the premature-done gate can't challenge it because one file was already written.
+the P12.11 premature-done gate can't challenge it because one file was already written. **This is
+exactly what the P12.13 guard (below) now catches** — a `done` is challenged once when the task
+description names a source file the agent never wrote this run.
+
+**Multi-file half-done guard (P12.13, core).** The P12.11 premature-done gate only fires when the
+agent changed *nothing*; it is blind to a run that wrote SOME files and quit (PG-12 edited the
+signup caller but never created `src/validate.js`; qwen on PG-08 renamed in `user.js` but not
+`profile.js`/`admin.js`). P12.13 extends the done-gate: the executor records every path it writes
+this run (`writtenPaths`), extracts the source-file paths the task description explicitly names
+(`extractMentionedPaths` — tokens with a known source extension, so prose that merely mentions a
+module without an extension never false-fires), and if `done` arrives with named files still
+unwritten it rejects that `done` ONCE, naming the missing files in the transcript and giving one
+more step to write them. At-most-once (`missingPathChallengedOnce`) and fail-safe (empty mentioned
+set ⇒ inert; verification + recovery stay the real authority). `TaskExecutor` only — no domain,
+contract, or infrastructure change. 4 new unit tests (challenge-then-complete, all-written→no
+challenge, at-most-once termination, inert when no path named); WSL suite green.
 
 **PG-06 — not a runtime gap; model-dependent + non-deterministic.** Traced PG-06 (extract a pure
 `sum(xs)` module + rebuild `sumToN` on it) on both models:
