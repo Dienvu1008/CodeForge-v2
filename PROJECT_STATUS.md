@@ -169,9 +169,11 @@ next investment.
    GraphMutation that replaces the failing task with a `replanner` successor carrying the failure
    evidence (RC-005 a new version, GI-007 old task → SUPERSEDED, GI-009 via GraphCommitService).
    So 7 of 8 recovery actions are real; only ROLLBACK (workspace revert to a checkpoint revision)
-   remains deferred — it needs a workspace-revert port. Residual on REPLAN: it mints a new taskId
-   each time, so the per-task no-progress detector resets; `maxIterations` is the backstop against
-   a replan loop (a follow-up could carry failure history across supersessions).
+   remains deferred — it needs a workspace-revert port. The earlier REPLAN residual (a new taskId
+   each replan resetting the per-task no-progress detector) is now FIXED: the orchestrator tracks
+   the supersession lineage and feeds the whole lineage's failure history to the detector, so a
+   same-class REPLAN loop trips no-progress → ESCALATE after a bounded few replans (RC-002/003)
+   rather than running to `maxIterations`.
 4. **Model routing is fully wired; its real-world effect is gated by how many models you register.**
    The runtime runs Ollama OR any OpenAI-compatible provider; a `--model-routes` file routes each
    PURPOSE (plan/execute/architect/…) to a different provider/model (shunt-style cost/quality split);
