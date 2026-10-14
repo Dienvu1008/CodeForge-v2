@@ -184,13 +184,20 @@ next investment.
    dashboard asks, the answer becomes acceptance criteria, then re-plan) is optional and NOT
    built. The before/after benchmark proving B2 improves task correctness is also still pending.
    Clear goals (like the CF-001..010 benchmark tasks) remain what the runtime drives best.
-9. **Local small models (6–9B) are weak agents.** They plan acceptably but often under-perform
-   at execution (looping on reads, emitting malformed tool-call JSON, over-decomposing). The
-   runtime now mitigates this (anti-loop nudge, reasoning-model JSON handling, graceful-stop) but
-   cannot make a weak model competent. Agent quality is model-bound. **Live-confirmed (P12.9 run):**
-   qwen2.5-coder nailed a one-line bugfix (fix correct, test green) but, on a multi-file refactor,
-   created the new module as an EMPTY file and never wired the import — i.e. it half-did the harder
-   task. The runtime stayed intact (graceful-stop, session COMPLETED, existing code unbroken).
+9. **Models (weak AND strong) under-perform at execution; the runtime mitigates but cannot force
+   competence.** Local 6–9B models loop on reads, emit malformed tool-call JSON, or over-decompose.
+   The runtime mitigates this (anti-loop nudge, reasoning-model JSON handling, graceful-stop,
+   tool-native adapter, and the P12.11 premature-done gate). Agent quality is still model-bound.
+   **Live-confirmed, two failure modes:**
+   - (P12.9) qwen2.5-coder nailed a one-line bugfix but, on a multi-file refactor, created the new
+     module as an EMPTY file and never wired the import — it half-did the harder task.
+   - (PG-01 investigation) BOTH qwen2.5-coder and Groq gpt-oss-120b, on the trivial off-by-one fix,
+     `read_file` then declared `done` WITHOUT writing. P12.11 now challenges that first done (the
+     model is told it has changed nothing and must write) — but the gate only forces another
+     ATTEMPT, it cannot make the model actually emit the write. Whether the challenged retry
+     succeeds is still model-dependent (see the measurement section below).
+   The runtime stayed intact in every case (graceful-stop, session COMPLETED, existing code
+   unbroken).
 10. **Complexity estimation under-scored structural refactors — FIXED (P12.10).** A multi-file
     REFACTOR with explicit module-boundary design used to score LOW (the fixed `-1` light-type
     discount cancelled the one breadth hit). Now `extractSignals` emits structural signals
@@ -224,28 +231,46 @@ Driven by running the real runtime against live goals:
   those assumptions now steer the agent** — threaded orchestrator → `TaskExecutorRequest.goalAssumptions`
   → a TRUSTED `STATED_ASSUMPTIONS` section in the executor prompt (fail-safe when absent; Goal never mutated, MI-004).
 - **Tolerate tool-native OpenAI-compatible models** — Groq's `gpt-oss-*` answer via a tool call and
-  reject a bare `response_format` turn with HTTP 400 `tool_use_failed`, even when they produced
-  correct JSON (stashed in `error.failed_generation`). The adapter now (a) reads tool-call
-  `arguments` when `content` is empty and (b) recovers a JSON-parseable `failed_generation` on a
-  400 (opt-in `preferToolJson`, auto-on for `*.groq.com`). Measured effect on the progressive
-  benchmark: gpt-oss-20b PLANNING_FAILURE 8 → 2. Fix is confined to the infrastructure adapter;
-  no domain/core change.
+  are tool-trained reasoning models: they answer via a tool call OR in a `reasoning` field (leaving
+  `content` empty), and 400 a bare `response_format` request. The adapter now, when `preferToolJson`
+  is on (auto for `*.groq.com`), (a) reads tool-call `arguments`, (b) reads `message.reasoning` when
+  `content` is empty, (c) recovers a JSON-parseable `failed_generation` from a 400, and (d) sends
+  `reasoning_effort: low` instead of `response_format`. Measured effect: planner
+  PLANNING_FAILURE collapsed (gpt-oss-20b 8 → 2) and the executor's HTTP 400 `json_validate_failed`
+  disappeared. Confined to the infrastructure adapter; no domain/core change.
+- **Premature-done gate (P12.11, core)** — the executor challenges the first `done` that arrives
+  with zero workspace mutations this run (the "read then done without writing" failure seen on both
+  weak and strong models), rejecting it once with a nudge to write. At most one challenge; fail-safe.
+- **Recovery wired into the capability-curve runner** — the progressive benchmark previously built
+  the orchestrator WITHOUT the recovery stack, so a failed verification was never retried (it
+  measured a one-shot model). Now `FailureAnalyzer` + `RecoveryEngine` + the failing-check evidence
+  provider are wired, matching the product CLI. (Measurement harness only; not a runtime change.)
 
 ## First hosted-model capability measurement (honest)
 
 Progressive benchmark (Tier A, 12 difficulty-graded JS tasks, real kernel + verify + recovery),
 Groq `openai/gpt-oss-120b` via the OpenAI-compatible adapter, `--delay-ms 35000` to stay under the
-free-tier 8000 TPM cap:
+free-tier 8000 TPM cap. The score moved as the harness and runtime were fixed — each number is
+honest about WHAT it measured:
 
-- **3/12 success**, failure classes `{IMPLEMENTATION_FAILURE: 9}` — **0 PLANNING_FAILURE**, so
-  every plan committed and ran; the shortfall is now execution quality, not harness/wire issues.
-- Passed **PG-06 and PG-07 (HARD)** — module extraction with a dependency boundary — which no
-  local Ollama model except deepseek-r1:14b managed, plus PG-11 (EXPERT).
-- Still fails **PG-01 (TRIVIAL, `<`→`<=`)**, which points at an execution/verification quirk on
-  tiny edits rather than reasoning capability — the next thing to investigate.
-- Local Ollama baselines on the same benchmark: deepseek-r1:14b 3/12, qwen2.5-coder 2/12,
-  deepseek-coder:6.7b 1/12, llama3:8b 1/12.
+- **1/12** (first run): looked like model weakness but was actually free-tier rate-limit (429) +
+  `tool_use_failed`, surfaced as 7 bogus "PLANNING_FAILURE". An unmeasured harness lies.
+- **3/12** after the tool-native wire fixes (reasoning channel + failed_generation recovery) +
+  `--delay-ms`: 0 PLANNING_FAILURE — every plan committed and ran. All failures became
+  IMPLEMENTATION_FAILURE (real execution quality).
+- **4/12** after wiring the recovery stack into the runner (PG-09 HARD passes on a retry).
+- **5/12** after the P12.11 premature-done gate (PG-02 EASY now passes). Failure classes
+  `{VERIFICATION_FAILURE: 4, IMPLEMENTATION_FAILURE: 3}` — the loop now reaches verify/recovery on
+  most cases rather than giving up early.
 
-Caveat: before the tool-native fix the same model scored 1/12 with 7 "PLANNING_FAILURE" that were
-actually rate-limit (429) + `tool_use_failed`, NOT model weakness — a reminder that an unmeasured
-harness lies. The 3/12 is the first number we trust.
+What gpt-oss-120b passes vs. fails is a clean pattern: it solves **add/create** tasks — PG-02
+(add a helper), PG-06/PG-07/PG-09 (HARD module extraction with a dependency boundary), PG-11
+(EXPERT) — but still fails **in-place edit / cross-file rename** tasks — PG-01 (TRIVIAL `<`→`<=`),
+PG-03/PG-08 (rename + update call sites), PG-10. Local Ollama baselines for contrast:
+deepseek-r1:14b 3/12, qwen2.5-coder 2/12, deepseek-coder:6.7b 1/12, llama3:8b 1/12.
+
+**PG-01 honesty:** the P12.11 gate challenges the model's premature `done`, but gpt-oss-120b (and
+qwen) STILL re-declare done without writing on this task. The gate forces another attempt; it does
+not force the model to emit the edit. So PG-01 remains red — a genuine model-behavior limit on
+small in-place edits, not a harness or wiring bug. The runtime did its part (challenge + retry +
+recovery, session intact); the model did not take the edit.
