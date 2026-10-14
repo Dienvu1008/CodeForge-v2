@@ -327,11 +327,11 @@ undistorted hosted curve.
 - FAIL: PG-03/PG-08 (cross-file rename + update all call sites), PG-05 (discount/checkout
   integration), PG-12 (validator wiring) — the cross-file-consistency cluster is flash-lite's
   ceiling here.
-- Standings (best clean run per model): gemini-3.5-flash-lite **11/12** (with context + RPM
-  throttle; see below) > gpt-oss-120b 5/12 > deepseek-r1:14b / qwen2.5-coder 2–3/12. This 8/12
-  figure was the context-BLIND run; wiring context + throttling RPM took the same model to 11/12.
-  Gemini + the full runtime is the strongest combination measured; a bigger Gemini (pro) is
-  untested (slower, timeout-prone on free tier).
+- Standings: gemini-3.5-flash-lite **3-run mean 11/12 (best 12/12)** (with context + RPM throttle;
+  see the clean-curve section below) > gpt-oss-120b 5/12 > deepseek-r1:14b / qwen2.5-coder 2–3/12.
+  The 8/12 figure was the context-BLIND run; wiring context + throttling RPM took the same model to
+  a 12/12 best / 11/12 mean. Gemini + the full runtime is the strongest combination measured; a
+  bigger Gemini (pro) is untested (slower, timeout-prone on free tier).
 
 **Cross-file cluster — root-caused to a missing contextProvider, not model weakness.** The 8/12
 curve above still failed PG-03/PG-08 ("rename a symbol + update every call site in other files").
@@ -348,15 +348,26 @@ calls (plan + each execute step + recovery) in a burst, which `--delay-ms` (a pa
 does not throttle. Added `--min-call-interval-ms` to the runner: a global monotonic gate that
 spaces every model call ≥N ms apart, so bursts within a case cannot exceed the RPM cap.
 
-**Clean curve — 11/12.** Re-run with `--min-call-interval-ms 5000` (≤12 calls/min):
-gemini-3.5-flash-lite scored **11/12 with ZERO 429 and ZERO PLANNING_FAILURE** —
-`{VERIFICATION_FAILURE: 1}`. By difficulty: TRIVIAL 1/1, EASY 2/2, MEDIUM 2/2, HARD 5/6, EXPERT 1/1.
-The only miss on this run was PG-06 (HARD module extraction) — but see the PG-06 note below: a
-traced re-run of PG-06 alone PASSED, so that miss was run-to-run variance, not a fixed ceiling.
-This is gemini-3.5-flash-lite + the full runtime (context + edit_file + premature-done gate +
-recovery) on this benchmark, and the arc is the whole point: 8/12 (context-blind) → 9/12 (context, quota-cut) →
-11/12 (context + RPM throttle). Every point came from closing a harness gap so the benchmark
-measures the real runtime, not from changing the model. qwen2.5-coder still half-does PG-08 (a
+**Clean curve — 3-run average 11/12 (best 12/12).** With `--min-call-interval-ms 5000` (≤12
+calls/min, zero 429 on all runs), gemini-3.5-flash-lite + the full runtime (context + edit_file +
+premature-done gate + recovery) was measured THREE times to separate signal from sampling noise
+(temperature 0.2):
+
+| Run | Score | Misses |
+|---|---|---|
+| 1 | **12/12** | — (perfect; HARD 6/6) |
+| 2 | 11/12 | PG-08 |
+| 3 | 10/12 | PG-05, PG-12 |
+
+Mean **11.0/12 (~92%)**, range 10–12, zero PLANNING_FAILURE / zero 429 throughout. Per-case over
+the three runs: PG-01/02/03/04/06/07/09/10/11 passed 3/3 (a stable 9-case core across TRIVIAL →
+EXPERT, including all the module-extraction/closure HARD cases); PG-05, PG-08, PG-12 each passed
+2/3. Crucially **no case is a hard ceiling** — every miss also passed on another run — so the
+residual losses are sampling variance on the harder MEDIUM/HARD cases, not a runtime gap.
+
+The arc is the whole point: 8/12 (context-blind) → 9/12 (context, quota-cut) → 11–12/12 (context +
+RPM throttle). Every point came from closing a benchmark-harness gap so the curve measures the real
+runtime, not from changing the model. qwen2.5-coder still half-does PG-08 (a
 model limit: context + the premature-done gate give it every chance, but the gate already sees one
 mutation so it cannot challenge a half-done multi-file edit).
 
