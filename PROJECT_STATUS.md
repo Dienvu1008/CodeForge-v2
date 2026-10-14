@@ -381,6 +381,22 @@ runtime, not from changing the model. qwen2.5-coder still half-does PG-08 (a
 model limit: context + the premature-done gate give it every chance, but the gate already sees one
 mutation so it cannot challenge a half-done multi-file edit).
 
+**Focused re-run of the three variable cases (REPLAN now active, gemini-3.5-flash-lite x3 each).**
+To see where the variance lives and whether REPLAN helps:
+
+| Case | Result | replans used | Read |
+|---|---|---|---|
+| PG-08 (HARD, cross-file rename) | **3/3 PASS** | 0 | Stabilised (was 2/3). contextProvider lets the model see the caller files and get it right first try — no replan needed. |
+| PG-05 (MEDIUM, discount-then-tax order) | 2/3 PASS | 0 | A subtle arithmetic-order logic bug the model gets right ~2/3 of the time. |
+| PG-12 (HARD, validator + wire + keep export) | 1/3 PASS | 0 | Flakiest; one run didn't even create `src/validate.js` (multi-file half-done). |
+
+Two honest takeaways: (1) the one case that was really a harness gap (PG-08 cross-file) is now
+solid thanks to context. (2) REPLAN did NOT fire on PG-05/PG-12 (`replans=0`): a test failure
+classifies as LOGIC, whose policy is FIX→RETRY→ESCALATE (no REPLAN), so REPLAN doesn't touch these
+— their variance is genuine model logic/half-done error, not something the recovery vocabulary
+closes. PG-12's "validate.js missing" run is the same multi-file-half-done shape as qwen on PG-08:
+the premature-done gate can't challenge it because one file was already written.
+
 **PG-06 — not a runtime gap; model-dependent + non-deterministic.** Traced PG-06 (extract a pure
 `sum(xs)` module + rebuild `sumToN` on it) on both models:
 - gemini-3.5-flash-lite PASSED it in isolation: it wrote `sum-core.js` (`xs.reduce`), then
