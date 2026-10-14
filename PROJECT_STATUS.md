@@ -275,18 +275,22 @@ What gpt-oss-120b passes vs. fails is a clean pattern: it solves **add/create** 
 PG-03/PG-08 (rename + update call sites), PG-10. Local Ollama baselines for contrast:
 deepseek-r1:14b 3/12, qwen2.5-coder 2/12, deepseek-coder:6.7b 1/12, llama3:8b 1/12.
 
-**PG-01 — root-caused and fixed for a local model (P12.12).** The P12.11 gate challenges the
-premature `done` but cannot force the model to write; with only `write_file` (whole-file
-overwrite) both qwen and gpt-oss kept reading-then-giving-up. Adding `edit_file` (surgical
-find/replace) changed the behavior: in a traced local run, qwen2.5-coder — which had NEVER fixed
-PG-01 — now emits the correct `edit_file` (`for (let i = 1; i < n; ...)` → `i <= n`), and
-`node test.js` goes green. So PG-01 is solvable by a weak local model once the right tool exists;
-the earlier red was partly a missing-tool gap, not pure model weakness. (The 7B model still wanders
-afterward — creates a stray file, rewrites test.js — but `src/math.js` ends correct and the test
-passes, which is what verification judges.)
+**PG-01 — root-caused and fixed for a local model (P12.12), confirmed end-to-end.** The P12.11
+gate challenges the premature `done` but cannot force the model to write; with only `write_file`
+(whole-file overwrite) both qwen and gpt-oss kept reading-then-giving-up. Adding `edit_file`
+(surgical find/replace) changed the behavior. Confirmed through the FULL benchmark harness (not
+just a trace): **qwen2.5-coder now PASSES PG-01** (`node test.js` green) — a TRIVIAL task it had
+failed on every prior run. Its 2/12 is now PG-01 (TRIVIAL) + PG-11 (EXPERT), with the other ten
+cases all VERIFICATION_FAILURE (0 PLANNING_FAILURE) — i.e. the model reaches verify on every case
+instead of giving up early. So PG-01's earlier red was partly a missing-tool gap, not pure model
+weakness. (The 7B model still wanders mid-run — stray file, rewritten test — but `src/math.js`
+ends correct and the test passes, which is what verification judges.)
 
 **Measurement caveat (honest):** the end-to-end gpt-oss-120b re-run WITH `edit_file` could not be
-completed — the Groq free tier's daily token cap (TPD 200000) was exhausted by the day's runs, so
-later cases returned 429 (a quota limit, not a regression). The `edit_file` effect is therefore
-evidenced by the traced local qwen run above, not yet by a fresh full hosted-model curve. A clean
-re-measure needs a fresh daily quota (or a paid tier).
+completed. The Groq free tier caps tokens-per-DAY at 200000 PER ORGANIZATION (not per key — a new
+key on the same org shares the exhausted budget), and the day's runs had used it up, so cases
+returned 429. The other hosted code models were also unusable on free tier: gpt-oss-20b shares the
+same TPD; `qwen/qwen3.8-27b` is throttled to OTPM 1000 (output tokens/min), which a planner prompt
+blows instantly; the llama chat models are no longer offered. So the `edit_file` win is evidenced
+on LOCAL models (the qwen2.5-coder PG-01 pass above), which need no quota; a fresh hosted curve
+needs a new daily quota or a paid tier.
