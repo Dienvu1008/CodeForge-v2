@@ -17,7 +17,7 @@ import {
   runMigrations, createMigrationRegistry,
   NodeWorkspaceManager, NodeProcessSupervisor, NodeToolExecutor, WorkspaceProcessSupervisor,
   BenchmarkRunner, loadBenchmarkFile, inspectProject, SwitchableModelGateway,
-  SqliteFailureRepository, SqliteRecoveryActionRepository,
+  SqliteFailureRepository, SqliteRecoveryActionRepository, ContextCollector,
 } from '../packages/infrastructure/dist/index.js';
 import {
   SessionService, SessionOrchestrator, Planner, GraphCommitService, GraphService,
@@ -81,12 +81,18 @@ function makeRealAgentRunner() {
         const verEngine = new VerificationEngine({ reports: new SqliteVerificationRepository(db), events, supervisor: checkSupervisor, revisionProvider: { capture: async () => revision(workspaceRoot) }, now: c.now, nextId: c.nextId });
         const tg = new ToolGateway({ calls: new SqliteToolCallRepository(db), approvals: new SqliteApprovalRepository(db), events, policy: buildToolPolicy('full'), now: c.now, nextId: c.nextId });
         const taskRuns = new SqliteTaskRunRepository(db);
+        // Codebase context (files + symbols + import-graph) so the agent SEES the real workspace
+        // instead of guessing — the product CLI always wires this. Critical for cross-file tasks
+        // (rename + update all call sites): importReverseEdges tells the model which files call the
+        // symbol. Without it the benchmark under-measures the runtime (same gap as recovery was).
+        const contextCollector = new ContextCollector({ workspaceRoot });
         const taskExec = new TaskExecutor({
           taskRunService: taskRunSvc, executionCoordinator: coordinator,
           contextBuilder: new ContextBuilder({ now: c.now, nextId: c.nextId }),
           gateway: gw, toolGateway: tg, executor: toolExec,
           verificationEngine: verEngine, completionGate: new CompletionGate({ reports: new SqliteVerificationRepository(db) }),
           verificationPolicy: buildVerificationPolicy(inspectProject(workspaceRoot)),
+          contextProvider: contextCollector,
           // P10.1: capture a fresh revision right before verify so the agent's own edits are the
           // baseline, not "drift" (matches the product CLI wiring).
           verificationRevisionProvider: { capture: async () => revision(workspaceRoot) },
