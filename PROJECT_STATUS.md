@@ -351,13 +351,31 @@ spaces every model call ≥N ms apart, so bursts within a case cannot exceed the
 **Clean curve — 11/12.** Re-run with `--min-call-interval-ms 5000` (≤12 calls/min):
 gemini-3.5-flash-lite scored **11/12 with ZERO 429 and ZERO PLANNING_FAILURE** —
 `{VERIFICATION_FAILURE: 1}`. By difficulty: TRIVIAL 1/1, EASY 2/2, MEDIUM 2/2, HARD 5/6, EXPERT 1/1.
-The only miss is PG-06 (HARD module extraction). This is the undistorted ceiling of
-gemini-3.5-flash-lite + the full runtime (context + edit_file + premature-done gate + recovery) on
-this benchmark, and the arc is the whole point: 8/12 (context-blind) → 9/12 (context, quota-cut) →
+The only miss on this run was PG-06 (HARD module extraction) — but see the PG-06 note below: a
+traced re-run of PG-06 alone PASSED, so that miss was run-to-run variance, not a fixed ceiling.
+This is gemini-3.5-flash-lite + the full runtime (context + edit_file + premature-done gate +
+recovery) on this benchmark, and the arc is the whole point: 8/12 (context-blind) → 9/12 (context, quota-cut) →
 11/12 (context + RPM throttle). Every point came from closing a harness gap so the benchmark
 measures the real runtime, not from changing the model. qwen2.5-coder still half-does PG-08 (a
 model limit: context + the premature-done gate give it every chance, but the gate already sees one
 mutation so it cannot challenge a half-done multi-file edit).
+
+**PG-06 — not a runtime gap; model-dependent + non-deterministic.** Traced PG-06 (extract a pure
+`sum(xs)` module + rebuild `sumToN` on it) on both models:
+- gemini-3.5-flash-lite PASSED it in isolation: it wrote `sum-core.js` (`xs.reduce`), then
+  `math.js` importing `sum` and building `sumToN` via `sum([1..n])`, clean exports, `node test.js`
+  green. So the 11/12 miss was run-to-run variance (temperature 0.2), NOT a fixed ceiling.
+- qwen2.5-coder FAILED it: `sum-core.js` was correct, but it rewrote `math.js` with `write_file`
+  repeatedly, each pass prepending another `require(...)` line without removing the old one, until
+  the file had a duplicate `const sumToN` → `SyntaxError: Identifier 'sumToN' has already been
+  declared`. A weak model losing control of whole-file overwrites (edit_file would have avoided the
+  junk, but the model chose write_file). This is a model-discipline limit, not a missing tool or
+  context — context + edit_file + recovery were all available.
+
+Net: PG-06 is solvable by a capable model under the current runtime; the benchmark's remaining red
+cells are model capability + sampling variance, not harness gaps. (Minor observation: Gemini tried
+`npm test` and the shell allowlist denied it — only `node` is allowlisted — but verification still
+ran its own checks, so this did not affect the verdict.)
 
 Operational notes from the probe (for whoever runs it next): Gemini **2.5** models now 404 "no
 longer available to new users" (use a 3.x id); some 3.x **flash** models were slow/overloaded
