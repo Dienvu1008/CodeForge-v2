@@ -331,6 +331,22 @@ undistorted hosted curve.
   2–3/12. Gemini + the runtime (edit_file + premature-done gate + recovery) is the strongest
   combination measured; a bigger Gemini (pro) is untested (slower, timeout-prone on free tier).
 
+**Cross-file cluster — root-caused to a missing contextProvider, not model weakness.** The 8/12
+curve above still failed PG-03/PG-08 ("rename a symbol + update every call site in other files").
+Tracing showed WHY: the capability-curve runner built the TaskExecutor WITHOUT a `contextProvider`,
+so the agent ran CONTEXT-BLIND — it never saw the caller files (`src/profile.js`, `src/admin.js`)
+or the import graph, which is exactly what a cross-file rename needs. The product CLI always wires
+`ContextCollector`; the benchmark did not (the same class of gap as the earlier missing recovery
+stack). After wiring it: the executor prompt gains a CODEBASE_CONTEXT section with all caller files
++ import edges, and a traced gemini-3.5-flash-lite run of PG-08 now edits user.js + admin.js +
+profile.js and PASSES. A re-run of the full curve (context + delay 20s) scored **9/12** with
+**PG-03 and PG-08 both now PASS** — before the free-tier quota (not RPM, a cumulative "exceeded
+your quota") 429'd the final cases, so even 9/12 is a floor. qwen2.5-coder still only edits the
+first file then declares done on PG-08 (a model limit; context + the premature-done gate give it
+every chance, but the gate already sees one mutation so it cannot challenge a half-done multi-file
+edit). Honest residual: PG-06/PG-07 passed on the 8/12 run but failed on the 9/12 run — run-to-run
+variance plus the quota truncation, not a regression.
+
 Operational notes from the probe (for whoever runs it next): Gemini **2.5** models now 404 "no
 longer available to new users" (use a 3.x id); some 3.x **flash** models were slow/overloaded
 (60s timeouts, 503 "high demand"); **`gemini-3.5-flash-lite`** worked reliably. A higher
