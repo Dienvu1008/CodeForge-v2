@@ -70,7 +70,12 @@ describe('P5-I1 — Recovery E2E', () => {
   afterEach(() => db.close());
 
   // ── Helper: build full orchestrator with recovery ───────────────────────────
-  async function buildOrchestrator(model: FakeModel, executor: ToolExecutor, recoveryPolicy?: import('@codeforge/agent-core').RecoveryPolicyConfig) {
+  async function buildOrchestrator(
+    model: FakeModel,
+    executor: ToolExecutor,
+    recoveryPolicy?: import('@codeforge/agent-core').RecoveryPolicyConfig,
+    stderrEvidence?: string,
+  ) {
     const c = makeCounters();
     const events   = new SqliteEventLog(db);
     const sessions = new SqliteSessionRepository(db);
@@ -118,7 +123,8 @@ describe('P5-I1 — Recovery E2E', () => {
       failureAnalyzer, recoveryEngine, failureRepository: failRep,
       taskRunRepository: taskRuns, recoveryActionRepository: recRep,
       ...(recoveryPolicy !== undefined ? { recoveryPolicy } : {}),
-      maxIterations: 8, now: c.now, nextId: c.nextId,
+      ...(stderrEvidence !== undefined ? { verificationEvidenceProvider: { lastFailureOutput: () => stderrEvidence } } : {}),
+      maxIterations: 12, now: c.now, nextId: c.nextId,
     });
 
     // Seed session + graph v1 seed.
@@ -263,5 +269,41 @@ describe('P5-I1 — Recovery E2E', () => {
     // A REPLAN recovery action was recorded (RC-006).
     const replanActions = db.query<{ action: string }>("SELECT action FROM recovery_actions WHERE action = 'REPLAN'");
     expect(replanActions.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // ── Scenario 6: repeated REPLAN trips no-progress across the lineage (RC-002/003) ──
+
+  it('RC-002/003: a REPLAN loop with the same class escalates via lineage no-progress', async () => {
+    const model = new FakeModel();
+    model.setSequence([PLAN]);
+    model.setResponse(/./, 'not valid json {{'); // executor always fails → recovery each time
+
+    const executor: ToolExecutor = {
+      execute: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+    };
+
+    // Always REPLAN (never ESCALATE from the policy index), high maxAttempts — so the ONLY thing
+    // that can stop a replan loop is the lineage no-progress guard. Supply stderr evidence that the
+    // deterministic classifier maps to LOGIC (an AssertionError pattern), so each failure is a real
+    // LOGIC class (non-UNKNOWN — UNKNOWN is treated as inconclusive by RC-003).
+    const allClasses = ['TRANSIENT','DEPENDENCY','SYNTAX','LOGIC','ENVIRONMENT','TOOL','PERMISSION','TIMEOUT','CONTEXT','BUDGET_EXHAUSTED','MODEL_OUTPUT_INVALID','MODEL_TIMEOUT','MODEL_UNAVAILABLE','MODEL_CONTEXT_OVERFLOW','MODEL_TOOL_CALL_INVALID','UNKNOWN'];
+    const rule = { actions: ['REPLAN', 'REPLAN', 'REPLAN', 'REPLAN', 'REPLAN'], maxAttempts: 20, rollbackAllowed: false };
+    const replanPolicy = Object.fromEntries(allClasses.map((cl) => [cl, rule])) as unknown as import('@codeforge/agent-core').RecoveryPolicyConfig;
+
+    const { orchestrator, sessions } = await buildOrchestrator(model, executor, replanPolicy, 'AssertionError: expected 1 to equal 2');
+    const result = await orchestrator.run({ sessionId: 'S-P5', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
+
+    // The lineage detector sees 3 consecutive LOGIC failures across the superseded tasks and
+    // forces ESCALATE → AWAITING_HUMAN, instead of replanning until maxIterations.
+    expect(result.sessionState).toBe('AWAITING_HUMAN');
+    const s = await sessions.getById('S-P5');
+    expect(s?.state).toBe('AWAITING_HUMAN');
+
+    // It escalated after a BOUNDED number of replans (no unbounded loop) — far fewer than the
+    // policy's maxAttempts=20. A handful of REPLAN actions, then ESCALATE.
+    const replans = db.query<{ n: number }>("SELECT COUNT(*) AS n FROM recovery_actions WHERE action = 'REPLAN'");
+    expect((replans[0]?.n ?? 0)).toBeLessThanOrEqual(5);
+    const escalations = db.query<{ n: number }>("SELECT COUNT(*) AS n FROM recovery_actions WHERE action = 'ESCALATE'");
+    expect((escalations[0]?.n ?? 0)).toBeGreaterThanOrEqual(1);
   });
 });

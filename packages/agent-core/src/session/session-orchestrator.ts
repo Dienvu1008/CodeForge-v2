@@ -346,6 +346,12 @@ export class SessionOrchestrator {
     // again. This makes RecoveryAction.outcome a truthful signal for the learning layer.
     // Evidence-only: setOutcome records what happened; it never changes a decision.
     const pendingRecoveryAction = new Map<string, string>();
+    // (b) REPLAN lineage: successor taskId → the task it SUPERSEDED. A REPLAN mints a NEW taskId,
+    // so the per-task failure history (and thus the no-progress detector) would reset every
+    // replan and a REPLAN loop could run to maxIterations. We walk this chain to gather the
+    // WHOLE lineage's failure history, so N consecutive same-class failures across supersessions
+    // still trip no-progress → ESCALATE (RC-002/RC-003). Empty for non-replanned tasks (parity).
+    const replanAncestor = new Map<string, string>();
     while (iterations < this.maxIterations) {
       iterations++;
 
@@ -468,10 +474,11 @@ export class SessionOrchestrator {
           // nextFailureId (truthful signal for learning; evidence-only, no decision changed).
           await this.finalizePendingRecovery(task.taskId, pendingRecoveryAction, 'FAILED', failure.failureId);
 
-          // No-progress guard (RC-002/RC-003): same failure class repeating → ESCALATE.
-          const history = this.deps.failureRepository !== undefined
-            ? await this.deps.failureRepository.getByTask(task.taskId)
-            : [];
+          // No-progress guard (RC-002/RC-003): same failure class repeating → ESCALATE. (b) gather
+          // the failure history of the WHOLE replan lineage (this task + every task it superseded),
+          // ordered oldest → newest, so repeated REPLANs cannot evade the detector by minting new
+          // taskIds. For a task that was never replanned this is just its own history (parity).
+          const history = await this.gatherLineageFailures(task.taskId, replanAncestor);
           const npResult = detectNoProgress([...history], 3);
           // P11.6: optional learning advice (clamped). undefined when the plane is not wired
           // or yields nothing → decide() behaves exactly as Phase 10 (LE-002).
@@ -510,6 +517,9 @@ export class SessionOrchestrator {
             if (newTaskId !== undefined) {
               if (evidenceText.length > 0) priorFailureEvidence.set(newTaskId, evidenceText);
               pendingRecoveryAction.set(newTaskId, reResult.recoveryAction.actionId);
+              // (b) record the supersession so the successor inherits its ancestors' failure
+              // history for no-progress detection (prevents an unbounded REPLAN loop).
+              replanAncestor.set(newTaskId, task.taskId);
             } else {
               // Replan could not be committed (e.g. validation/version conflict) — finalize the
               // recovery action as FAILED so the signal stays truthful; the task is left non-passed
@@ -686,6 +696,31 @@ export class SessionOrchestrator {
     try { await this.deps.executionCoordinator.setState(newTaskId, 'READY'); }
     catch { /* scheduler will promote it from PENDING when deps are satisfied */ }
     return newTaskId;
+  }
+
+  /**
+   * (b) Gather the failure history of a task's whole REPLAN lineage — the task plus every task it
+   * superseded (walked via `replanAncestor`) — ordered oldest → newest by `detectedAt`. Used for
+   * the no-progress detector so repeated REPLANs (each a fresh taskId) still accumulate toward the
+   * threshold. For a task with no ancestors this returns exactly its own history (fail-safe parity).
+   */
+  private async gatherLineageFailures(
+    taskId: string,
+    replanAncestor: Map<string, string>,
+  ): Promise<Failure[]> {
+    const repo = this.deps.failureRepository;
+    if (repo === undefined) return [];
+    const all: Failure[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined = taskId;
+    while (cursor !== undefined && !seen.has(cursor)) {
+      seen.add(cursor);
+      try { all.push(...await repo.getByTask(cursor)); } catch { /* non-fatal */ }
+      cursor = replanAncestor.get(cursor);
+    }
+    // Deterministic oldest → newest order across the lineage (RC-003).
+    all.sort((a, b) => (a.detectedAt < b.detectedAt ? -1 : a.detectedAt > b.detectedAt ? 1 : 0));
+    return all;
   }
 
   private async finalizePendingRecovery(
