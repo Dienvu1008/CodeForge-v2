@@ -323,3 +323,9 @@ distinction the two-axis model exists to make.
 | `INVARIANTS.md` · `invariants.yaml` | The enforced invariants. |
 | `PHASE_*` | Per-phase roadmaps and sign-offs. |
 ```
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify, and
+distribute this software under its terms. Contributions are accepted under the same
+license (Apache-2.0 §5).
