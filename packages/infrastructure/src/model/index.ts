@@ -12,7 +12,7 @@ export type { OllamaModelInfo, PullProgress, OllamaModelAdminConfig } from './ol
 export { SwitchableModelGateway } from './switchable-gateway.js';
 export type { SwitchableGatewayConfig } from './switchable-gateway.js';
 // Shared provider spec + adapter factory (used by both switchable + routing gateways).
-export { buildAdapter, DEFAULT_OLLAMA_ENDPOINT } from './provider-adapter.js';
+export { buildAdapter, specCacheKey, DEFAULT_OLLAMA_ENDPOINT } from './provider-adapter.js';
 export type { ProviderSpec, ModelProvider } from './provider-adapter.js';
 // Per-purpose routing gateway: route each call to a model chosen by its ModelPurpose (MG-001).
 export { RoutingModelGateway } from './routing-gateway.js';

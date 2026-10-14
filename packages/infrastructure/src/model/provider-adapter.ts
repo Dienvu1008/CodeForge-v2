@@ -28,6 +28,12 @@ export interface ProviderSpec {
   readonly options?: Readonly<Record<string, unknown>>;
   /** Extra headers for an OpenAI-compatible provider (e.g. OpenRouter attribution). */
   readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * Force tool-native structured JSON for an openai-compatible provider (see
+   * OpenAiCompatibleConfig.preferToolJson). When omitted, `buildAdapter` auto-enables it for a
+   * Groq endpoint, whose `gpt-oss-*` models answer via a tool call. Explicit value always wins.
+   */
+  readonly preferToolJson?: boolean;
 }
 
 export const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434';
@@ -51,12 +57,17 @@ export function buildAdapter(spec: ProviderSpec): ModelGateway {
     if (spec.endpoint === undefined || spec.endpoint.trim().length === 0) {
       throw new Error('openai-compatible provider requires an endpoint (the …/v1 base URL)');
     }
+    // Auto-enable tool-native JSON for Groq (its gpt-oss-* models answer via a tool call), unless
+    // the spec sets preferToolJson explicitly. Other providers (OpenAI, OpenRouter, local) default
+    // to plain response_format — unchanged behavior.
+    const preferToolJson = spec.preferToolJson ?? /(^|\.)groq\.com/i.test(spec.endpoint);
     const cfg: OpenAiCompatibleConfig = {
       baseUrl: spec.endpoint,
       model: spec.model,
       ...(spec.apiKey !== undefined ? { apiKey: spec.apiKey } : {}),
       ...(spec.timeoutMs !== undefined ? { timeoutMs: spec.timeoutMs } : {}),
       ...(spec.headers !== undefined ? { headers: spec.headers } : {}),
+      preferToolJson,
     };
     return new OpenAiCompatibleModelGateway(cfg);
   }
@@ -70,5 +81,6 @@ export function specCacheKey(spec: ProviderSpec): string {
   return JSON.stringify({
     p: spec.provider, m: spec.model, e: spec.endpoint ?? '', t: spec.timeoutMs ?? 0,
     o: spec.options ?? null, h: spec.headers ?? null, k: spec.apiKey !== undefined,
+    j: spec.preferToolJson ?? null,
   });
 }

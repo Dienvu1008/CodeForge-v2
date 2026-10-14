@@ -47,6 +47,14 @@ function stubFetch(status: number, body: string, opts: { delay?: number } = {}):
   });
 }
 
+/** A chat-completion body where the assistant answered via a tool call (no plain content). */
+function toolCompletion(argsJson: string, name = 'emit_json'): string {
+  return JSON.stringify({
+    choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ type: 'function', function: { name, arguments: argsJson } }] } }],
+    usage: { prompt_tokens: 11, completion_tokens: 7 },
+  });
+}
+
 afterEach(() => { vi.unstubAllGlobals(); lastCall = undefined; });
 
 describe('OpenAiCompatibleModelGateway — success path', () => {
@@ -106,6 +114,67 @@ describe('OpenAiCompatibleModelGateway — success path', () => {
     await gw.generate(req());
     const headers = lastCall?.init.headers as Record<string, string>;
     expect(headers.Authorization).toBeUndefined();
+  });
+});
+
+describe('OpenAiCompatibleModelGateway — tool-native JSON (Groq gpt-oss family)', () => {
+  it('reads JSON from a tool call when content is empty (fallback, flag off)', async () => {
+    // A tool-trained model answered via tool_calls even without being asked — adapter recovers it.
+    stubFetch(200, toolCompletion('{"tasks":[{"id":"T1"}]}'));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    const result = await gw.generate(req({ responseSchema: { type: 'object' } }));
+    expect(result.raw).toBe('{"tasks":[{"id":"T1"}]}');
+    expect(result.outputTokens).toBe(7);
+  });
+
+  it('plain content still wins over a tool call when both are present', async () => {
+    stubFetch(200, JSON.stringify({
+      choices: [{ message: { content: '{"from":"content"}', tool_calls: [{ function: { name: 'emit_json', arguments: '{"from":"tool"}' } }] } }],
+    }));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG);
+    const result = await gw.generate(req({ responseSchema: { type: 'object' } }));
+    expect(result.raw).toBe('{"from":"content"}');
+  });
+
+  it('preferToolJson never forces a tool call — it still sends plain response_format', async () => {
+    stubFetch(200, completion('{"ok":true}'));
+    const gw = new OpenAiCompatibleModelGateway({ ...CONFIG, preferToolJson: true });
+    await gw.generate(req({ responseSchema: { type: 'object' } }));
+    const body = JSON.parse(String(lastCall?.init.body));
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(body.tools).toBeUndefined();
+    expect(body.tool_choice).toBeUndefined();
+  });
+
+  it('preferToolJson recovers JSON from a 400 tool_use_failed failed_generation', async () => {
+    // Groq rejects the turn on a tool-call technicality but the model produced correct JSON.
+    stubFetch(400, JSON.stringify({
+      error: { code: 'tool_use_failed', message: 'Tool choice is required, but model did not call a tool', failed_generation: '{"tasks":[{"id":"T1"}]}' },
+    }));
+    const gw = new OpenAiCompatibleModelGateway({ ...CONFIG, preferToolJson: true });
+    const result = await gw.generate(req({ responseSchema: { type: 'object' } }));
+    expect(result.raw).toBe('{"tasks":[{"id":"T1"}]}');
+  });
+
+  it('does NOT recover when failed_generation is not valid JSON (still MODEL_UNAVAILABLE)', async () => {
+    stubFetch(400, JSON.stringify({ error: { code: 'tool_use_failed', failed_generation: 'not json {{{' } }));
+    const gw = new OpenAiCompatibleModelGateway({ ...CONFIG, preferToolJson: true });
+    await expect(gw.generate(req({ responseSchema: { type: 'object' } }))).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
+  });
+
+  it('does NOT recover a 400 when preferToolJson is off (plain provider, fail-safe)', async () => {
+    stubFetch(400, JSON.stringify({ error: { failed_generation: '{"tasks":[]}' } }));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG); // flag off
+    await expect(gw.generate(req({ responseSchema: { type: 'object' } }))).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
+  });
+
+  it('flag off + schema still uses response_format (fail-safe parity, unchanged)', async () => {
+    stubFetch(200, completion('{}'));
+    const gw = new OpenAiCompatibleModelGateway(CONFIG); // preferToolJson defaults false
+    await gw.generate(req({ responseSchema: { type: 'object' } }));
+    const body = JSON.parse(String(lastCall?.init.body));
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(body.tools).toBeUndefined();
   });
 });
 

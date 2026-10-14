@@ -37,16 +37,73 @@ export interface OpenAiCompatibleConfig {
   readonly headers?: Readonly<Record<string, string>>;
   /** Extra body fields passed verbatim (e.g. top_p). Never interpolated from model output. */
   readonly extraBody?: Readonly<Record<string, unknown>>;
+  /**
+   * Tolerate tool-native models (OFF by default — fail-safe parity with a plain OpenAI server).
+   *
+   * Some reasoning models (notably Groq's `openai/gpt-oss-*`) are trained around tool calls and
+   * misbehave against a bare `response_format: json_object` request: they either put the JSON in a
+   * tool call instead of `content`, or the provider returns HTTP 400 `tool_use_failed` even though
+   * the model DID produce correct JSON (stashed in `error.failed_generation`). Neither is a
+   * model-quality problem — it is a wire mismatch.
+   *
+   * Forcing a tool call makes it worse for this family (the model invents tool names, or answers
+   * in content and the provider rejects "tool choice is required"). So instead of changing the
+   * request, this flag makes the adapter RECOVER the model's real output: on an HTTP 400 whose
+   * body carries a JSON-parseable `failed_generation`, return that string instead of failing. The
+   * returned `raw` is still untrusted and validated by the caller (SE-010) — the domain contract
+   * is unchanged.
+   *
+   * Regardless of this flag, the adapter ALSO reads tool-call arguments on a 200 response whenever
+   * `content` is empty but a tool call is present (harmless for providers that never use tools).
+   */
+  readonly preferToolJson?: boolean;
 }
 
 // ── OpenAI Chat Completions wire shapes (minimal subset) ──────────────────────
 
 interface ChatMessage { readonly role: 'system' | 'user' | 'assistant'; readonly content: string }
 
+interface ToolCall {
+  readonly function?: { readonly name?: string; readonly arguments?: string };
+}
+
 interface ChatCompletionResponse {
-  readonly choices?: ReadonlyArray<{ readonly message?: { readonly content?: string | null } }>;
+  readonly choices?: ReadonlyArray<{
+    readonly message?: {
+      readonly content?: string | null;
+      readonly tool_calls?: ReadonlyArray<ToolCall>;
+    };
+  }>;
   readonly usage?: { readonly prompt_tokens?: number; readonly completion_tokens?: number };
   readonly error?: { readonly message?: string };
+}
+
+/**
+ * Extract the structured-output string from a chat choice: prefer plain `content`, else fall back
+ * to the first tool call's `arguments` (a JSON string). Returns undefined when neither is present.
+ * A tool-native model (e.g. Groq gpt-oss) sometimes puts its answer in a tool call, not content.
+ */
+function extractRaw(message: { content?: string | null; tool_calls?: ReadonlyArray<ToolCall> } | undefined): string | undefined {
+  if (message === undefined) return undefined;
+  if (typeof message.content === 'string' && message.content.length > 0) return message.content;
+  const args = message.tool_calls?.find((tc) => typeof tc.function?.arguments === 'string')?.function?.arguments;
+  return typeof args === 'string' && args.length > 0 ? args : undefined;
+}
+
+/**
+ * Recover a usable JSON string from a provider error body's `failed_generation` field. Groq's
+ * gpt-oss family returns HTTP 400 `tool_use_failed` even when the model produced correct JSON —
+ * the real completion is stashed in error.failed_generation. We accept it only when it parses as
+ * JSON (so a genuinely malformed generation still fails). Returns the string (NOT the parsed
+ * object) so the caller's StructuredOutputParser validates it exactly like any other raw output.
+ */
+function recoverFailedGeneration(errorBodyText: string): string | undefined {
+  let body: { error?: { failed_generation?: unknown } };
+  try { body = JSON.parse(errorBodyText) as typeof body; } catch { return undefined; }
+  const gen = body.error?.failed_generation;
+  if (typeof gen !== 'string' || gen.trim().length === 0) return undefined;
+  try { JSON.parse(gen); } catch { return undefined; } // must be valid JSON to be usable
+  return gen;
 }
 
 // ── Gateway ──────────────────────────────────────────────────────────────────
@@ -58,6 +115,7 @@ export class OpenAiCompatibleModelGateway implements ModelGateway {
   private readonly _timeoutMs: number;
   private readonly _headers: Readonly<Record<string, string>>;
   private readonly _extraBody: Readonly<Record<string, unknown>>;
+  private readonly _preferToolJson: boolean;
 
   readonly identity: ModelIdentity;
 
@@ -68,6 +126,7 @@ export class OpenAiCompatibleModelGateway implements ModelGateway {
     this._timeoutMs = config.timeoutMs ?? 120_000;
     this._headers = config.headers ?? {};
     this._extraBody = config.extraBody ?? {};
+    this._preferToolJson = config.preferToolJson ?? false;
     this.identity = { name: config.model, version: '0', endpoint: this._baseUrl };
   }
 
@@ -79,6 +138,8 @@ export class OpenAiCompatibleModelGateway implements ModelGateway {
       { role: 'user', content: request.taskPrompt },
     ];
 
+    const wantsJson = request.responseSchema !== undefined;
+
     const body: Record<string, unknown> = {
       model: this._model,
       messages,
@@ -87,7 +148,7 @@ export class OpenAiCompatibleModelGateway implements ModelGateway {
       stream: false,
       // Ask for a JSON object when the caller supplies a schema. Providers that don't support
       // response_format ignore it; the caller still validates the text deterministically.
-      ...(request.responseSchema !== undefined ? { response_format: { type: 'json_object' } } : {}),
+      ...(wantsJson ? { response_format: { type: 'json_object' } } : {}),
       ...this._extraBody,
     };
 
@@ -118,6 +179,18 @@ export class OpenAiCompatibleModelGateway implements ModelGateway {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
+      // Tool-native models (Groq gpt-oss) sometimes return HTTP 400 `tool_use_failed` while the
+      // model ACTUALLY produced the right JSON — the provider rejects the turn over a tool-call
+      // technicality and stashes the real completion in `error.failed_generation`. When we asked
+      // for JSON and that field holds a usable JSON string, recover it instead of failing: the
+      // model did its job (SE-010 — still untrusted, validated by the caller). Opt-in via
+      // preferToolJson so a plain provider's 400 stays a hard MODEL_UNAVAILABLE.
+      if (wantsJson && this._preferToolJson) {
+        const recovered = recoverFailedGeneration(text);
+        if (recovered !== undefined) {
+          return { raw: recovered, model: this.identity };
+        }
+      }
       // A 401/403 is still MODEL_UNAVAILABLE from the runtime's perspective (no usable model).
       throw new ModelError('MODEL_UNAVAILABLE', `Provider returned HTTP ${res.status}: ${text.slice(0, 200)}`);
     }
@@ -133,16 +206,17 @@ export class OpenAiCompatibleModelGateway implements ModelGateway {
       throw new ModelError('MODEL_UNAVAILABLE', `Provider error: ${parsed.error.message.slice(0, 200)}`);
     }
 
-    const content = parsed.choices?.[0]?.message?.content;
-    if (typeof content !== 'string' || content.length === 0) {
-      throw new ModelError('MODEL_OUTPUT_INVALID', 'Provider response missing choices[0].message.content');
+    // Prefer plain content; fall back to a tool call's JSON arguments for tool-native models.
+    const raw = extractRaw(parsed.choices?.[0]?.message);
+    if (raw === undefined) {
+      throw new ModelError('MODEL_OUTPUT_INVALID', 'Provider response missing choices[0].message.content (and no tool-call arguments)');
     }
 
     const promptTokens = parsed.usage?.prompt_tokens;
     const outputTokens = parsed.usage?.completion_tokens;
 
     return {
-      raw: content, // SE-010: untrusted, validated by the caller
+      raw, // SE-010: untrusted, validated by the caller
       model: this.identity, // MG-004
       ...(promptTokens !== undefined ? { promptTokens } : {}),
       ...(outputTokens !== undefined ? { outputTokens } : {}),

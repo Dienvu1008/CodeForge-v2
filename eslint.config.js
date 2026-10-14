@@ -30,7 +30,7 @@ export default tseslint.config(
     // Node ESM build/generator scripts (not shipped in runtime).
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly' },
+      globals: { process: 'readonly', console: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly' },
     },
   },
   {
