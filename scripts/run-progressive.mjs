@@ -48,6 +48,8 @@ function revision(root) { return { revisionId: 'rev', canonicalFormVersion: 'v1'
 function makeGateway() {
   const gw = new SwitchableModelGateway({ endpoint, initialModel: model, timeoutMs: 300000, options: { temperature: 0.2 } });
   if (provider === 'openai-compatible') gw.setProvider({ provider: 'openai-compatible', model, endpoint, ...(apiKey ? { apiKey } : {}), timeoutMs: 300000 });
+  // Gemini uses its own native endpoint by default; pass endpoint only if the caller set a custom one.
+  else if (provider === 'gemini') gw.setProvider({ provider: 'gemini', model, ...(flag('endpoint', undefined) ? { endpoint } : {}), ...(apiKey ? { apiKey } : {}), timeoutMs: 300000 });
   return gw;
 }
 

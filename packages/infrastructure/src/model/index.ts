@@ -5,6 +5,10 @@ export type { OllamaConfig } from './ollama-gateway.js';
 // Together, DeepSeek, Mistral, LM Studio, llama.cpp, vLLM, LiteLLM, …).
 export { OpenAiCompatibleModelGateway } from './openai-compatible-gateway.js';
 export type { OpenAiCompatibleConfig } from './openai-compatible-gateway.js';
+// Google Gemini (Generative Language API) adapter — native wire shape (x-goog-api-key +
+// contents/parts), since Gemini's OpenAI-compat endpoint 404s for AI Studio key types.
+export { GeminiModelGateway, DEFAULT_GEMINI_BASE_URL } from './gemini-gateway.js';
+export type { GeminiConfig } from './gemini-gateway.js';
 // Model management (list + pull) — separate from the gateway (admin, not generation).
 export { OllamaModelAdmin, OllamaModelAdminError } from './ollama-admin.js';
 export type { OllamaModelInfo, PullProgress, OllamaModelAdminConfig } from './ollama-admin.js';

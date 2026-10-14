@@ -8,9 +8,10 @@
 import type { ModelGateway } from '@codeforge/agent-core';
 import { OllamaModelGateway, type OllamaConfig } from './ollama-gateway.js';
 import { OpenAiCompatibleModelGateway, type OpenAiCompatibleConfig } from './openai-compatible-gateway.js';
+import { GeminiModelGateway, type GeminiConfig } from './gemini-gateway.js';
 
 /** Which adapter family a ProviderSpec targets. */
-export type ModelProvider = 'ollama' | 'openai-compatible';
+export type ModelProvider = 'ollama' | 'openai-compatible' | 'gemini';
 
 /**
  * A full description of what to run: which provider, which model, where, and (for cloud providers)
@@ -19,9 +20,12 @@ export type ModelProvider = 'ollama' | 'openai-compatible';
 export interface ProviderSpec {
   readonly provider: ModelProvider;
   readonly model: string;
-  /** Ollama base URL, or the OpenAI-compatible …/v1 base URL. Provider default used when omitted. */
+  /**
+   * Ollama base URL, the OpenAI-compatible …/v1 base URL, or the Gemini …/v1beta base URL.
+   * Provider default used when omitted (Gemini defaults to the public endpoint).
+   */
   readonly endpoint?: string;
-  /** API key for a cloud / OpenAI-compatible provider (ignored by Ollama). */
+  /** API key for a cloud provider (ignored by Ollama; required by gemini + openai-compatible cloud). */
   readonly apiKey?: string;
   readonly timeoutMs?: number;
   /** Ollama generation options (temperature, num_ctx, …). */
@@ -70,6 +74,18 @@ export function buildAdapter(spec: ProviderSpec): ModelGateway {
       preferToolJson,
     };
     return new OpenAiCompatibleModelGateway(cfg);
+  }
+  if (spec.provider === 'gemini') {
+    if (spec.apiKey === undefined || spec.apiKey.trim().length === 0) {
+      throw new Error('gemini provider requires an apiKey (AI Studio / Generative Language API key)');
+    }
+    const cfg: GeminiConfig = {
+      model: spec.model,
+      apiKey: spec.apiKey,
+      ...(spec.endpoint !== undefined && spec.endpoint.trim().length > 0 ? { baseUrl: spec.endpoint } : {}),
+      ...(spec.timeoutMs !== undefined ? { timeoutMs: spec.timeoutMs } : {}),
+    };
+    return new GeminiModelGateway(cfg);
   }
   throw new Error(`unknown model provider: ${String((spec as { provider: unknown }).provider)}`);
 }
