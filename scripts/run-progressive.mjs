@@ -17,11 +17,13 @@ import {
   runMigrations, createMigrationRegistry,
   NodeWorkspaceManager, NodeProcessSupervisor, NodeToolExecutor, WorkspaceProcessSupervisor,
   BenchmarkRunner, loadBenchmarkFile, inspectProject, SwitchableModelGateway,
+  SqliteFailureRepository, SqliteRecoveryActionRepository,
 } from '../packages/infrastructure/dist/index.js';
 import {
   SessionService, SessionOrchestrator, Planner, GraphCommitService, GraphService,
   ExecutionCoordinator, TaskRunService, TaskExecutor, CheckpointService, NoopProcessReconciler,
   ToolGateway, ContextBuilder, VerificationEngine, CompletionGate,
+  FailureAnalyzer, RecoveryEngine,
   buildToolPolicy, buildVerificationPolicy,
 } from '../packages/agent-core/dist/index.js';
 
@@ -76,18 +78,31 @@ function makeRealAgentRunner() {
         const checkSupervisor = new WorkspaceProcessSupervisor({ workspaceRoot });
         const verEngine = new VerificationEngine({ reports: new SqliteVerificationRepository(db), events, supervisor: checkSupervisor, revisionProvider: { capture: async () => revision(workspaceRoot) }, now: c.now, nextId: c.nextId });
         const tg = new ToolGateway({ calls: new SqliteToolCallRepository(db), approvals: new SqliteApprovalRepository(db), events, policy: buildToolPolicy('full'), now: c.now, nextId: c.nextId });
+        const taskRuns = new SqliteTaskRunRepository(db);
         const taskExec = new TaskExecutor({
           taskRunService: taskRunSvc, executionCoordinator: coordinator,
           contextBuilder: new ContextBuilder({ now: c.now, nextId: c.nextId }),
           gateway: gw, toolGateway: tg, executor: toolExec,
           verificationEngine: verEngine, completionGate: new CompletionGate({ reports: new SqliteVerificationRepository(db) }),
           verificationPolicy: buildVerificationPolicy(inspectProject(workspaceRoot)),
+          // P10.1: capture a fresh revision right before verify so the agent's own edits are the
+          // baseline, not "drift" (matches the product CLI wiring).
+          verificationRevisionProvider: { capture: async () => revision(workspaceRoot) },
           events, maxToolCalls: 12, now: c.now, nextId: c.nextId,
         });
+        // Recovery stack (P10.2): without this a task that fails verification is never retried —
+        // the benchmark would measure a one-shot model, not the model + the runtime's recovery
+        // loop (which re-prompts with the red check output). The product CLI always wires this;
+        // the capability curve must too, or it under-sells the runtime.
+        const failures = new SqliteFailureRepository(db);
+        const recoveryActions = new SqliteRecoveryActionRepository(db);
+        const failureAnalyzer = new FailureAnalyzer({ failures, events, now: c.now, nextId: c.nextId });
+        const recoveryEngine = new RecoveryEngine({ recoveryActions, events, sessionService: sessionSvc, now: c.now, nextId: c.nextId });
+        const verificationEvidenceProvider = { lastFailureOutput: () => checkSupervisor.lastFailureOutput() };
         const sid = 'S';
         await sessionSvc.create({ session: { sessionId: sid, workspaceId: 'W', workspaceRoot, goalId: 'G', graphVersion: 1, state: 'CREATED', createdAt: c.now(), updatedAt: c.now(), runtimeVersion: '0.12.0', schemaVersion: 1, budgetId: 'B', lockId: 'L', metadata: { hostname: 'h', processId: 1, ollamaEndpoint: endpoint, ollamaModels: { planner: model, critic: model, executor: model, analyzer: model } } }, hostname: 'h', processId: 1 });
         await graphs.commit({ graphId: 'GR', sessionId: sid, version: 1, nodes: [], edges: [], createdAt: 't', createdBy: 'planner', canonicalHash: 'seed', schemaVersion: 1, canonicalFormVersion: 'v1' }, { mutationId: 'M0', sessionId: sid, baseVersion: 0, operations: [], proposedBy: 'planner', reason: 'seed', provenance: { provenanceId: 'P', source: { kind: 'runtime', id: 'init' }, inputs: [], reason: 'seed', at: 't' }, createdAt: 't', status: 'COMMITTED' });
-        const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, now: c.now, nextId: c.nextId });
+        const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, taskRunRepository: taskRuns, failureAnalyzer, recoveryEngine, failureRepository: failures, recoveryActionRepository: recoveryActions, verificationEvidenceProvider, now: c.now, nextId: c.nextId });
         const goal = { goalId: 'G', version: 1, description: task.description, constraints: [], acceptanceCriteria: [{ criterionId: 'a', description: 'done', mandatory: true }], createdAt: c.now(), createdBy: 'user' };
         try { await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 }); }
         catch (err) { if (process.env.CF_DEBUG) console.error(`  [orch error] ${task.description.slice(0, 40)} :: ${err?.code ?? ''} ${err?.message ?? String(err)}`); }
