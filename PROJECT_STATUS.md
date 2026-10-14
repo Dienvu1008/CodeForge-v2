@@ -286,6 +286,15 @@ instead of giving up early. So PG-01's earlier red was partly a missing-tool gap
 weakness. (The 7B model still wanders mid-run — stray file, rewritten test — but `src/math.js`
 ends correct and the test passes, which is what verification judges.)
 
+**Honest counter-point — the win is not uniform across models.** A full local re-run of
+deepseek-r1:14b (same runtime: edit_file + P12.11 + recovery) scored **2/12** (PG-02 EASY + PG-11
+EXPERT), DOWN from its earlier 3/12 baseline, and it still FAILS PG-01. So edit_file clearly helped
+qwen2.5-coder on PG-01 but did not help deepseek-r1 there, and deepseek-r1's HARD structural passes
+(PG-06/PG-08 last time) did not reproduce. Two honest reads: (1) the benchmark is non-deterministic
+(temperature 0.2 on a reasoning model), so 2-vs-3 is partly run-to-run noise; (2) a new tool widens
+the action space, which can also let a model wander differently. Net: edit_file is a real lever for
+in-place fixes on at least one model, not a guaranteed score bump for every model — recorded as-is.
+
 **Measurement caveat (honest):** the end-to-end gpt-oss-120b re-run WITH `edit_file` could not be
 completed. The Groq free tier caps tokens-per-DAY at 200000 PER ORGANIZATION (not per key — a new
 key on the same org shares the exhausted budget), and the day's runs had used it up, so cases
@@ -294,3 +303,11 @@ same TPD; `qwen/qwen3.8-27b` is throttled to OTPM 1000 (output tokens/min), whic
 blows instantly; the llama chat models are no longer offered. So the `edit_file` win is evidenced
 on LOCAL models (the qwen2.5-coder PG-01 pass above), which need no quota; a fresh hosted curve
 needs a new daily quota or a paid tier.
+
+**Google Gemini — probed, needs a new adapter.** A Gemini (AI Studio) key was validated: it lists
+models and `generateContent` works via the NATIVE API (`x-goog-api-key` + `/v1beta/models/<id>:generateContent`,
+e.g. `gemini-flash-latest`). But our `OpenAiCompatibleModelGateway` (Bearer + `/chat/completions`)
+gets 404 against Gemini's OpenAI-compat endpoint for this key type, and the native wire shape
+(`contents`/`parts`) differs from OpenAI's. So driving the kernel with Gemini needs a dedicated
+`GeminiModelGateway` adapter (infrastructure only, same `ModelGateway` contract) — not just a config
+change. Not built yet.
