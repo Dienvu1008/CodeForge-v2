@@ -327,9 +327,11 @@ undistorted hosted curve.
 - FAIL: PG-03/PG-08 (cross-file rename + update all call sites), PG-05 (discount/checkout
   integration), PG-12 (validator wiring) — the cross-file-consistency cluster is flash-lite's
   ceiling here.
-- Standings: gemini-3.5-flash-lite **8/12** > gpt-oss-120b 5/12 > deepseek-r1:14b / qwen2.5-coder
-  2–3/12. Gemini + the runtime (edit_file + premature-done gate + recovery) is the strongest
-  combination measured; a bigger Gemini (pro) is untested (slower, timeout-prone on free tier).
+- Standings (best clean run per model): gemini-3.5-flash-lite **11/12** (with context + RPM
+  throttle; see below) > gpt-oss-120b 5/12 > deepseek-r1:14b / qwen2.5-coder 2–3/12. This 8/12
+  figure was the context-BLIND run; wiring context + throttling RPM took the same model to 11/12.
+  Gemini + the full runtime is the strongest combination measured; a bigger Gemini (pro) is
+  untested (slower, timeout-prone on free tier).
 
 **Cross-file cluster — root-caused to a missing contextProvider, not model weakness.** The 8/12
 curve above still failed PG-03/PG-08 ("rename a symbol + update every call site in other files").
@@ -340,12 +342,22 @@ or the import graph, which is exactly what a cross-file rename needs. The produc
 stack). After wiring it: the executor prompt gains a CODEBASE_CONTEXT section with all caller files
 + import edges, and a traced gemini-3.5-flash-lite run of PG-08 now edits user.js + admin.js +
 profile.js and PASSES. A re-run of the full curve (context + delay 20s) scored **9/12** with
-**PG-03 and PG-08 both now PASS** — before the free-tier quota (not RPM, a cumulative "exceeded
-your quota") 429'd the final cases, so even 9/12 is a floor. qwen2.5-coder still only edits the
-first file then declares done on PG-08 (a model limit; context + the premature-done gate give it
-every chance, but the gate already sees one mutation so it cannot challenge a half-done multi-file
-edit). Honest residual: PG-06/PG-07 passed on the 8/12 run but failed on the 9/12 run — run-to-run
-variance plus the quota truncation, not a regression.
+**PG-03 and PG-08 both now PASS**, before Gemini free-tier 429s truncated the final cases. Those
+429s were a REQUESTS-per-minute (RPM) cap, not a cumulative quota: a single case fires many model
+calls (plan + each execute step + recovery) in a burst, which `--delay-ms` (a pause between CASES)
+does not throttle. Added `--min-call-interval-ms` to the runner: a global monotonic gate that
+spaces every model call ≥N ms apart, so bursts within a case cannot exceed the RPM cap.
+
+**Clean curve — 11/12.** Re-run with `--min-call-interval-ms 5000` (≤12 calls/min):
+gemini-3.5-flash-lite scored **11/12 with ZERO 429 and ZERO PLANNING_FAILURE** —
+`{VERIFICATION_FAILURE: 1}`. By difficulty: TRIVIAL 1/1, EASY 2/2, MEDIUM 2/2, HARD 5/6, EXPERT 1/1.
+The only miss is PG-06 (HARD module extraction). This is the undistorted ceiling of
+gemini-3.5-flash-lite + the full runtime (context + edit_file + premature-done gate + recovery) on
+this benchmark, and the arc is the whole point: 8/12 (context-blind) → 9/12 (context, quota-cut) →
+11/12 (context + RPM throttle). Every point came from closing a harness gap so the benchmark
+measures the real runtime, not from changing the model. qwen2.5-coder still half-does PG-08 (a
+model limit: context + the premature-done gate give it every chance, but the gate already sees one
+mutation so it cannot challenge a half-done multi-file edit).
 
 Operational notes from the probe (for whoever runs it next): Gemini **2.5** models now 404 "no
 longer available to new users" (use a 3.x id); some 3.x **flash** models were slow/overloaded

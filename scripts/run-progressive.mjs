@@ -39,7 +39,33 @@ const apiKey = process.env.CODEFORGE_API_KEY;
 // later cases gets HTTP 429, which the runtime reports as PLAN_FAILED → PLANNING_FAILURE,
 // masking the model's real capability). Default 0 (no delay) for local Ollama.
 const delayMs = Number(flag('delay-ms', '0')) || 0;
+// Optional MINIMUM interval between any two model calls (ms). Unlike --delay-ms (which pauses
+// between CASES), this spaces out the many calls WITHIN a case (plan + each execute step +
+// recovery), which is what actually trips a requests-per-minute (RPM) cap on a hosted free tier
+// (e.g. Gemini). A global monotonic gate so bursts can never exceed 60000/interval calls/min.
+const minCallIntervalMs = Number(flag('min-call-interval-ms', '0')) || 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Serialize model calls so each starts at least `minCallIntervalMs` after the previous one began.
+let _rpmChain = Promise.resolve();
+let _lastCallAt = 0;
+function rpmThrottle(gw) {
+  if (minCallIntervalMs <= 0) return gw;
+  return {
+    get identity() { return gw.identity; },
+    generate(request) {
+      const run = _rpmChain.then(async () => {
+        const wait = _lastCallAt + minCallIntervalMs - Date.now();
+        if (wait > 0) await sleep(wait);
+        _lastCallAt = Date.now();
+        return gw.generate(request);
+      });
+      // Keep the chain alive regardless of this call's success (so one failure doesn't stall it).
+      _rpmChain = run.then(() => undefined, () => undefined);
+      return run;
+    },
+  };
+}
 
 let counter = 0;
 function counters() { let t = 0; let n = 0; return { now: () => '2026-01-01T00:00:' + String(t++ % 60).padStart(2, '0') + '.000Z', nextId: () => 'ID-' + String(n++).padStart(5, '0') }; }
@@ -62,7 +88,7 @@ function makeRealAgentRunner() {
       try {
         runMigrations(db, createMigrationRegistry(), { now: () => '2026-01-01T00:00:00.000Z' });
         const c = counters();
-        const gw = makeGateway();
+        const gw = rpmThrottle(makeGateway());
         const events = new SqliteEventLog(db);
         const graphs = new SqliteTaskGraphRepository(db);
         const hasher = new Blake3GraphHasher();
