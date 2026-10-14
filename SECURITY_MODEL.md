@@ -310,7 +310,7 @@ ProcessSupervisor
 |---|---|---|
 | `READ_ONLY` | read file, list dir, git status | Auto-approve |
 | `LOW_RISK` | write scratch file, git add | Auto-approve |
-| `MODIFY_WORKSPACE` | write source file, git commit | Policy |
+| `MODIFY_WORKSPACE` | write/edit source file, git commit | Policy |
 | `NETWORK` | HTTP request | Policy |
 | `PACKAGE_INSTALL` | npm install, pip install | Approval |
 | `SYSTEM` | chmod, chown | Approval |

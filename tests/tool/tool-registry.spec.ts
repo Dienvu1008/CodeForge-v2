@@ -101,6 +101,14 @@ describe('createDefaultRegistry — built-in tools', () => {
     expect(def.idempotencyStrategy).toBe('content-hash');
   });
 
+  it('edit_file is MODIFY_WORKSPACE with path/oldString/newString args + content-hash idempotency', () => {
+    const def = createDefaultRegistry().getOrThrow('edit_file');
+    expect(def.riskClass).toBe('MODIFY_WORKSPACE');
+    expect(def.idempotencyStrategy).toBe('content-hash');
+    expect(def.argsSchema.oldString).toMatchObject({ type: 'string', required: true });
+    expect(def.argsSchema.newString).toMatchObject({ type: 'string', required: true });
+  });
+
   it('run_command is SYSTEM risk class', () => {
     const def = createDefaultRegistry().getOrThrow('run_command');
     expect(def.riskClass).toBe('SYSTEM');

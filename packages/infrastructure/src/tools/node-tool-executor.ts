@@ -22,7 +22,7 @@ import { ShellExecutor }               from './shell-executor.js';
 // ── Tool name routing sets ────────────────────────────────────────────────────
 
 const FILESYSTEM_TOOLS = new Set([
-  'read_file', 'write_file', 'list_dir', 'delete_file', 'move_file',
+  'read_file', 'write_file', 'edit_file', 'list_dir', 'delete_file', 'move_file',
 ]);
 
 const GIT_TOOLS = new Set([

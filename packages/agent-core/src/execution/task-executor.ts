@@ -74,7 +74,8 @@ You MUST respond with a single JSON object — no markdown, no explanation.
 
 Available tools:
   read_file     {"path": "<relative-path>"}                   — read a file's contents
-  write_file    {"path": "<relative-path>", "content": "..."}  — create/overwrite a WHOLE file (read it first to preserve unrelated lines)
+  edit_file     {"path": "<relative-path>", "oldString": "...", "newString": "..."} — replace ONE exact occurrence of oldString with newString in an existing file (PREFER THIS for small in-place fixes)
+  write_file    {"path": "<relative-path>", "content": "..."}  — create a new file, or fully overwrite one (read it first to preserve unrelated lines)
   list_dir      {"path": "<relative-path>"}                   — list directory contents
   delete_file   {"path": "<relative-path>"}                   — delete a file
   move_file     {"path": "<from>", "to": "<to>"}               — rename/move a file
@@ -96,9 +97,12 @@ you need → write_file → (optionally) run a check → done.
 
 RULES (follow strictly — these are enforced; wasted steps make the task FAIL):
   1. ACT, DON'T WANDER: if the task is to create or edit a file, your FIRST or SECOND action
-     MUST be write_file. Do NOT list or read more than you need. For a "create a new script"
-     task on an empty/new workspace, call write_file on the very first step — there is nothing
-     to explore.
+     MUST write code — edit_file for a small in-place change to an EXISTING file (fix a line,
+     rename a symbol, add a function), or write_file to create a new file or fully rewrite one.
+     Do NOT list or read more than you need. For a "create a new script" task on an empty/new
+     workspace, call write_file on the very first step — there is nothing to explore. For a
+     one-line bug fix in an existing file, read it once then edit_file — do NOT re-emit the
+     whole file and do NOT stop after reading.
   2. NEVER REPEAT A READ-ONLY CALL: list_dir / read_file / git_status / git_log with the same
      (or an already-seen) argument is FORBIDDEN — the result is already in PREVIOUS STEPS above.
      Repeating it wastes a step and moves you toward failure. If you already listed a directory,
@@ -131,7 +135,7 @@ const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'g
  * of these produced no artifact — the model "read then declared done" (a common weak/reasoning
  * model failure). The executor uses this to challenge a premature `done` ONCE (see the loop).
  */
-const MUTATING_TOOLS: ReadonlySet<string> = new Set(['write_file', 'delete_file', 'move_file']);
+const MUTATING_TOOLS: ReadonlySet<string> = new Set(['write_file', 'edit_file', 'delete_file', 'move_file']);
 
 /**
  * ContextItem kinds that represent CODEBASE context (files/symbols/memory/RAG), as opposed to
@@ -1210,6 +1214,7 @@ export class TaskExecutor {
       case 'git_log':
         return 'READ_ONLY';
       case 'write_file':
+      case 'edit_file':
       case 'git_add':
       case 'git_commit':
         return 'MODIFY_WORKSPACE';

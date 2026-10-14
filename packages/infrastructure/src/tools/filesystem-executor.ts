@@ -1,7 +1,7 @@
 // FilesystemExecutor — P3-FS1. Real filesystem tool execution.
 //
 // Implements ToolExecutor for the standard filesystem tools:
-//   read_file, write_file, list_dir, delete_file.
+//   read_file, write_file, edit_file, list_dir, delete_file.
 //
 // All paths go through WorkspaceManager (WS-003/004/005).
 // Write/delete operations return ChangeRecords for WS-010 tracking.
@@ -35,6 +35,7 @@ export class FilesystemExecutor implements ToolExecutor {
       switch (call.toolName) {
         case 'read_file':   return await this.readFile(args, call);
         case 'write_file':  return await this.writeFile(args, call);
+        case 'edit_file':   return await this.editFile(args, call);
         case 'list_dir':    return await this.listDir(args);
         case 'delete_file': return await this.deleteFile(args, call);
         default:
@@ -93,6 +94,62 @@ export class FilesystemExecutor implements ToolExecutor {
     return {
       exitCode: 0,
       stdout:   `wrote ${content.length} chars to ${relpath} (changeId: ${change.changeId})`,
+      stderr:   '',
+      timedOut: false,
+    };
+  }
+
+  /**
+   * edit_file — an in-place find/replace on an EXISTING file. Replaces exactly ONE literal
+   * occurrence of `oldString` with `newString`. This is the surgical alternative to write_file
+   * (which overwrites the whole file): a model fixing one line does not have to reproduce the
+   * entire file, which is where reasoning models tended to give up and declare "done" instead.
+   *
+   * Safety by construction:
+   *   - the file must exist (no accidental create — use write_file for new files);
+   *   - `oldString` must occur EXACTLY once (0 → NOT_FOUND, >1 → AMBIGUOUS), so an edit can never
+   *     silently change the wrong occurrence. The model is told to add surrounding context to
+   *     disambiguate, mirroring how a human review would pin the hunk;
+   *   - the match is a literal substring (no regex), so no injection surprises (SE-003 spirit);
+   *   - the write still goes through WorkspaceManager.writeFile, so WS-003/004/005 (path/symlink
+   *     boundary) and ChangeRecord tracking (WS-008) apply exactly as for write_file.
+   */
+  private async editFile(args: Record<string, unknown>, call: ToolCall): Promise<ExecutorResult> {
+    const relpath   = String(args['path'] ?? '');
+    const oldString = typeof args['oldString'] === 'string' ? args['oldString'] : undefined;
+    const newString = typeof args['newString'] === 'string' ? args['newString'] : undefined;
+
+    if (relpath.length === 0 || oldString === undefined || newString === undefined) {
+      return { exitCode: 1, stdout: '', stderr: 'edit_file requires "path", "oldString", and "newString" (strings)', timedOut: false };
+    }
+    if (oldString.length === 0) {
+      return { exitCode: 1, stdout: '', stderr: 'edit_file "oldString" must be non-empty (use write_file to create or fully replace a file)', timedOut: false };
+    }
+    if (oldString === newString) {
+      return { exitCode: 1, stdout: '', stderr: 'edit_file "oldString" and "newString" are identical — no change', timedOut: false };
+    }
+
+    const bytes   = await this.deps.workspace.readFileBytes(relpath);
+    const content = bytes.toString('utf8');
+
+    // Count literal occurrences — must be exactly one (unambiguous edit).
+    let count = 0;
+    let idx = content.indexOf(oldString);
+    const firstIdx = idx;
+    while (idx !== -1) { count++; idx = content.indexOf(oldString, idx + oldString.length); }
+
+    if (count === 0) {
+      return { exitCode: 1, stdout: '', stderr: `edit_file: "oldString" not found in ${relpath}. Read the file and copy the exact text (including whitespace) you want to replace.`, timedOut: false };
+    }
+    if (count > 1) {
+      return { exitCode: 1, stdout: '', stderr: `edit_file: "oldString" occurs ${count} times in ${relpath} — ambiguous. Include more surrounding context so it matches exactly once.`, timedOut: false };
+    }
+
+    const updated = content.slice(0, firstIdx) + newString + content.slice(firstIdx + oldString.length);
+    const change  = await this.deps.workspace.writeFile(relpath, updated, call.sessionId ?? 'unknown');
+    return {
+      exitCode: 0,
+      stdout:   `edited ${relpath}: replaced 1 occurrence (${oldString.length} → ${newString.length} chars) (changeId: ${change.changeId})`,
       stderr:   '',
       timedOut: false,
     };

@@ -188,6 +188,43 @@ describe('FilesystemExecutor', () => {
     const result = await exec.execute(fakeToolCall('unknown_tool', {}));
     expect(result.exitCode).toBe(1);
   });
+
+  // ── edit_file — in-place find/replace ────────────────────────────────────
+
+  it('edit_file replaces a unique occurrence and persists the change', async () => {
+    const call = { ...fakeToolCall('edit_file', { path: 'hello.ts', oldString: 'const x = 1', newString: 'const x = 42' }), sessionId: 'S' };
+    const result = await exec.execute(call);
+    expect(result.exitCode).toBe(0);
+    expect(await wm.readFile('hello.ts')).toBe('export const x = 42;\n');
+  });
+
+  it('edit_file returns exitCode=1 when oldString is not found', async () => {
+    const result = await exec.execute(fakeToolCall('edit_file', { path: 'hello.ts', oldString: 'const y = 9', newString: 'z' }));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/not found/i);
+    // File unchanged.
+    expect(await wm.readFile('hello.ts')).toBe('export const x = 1;\n');
+  });
+
+  it('edit_file returns exitCode=1 when oldString is ambiguous (occurs >1 time)', async () => {
+    await wm.writeFile('dup.ts', 'a\na\n', 'S');
+    const result = await exec.execute(fakeToolCall('edit_file', { path: 'dup.ts', oldString: 'a', newString: 'b' }));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/ambiguous|occurs 2/i);
+    expect(await wm.readFile('dup.ts')).toBe('a\na\n'); // unchanged
+  });
+
+  it('edit_file rejects a missing oldString/newString argument', async () => {
+    const result = await exec.execute(fakeToolCall('edit_file', { path: 'hello.ts', oldString: 'x' }));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/requires/i);
+  });
+
+  it('edit_file rejects when oldString equals newString (no-op)', async () => {
+    const result = await exec.execute(fakeToolCall('edit_file', { path: 'hello.ts', oldString: 'const x = 1', newString: 'const x = 1' }));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/identical/i);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

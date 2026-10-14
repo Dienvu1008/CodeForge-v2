@@ -326,6 +326,19 @@ describe('TaskExecutor — unit (SQLite :memory: + FakeModel)', () => {
     expect(result.toolCallCount).toBe(1);
   });
 
+  it('counts edit_file as a mutation → done accepted without a challenge', async () => {
+    const { deps, task } = await makeTestDeps();
+    model.setSequence([
+      JSON.stringify({ type: 'tool_call', toolName: 'edit_file', arguments: { path: 'src/x.js', oldString: 'a', newString: 'b' } }),
+      JSON.stringify({ type: 'done', summary: 'edited it' }),
+    ]);
+    const executor = new TaskExecutor({ ...deps, executor: fakeExec });
+    const result = await executor.execute(makeReq(task));
+    expect(model.callCount).toBe(2); // edit_file + done, no challenge round
+    expect(result.finalState).toBe('SUCCEEDED');
+    expect(result.toolCallCount).toBe(1);
+  });
+
   // ── Tier B2: stated assumptions are injected into the task prompt ──────────
 
   it('injects a STATED_ASSUMPTIONS section when goalAssumptions are present', async () => {

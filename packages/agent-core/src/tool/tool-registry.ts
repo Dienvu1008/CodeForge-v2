@@ -140,6 +140,18 @@ export const FILESYSTEM_TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     idempotencyStrategy:  'content-hash',
   },
   {
+    toolName:             'edit_file',
+    version:              '1.0',
+    description:          'Replace exactly one literal occurrence of oldString with newString in an existing file.',
+    riskClass:            'MODIFY_WORKSPACE',
+    argsSchema:           {
+      path:      { type: 'string', required: true },
+      oldString: { type: 'string', required: true },
+      newString: { type: 'string', required: true },
+    },
+    idempotencyStrategy:  'content-hash',
+  },
+  {
     toolName:             'list_dir',
     version:              '1.0',
     description:          'List files and directories at a workspace-relative path.',
