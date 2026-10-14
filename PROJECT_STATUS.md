@@ -245,6 +245,12 @@ Driven by running the real runtime against live goals:
   the orchestrator WITHOUT the recovery stack, so a failed verification was never retried (it
   measured a one-shot model). Now `FailureAnalyzer` + `RecoveryEngine` + the failing-check evidence
   provider are wired, matching the product CLI. (Measurement harness only; not a runtime change.)
+- **`edit_file` tool (P12.12, infra + core wiring)** — a surgical in-place find/replace (one literal
+  occurrence; 0 → not found, >1 → ambiguous), the alternative to whole-file `write_file`. Models
+  (weak and strong) read-then-gave-up on small in-place fixes partly because the only edit tool
+  rewrote the entire file. Added through existing seams (ToolRegistry MODIFY_WORKSPACE +
+  content-hash, FilesystemExecutor, MUTATING_TOOLS, executor prompt "prefer edit_file"); no
+  contract change (ToolCall.toolName is already an open string, DC/§12.1).
 
 ## First hosted-model capability measurement (honest)
 
@@ -269,8 +275,18 @@ What gpt-oss-120b passes vs. fails is a clean pattern: it solves **add/create** 
 PG-03/PG-08 (rename + update call sites), PG-10. Local Ollama baselines for contrast:
 deepseek-r1:14b 3/12, qwen2.5-coder 2/12, deepseek-coder:6.7b 1/12, llama3:8b 1/12.
 
-**PG-01 honesty:** the P12.11 gate challenges the model's premature `done`, but gpt-oss-120b (and
-qwen) STILL re-declare done without writing on this task. The gate forces another attempt; it does
-not force the model to emit the edit. So PG-01 remains red — a genuine model-behavior limit on
-small in-place edits, not a harness or wiring bug. The runtime did its part (challenge + retry +
-recovery, session intact); the model did not take the edit.
+**PG-01 — root-caused and fixed for a local model (P12.12).** The P12.11 gate challenges the
+premature `done` but cannot force the model to write; with only `write_file` (whole-file
+overwrite) both qwen and gpt-oss kept reading-then-giving-up. Adding `edit_file` (surgical
+find/replace) changed the behavior: in a traced local run, qwen2.5-coder — which had NEVER fixed
+PG-01 — now emits the correct `edit_file` (`for (let i = 1; i < n; ...)` → `i <= n`), and
+`node test.js` goes green. So PG-01 is solvable by a weak local model once the right tool exists;
+the earlier red was partly a missing-tool gap, not pure model weakness. (The 7B model still wanders
+afterward — creates a stray file, rewrites test.js — but `src/math.js` ends correct and the test
+passes, which is what verification judges.)
+
+**Measurement caveat (honest):** the end-to-end gpt-oss-120b re-run WITH `edit_file` could not be
+completed — the Groq free tier's daily token cap (TPD 200000) was exhausted by the day's runs, so
+later cases returned 429 (a quota limit, not a regression). The `edit_file` effect is therefore
+evidenced by the traced local qwen run above, not yet by a fresh full hosted-model curve. A clean
+re-measure needs a fresh daily quota (or a paid tier).
