@@ -45,7 +45,8 @@ next investment.
 | Verification engine + CompletionGate | DONE | `verification/`, TI-005; checks via ProcessSupervisor. |
 | ArtifactStore (verification artifacts) | PARTIAL | In-memory stub; disk store never built (comment in `verification-engine.ts`). |
 | Recovery: RETRY / FIX / ESCALATE / ABORT | DONE | `recovery/`, RC-*; outcomes finalized truthfully (P11.6+). |
-| Recovery: REPLAN / ROLLBACK | DEFERRED | `recovery-engine.ts` returns PENDING / throws `*_NOT_IMPLEMENTED` ("Phase 5.5"). 2 of 8 actions are stubs. |
+| Recovery: REPLAN | DONE | Lightweight REPLAN: `RecoveryEngine.shouldReplan` + `SessionOrchestrator.performReplan` commits a SUPERSEDE_TASK GraphMutation (RC-005/GI-007/GI-009). |
+| Recovery: ROLLBACK | DEFERRED | `recovery-engine.ts` returns PENDING; needs a workspace-revert port. 1 of 8 actions still a stub. |
 | Scheduler (deterministic, budget-aware) | DONE | `scheduler/`, SC-*; parallel admission with defer reasons. |
 | Budget engine | DONE | `budget/`, BU-*. |
 | Checkpoint + crash recovery | DONE | `checkpoint/`, `recovery/` (crash), CP-*. |
@@ -163,7 +164,14 @@ next investment.
    are computed and observable but not applied. (Highest-value integration debt.)
 2. **Task correctness is unmeasured.** No benchmark has ever run end-to-end; we cannot currently
    state a success rate for real goals. (The reason the eval system is being built now.)
-3. **REPLAN / ROLLBACK recovery are stubs.** The recovery vocabulary is only ~75% real.
+3. **ROLLBACK recovery is still a stub; REPLAN is now real.** REPLAN was implemented as a
+   lightweight re-plan: on a REPLAN decision the orchestrator commits a SUPERSEDE_TASK
+   GraphMutation that replaces the failing task with a `replanner` successor carrying the failure
+   evidence (RC-005 a new version, GI-007 old task → SUPERSEDED, GI-009 via GraphCommitService).
+   So 7 of 8 recovery actions are real; only ROLLBACK (workspace revert to a checkpoint revision)
+   remains deferred — it needs a workspace-revert port. Residual on REPLAN: it mints a new taskId
+   each time, so the per-task no-progress detector resets; `maxIterations` is the backstop against
+   a replan loop (a follow-up could carry failure history across supersessions).
 4. **Model routing is fully wired; its real-world effect is gated by how many models you register.**
    The runtime runs Ollama OR any OpenAI-compatible provider; a `--model-routes` file routes each
    PURPOSE (plan/execute/architect/…) to a different provider/model (shunt-style cost/quality split);
