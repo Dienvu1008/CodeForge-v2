@@ -147,6 +147,14 @@ function makeRealAgentRunner() {
 }
 
 const benchmark = loadBenchmarkFile('benchmarks/codeforge-progressive/benchmark.json');
+// Optional case filter: --only PG-12  (or comma-separated: --only PG-05,PG-12). Lets a focused
+// re-measure of one or a few cases run without burning the whole curve's RPM budget.
+const onlyArg = flag('only', undefined);
+if (onlyArg) {
+  const want = new Set(onlyArg.split(',').map((s) => s.trim().toUpperCase()));
+  benchmark.tasks = benchmark.tasks.filter((t) => want.has(String(t.id).toUpperCase()));
+  if (benchmark.tasks.length === 0) { console.error(`--only '${onlyArg}' matched no task id`); process.exit(1); }
+}
 console.log(`\nCapability curve: ${provider} '${model}' @ ${endpoint}  (${benchmark.tasks.length} tasks)\n`);
 const runner = new BenchmarkRunner({
   agent: makeRealAgentRunner(),
@@ -164,6 +172,15 @@ for (const r of run.results) {
   const mark = r.verdict === 'SUCCESS' ? 'PASS' : r.verdict === 'FAILURE' ? 'FAIL' : 'INVALID';
   const failed = r.checks.filter((c) => !c.passed).map((c) => c.description);
   console.log(`  ${r.taskId.padEnd(7)} ${String(t?.difficulty).padEnd(11)} ${mark.padEnd(9)} ${failed.length ? failed[0] : ''}`);
+  // CF_DEBUG: dump every failing check's evidence detail (e.g. the `node test.js` AssertionError),
+  // so a FAIL can be read as "which assertion / which file" rather than just a check name.
+  if (process.env.CF_DEBUG) {
+    for (const c of r.checks) {
+      if (c.passed) continue;
+      console.log(`    ↳ FAILED CHECK: ${c.description}`);
+      if (c.detail) console.log('      ' + String(c.detail).replace(/\n/g, '\n      ').slice(0, 2000));
+    }
+  }
 }
 // Per-difficulty rollup.
 const diffs = ['TRIVIAL', 'EASY', 'MEDIUM', 'HARD', 'EXPERT'];

@@ -413,6 +413,22 @@ set ⇒ inert; verification + recovery stay the real authority). `TaskExecutor` 
 contract, or infrastructure change. 4 new unit tests (challenge-then-complete, all-written→no
 challenge, at-most-once termination, inert when no path named); WSL suite green.
 
+**P12.13 re-measure of PG-12 (focused, `--only PG-12`).** Measured after the guard shipped:
+- gemini-3.5-flash-lite: 1 run FAIL on the `node test.js` *behavioral* check (not `file_exists`);
+  a 2nd run was a Gemini HTTP-429 quota PLANNING_FAILURE (free-tier exhausted — infra, not runtime).
+- Groq `openai/gpt-oss-20b` (new key, `--min-call-interval-ms 3000`): **3/3 runs FAIL, every one on
+  the `node test.js` behavioral check — and `src/validate.js` was CREATED in every run** (the
+  `file_exists` check passed each time). The dumped assertion is the smoking gun:
+  `signup('bad')` returned `{ ok: true, email: 'bad' }` where `{ ok: false }` was expected — i.e.
+  the model wrote the validator module but never WIRED it into `signup`.
+
+So the guard did exactly its job: it moved PG-12's failure OFF the "`validate.js` missing"
+multi-file-half-done shape (which the runtime should and now does catch) and ONTO a pure model
+wiring/logic error — the model produces both files but mis-implements the behaviour. That residual
+is model capability, not a runtime gap: a deterministic guard can force every named file to exist,
+but it cannot make the model write *correct* glue between them. (Harness-only aids added for this
+measurement: a `--only <id[,id]>` case filter and a CF_DEBUG failing-check `detail` dump.)
+
 **PG-06 — not a runtime gap; model-dependent + non-deterministic.** Traced PG-06 (extract a pure
 `sum(xs)` module + rebuild `sumToN` on it) on both models:
 - gemini-3.5-flash-lite PASSED it in isolation: it wrote `sum-core.js` (`xs.reduce`), then
