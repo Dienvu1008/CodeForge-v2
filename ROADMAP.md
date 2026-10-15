@@ -141,7 +141,7 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
 - Model registry via `/api/tags` discovery + model health/performance history.
 - Capability dependency graph (`build_android` → android-sdk + flutter) instead of flat booleans.
 - Disk-backed ArtifactStore.
-- External benchmark adapters (SWE-bench / SWE-bench Pro / TerminalBench / SWT-bench / Commit0).
+- External benchmark adapters: **SWE-bench adapter built** (record → BenchmarkTask + setup; dataset loader; git-based workspace setup; 28 tests — see `benchmarks/swe-bench/README.md`); a live run needs a SWE-bench-aware AgentRunner + real dataset + Python/Docker env. SWE-bench Pro / TerminalBench / SWT-bench / Commit0 still to come.
 - Controlled self-improvement loop: benchmark failure analysis → self-model → improvement proposal
   → new version → benchmark → accept/reject (data + interfaces first; no autonomous self-modification).
 

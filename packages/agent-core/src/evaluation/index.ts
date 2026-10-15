@@ -26,3 +26,14 @@ export {
   compareToBaseline,
   renderReport,
 } from './regression.js';
+export {
+  validateSweBenchInstance,
+  sweBenchInstanceToTask,
+  sweBenchInstancesToTasks,
+  sweBenchTestSelection,
+  sweBenchTestCommand,
+  type SweBenchInstance,
+  type SweBenchSetup,
+  type SweBenchTaskWithSetup,
+  type SweBenchAdapterOptions,
+} from './swe-bench-adapter.js';

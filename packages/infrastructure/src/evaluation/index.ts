@@ -16,3 +16,14 @@ export {
 } from './benchmark-runner.js';
 export { BaselineStore, type BaselineStoreDeps } from './baseline-store.js';
 export { loadBenchmarkFile, DatasetLoadError } from './dataset-loader.js';
+// SWE-bench external-benchmark adapter (I/O side): dataset loading + git-based workspace setup.
+export {
+  loadSweBenchDataset,
+  parseSweBenchRecords,
+  SweBenchDatasetError,
+} from './swe-bench-dataset-loader.js';
+export {
+  SweBenchWorkspaceSetup,
+  type SweBenchWorkspaceSetupDeps,
+  type SweBenchSetupResult,
+} from './swe-bench-workspace-setup.js';
