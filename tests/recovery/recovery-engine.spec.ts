@@ -103,9 +103,11 @@ describe('P5-RE1 — RecoveryEngine', () => {
     expect(r.recoveryAction.outcome).toBe('PENDING');
   });
 
-  it('ROLLBACK → shouldRetry=false, outcome=PENDING (deferred — caller implements the revert)', async () => {
+  it('ROLLBACK → shouldRollback=true, shouldRetry=false, outcome=PENDING (caller reverts the workspace)', async () => {
     const r = await engine.execute(await seedInput('ROLLBACK'));
+    expect(r.shouldRollback).toBe(true);
     expect(r.shouldRetry).toBe(false);
+    expect(r.shouldReplan).toBe(false);
     expect(r.recoveryAction.outcome).toBe('PENDING');
   });
 

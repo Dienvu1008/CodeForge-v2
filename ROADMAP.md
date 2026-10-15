@@ -130,7 +130,7 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      unchanged; never mutates the Goal (MI-004). (Before/after benchmark still pending.)
    - **Tier C (optional):** a stop-and-ask path for the hardest cases (reuse AWAITING_HUMAN + the
      Goals chat), if assume-and-state proves insufficient for some goals.
-3. **Finish the recovery vocabulary** — REPLAN is now real (lightweight: a SUPERSEDE_TASK GraphMutation replacing the failing task with an evidence-carrying `replanner` successor; RC-005/GI-007/GI-009). ROLLBACK is the last stub — it needs a workspace-revert port (revert to a checkpoint revision).
+3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.
 

@@ -25,7 +25,8 @@ function recovery(id: string, failureId: string, action: RecoveryKind, outcome: 
   };
 }
 
-// Build a SelfModel where, for SYNTAX, REPLAN has a better track record than FIX.
+// Build a SelfModel where, for SYNTAX, ROLLBACK has a better track record than FIX.
+// (SYNTAX's allowed-set is FIX→ROLLBACK→ESCALATE as of policy v2.)
 function syntaxModel() {
   const failures = [
     failure('f1', 'SYNTAX', 'a'), failure('f2', 'SYNTAX', 'b'), failure('f3', 'SYNTAX', 'c'),
@@ -36,9 +37,9 @@ function syntaxModel() {
     recovery('r1', 'f1', 'FIX', 'SUCCEEDED'),
     recovery('r2', 'f2', 'FIX', 'FAILED'),
     recovery('r3', 'f3', 'FIX', 'FAILED'),
-    // REPLAN: 2/2 succeeded
-    recovery('r4', 'f4', 'REPLAN', 'SUCCEEDED'),
-    recovery('r5', 'f5', 'REPLAN', 'SUCCEEDED'),
+    // ROLLBACK: 2/2 succeeded
+    recovery('r4', 'f4', 'ROLLBACK', 'SUCCEEDED'),
+    recovery('r5', 'f5', 'ROLLBACK', 'SUCCEEDED'),
   ];
   return new SelfModelBuilder().build({ events: [], failures, recoveryActions: recoveries });
 }
@@ -48,8 +49,8 @@ describe('RecoveryAdvisor', () => {
     const advisor = new RecoveryAdvisor();
     const advice = advisor.advise(syntaxModel(), 'SYNTAX');
     expect(advice).not.toBeNull();
-    // REPLAN (100%) ranked before FIX (33%).
-    expect(advice!.order).toEqual(['REPLAN', 'FIX']);
+    // ROLLBACK (100%) ranked before FIX (33%).
+    expect(advice!.order).toEqual(['ROLLBACK', 'FIX']);
     expect(advice!.failureClass).toBe('SYNTAX');
   });
 
@@ -72,19 +73,19 @@ describe('RecoveryAdvisor', () => {
 });
 
 describe('full pipeline — SelfModel → advisor → gate → decide', () => {
-  it('reorders the SYNTAX try-order to prefer REPLAN, within the allowed-set', () => {
+  it('reorders the SYNTAX try-order to prefer ROLLBACK, within the allowed-set', () => {
     const advisor = new RecoveryAdvisor();
     const gate = new AdviceGate();
 
     const raw = advisor.advise(syntaxModel(), 'SYNTAX');
     const safe = gate.sanitize(raw!, { allowedActions: DEFAULT_RECOVERY_POLICY.SYNTAX.actions });
-    // SYNTAX default is ['FIX','REPLAN','ESCALATE']; advice (['REPLAN','FIX']) is a real reorder.
+    // SYNTAX default is ['FIX','ROLLBACK','ESCALATE']; advice (['ROLLBACK','FIX']) is a real reorder.
     expect(safe).not.toBeNull();
     if (safe === null || safe.kind !== 'recovery_order') throw new Error('expected recovery_order');
 
-    // First attempt now tries REPLAN (advised) instead of the default FIX.
+    // First attempt now tries ROLLBACK (advised) instead of the default FIX.
     const first = decide({ failureClass: 'SYNTAX', attemptsSoFar: 0, advice: safe });
-    expect(first.action).toBe('REPLAN');
+    expect(first.action).toBe('ROLLBACK');
     expect(first.reason).toContain('learning-advised');
 
     // The set over all attempts is still exactly the policy's set — nothing added/dropped.
@@ -95,9 +96,9 @@ describe('full pipeline — SelfModel → advisor → gate → decide', () => {
     expect([...reachable].sort()).toEqual([...DEFAULT_RECOVERY_POLICY.SYNTAX.actions].sort());
   });
 
-  it('with no advice, decide() keeps the exact Phase 10 order', () => {
+  it('with no advice, decide() keeps the exact default (v2) order', () => {
     expect(decide({ failureClass: 'SYNTAX', attemptsSoFar: 0 }).action).toBe('FIX');
-    expect(decide({ failureClass: 'SYNTAX', attemptsSoFar: 1 }).action).toBe('REPLAN');
+    expect(decide({ failureClass: 'SYNTAX', attemptsSoFar: 1 }).action).toBe('ROLLBACK');
     expect(decide({ failureClass: 'SYNTAX', attemptsSoFar: 2 }).action).toBe('ESCALATE');
   });
 });

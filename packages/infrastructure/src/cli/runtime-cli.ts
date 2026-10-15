@@ -68,7 +68,7 @@ import { Blake3GraphHasher }              from '../graph-hash/index.js';
 import { SwitchableModelGateway, RoutingModelGateway, SwitchableRuntimeModelSelector, loadModelRoutes, loadModelRegistry, OllamaModelAdmin } from '../model/index.js';
 import type { ModelGateway, RuntimeModelSelector } from '@codeforge/agent-core';
 import type { ProviderSpec, LoadedModelRegistry } from '../model/index.js';
-import { NodeWorkspaceManager }           from '../workspace/index.js';
+import { NodeWorkspaceManager, WorkspaceSnapshotRollback } from '../workspace/index.js';
 import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
 import { ObservabilityService }           from '../observability-server/observability-service.js';
@@ -295,6 +295,9 @@ async function main(): Promise<void> {
 
   // 5. Workspace + tool execution
   const workspace = new NodeWorkspaceManager({ root: workspaceRoot, now: rt.now, nextId: rt.nextId });
+  // P12.14: ROLLBACK port — a content snapshot of the clean baseline so an authorised ROLLBACK
+  // (SYNTAX class) can revert the agent's broken edit before the retry. Captured per goal below.
+  const workspaceRollback = new WorkspaceSnapshotRollback({ root: workspaceRoot });
   const supervisor = new NodeProcessSupervisor();
   const toolExec = new NodeToolExecutor({
     filesystem: { workspace },
@@ -476,6 +479,8 @@ async function main(): Promise<void> {
     // truthfully (SUCCEEDED/FAILED) after the next run — independent of the learning flag.
     recoveryActionRepository: recoveryActions,
     verificationEvidenceProvider,
+    // P12.14: ROLLBACK port — an authorised ROLLBACK reverts the workspace to the clean baseline.
+    workspaceRollback,
     ...learningDeps,
     ...(missionStage !== undefined ? { missionStage } : {}),
     ...(modelSelector !== undefined ? { modelSelector } : {}),
@@ -560,6 +565,10 @@ async function main(): Promise<void> {
     console.log(`    Session:  ${sid}`);
     console.log(`    Workspace: ${revision.fileCount} files, ${revision.hash.slice(0, 12)}...`);
     console.log(`    Observe:  http://localhost:${actualPort}/?session=${sid}`);
+
+    // P12.14: snapshot the pre-edit workspace as this session's clean rollback baseline. If a
+    // SYNTAX recovery later chooses ROLLBACK, the port reverts the agent's broken edit to here.
+    try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal — ROLLBACK degrades to re-arm */ }
 
     try {
       const result = await orchestrator.run({ sessionId: sid, goal, revision, graphVersion: 1 });

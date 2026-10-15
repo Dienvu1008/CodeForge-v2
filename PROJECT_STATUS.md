@@ -46,7 +46,7 @@ next investment.
 | ArtifactStore (verification artifacts) | PARTIAL | In-memory stub; disk store never built (comment in `verification-engine.ts`). |
 | Recovery: RETRY / FIX / ESCALATE / ABORT | DONE | `recovery/`, RC-*; outcomes finalized truthfully (P11.6+). |
 | Recovery: REPLAN | DONE | Lightweight REPLAN: `RecoveryEngine.shouldReplan` + `SessionOrchestrator.performReplan` commits a SUPERSEDE_TASK GraphMutation (RC-005/GI-007/GI-009). |
-| Recovery: ROLLBACK | DEFERRED | `recovery-engine.ts` returns PENDING; needs a workspace-revert port. 1 of 8 actions still a stub. |
+| Recovery: ROLLBACK | DONE | P12.14: `RecoveryEngine.shouldRollback` + `SessionOrchestrator` performs the revert through the injected `WorkspaceRollback` port (`WorkspaceSnapshotRollback` in infra: content snapshot of the clean baseline → restore). Enabled for the SYNTAX class (`FIX→ROLLBACK→ESCALATE`, `rollbackAllowed=true`, RC-004); fail-safe when the port is absent. Wired in the CLI + benchmark runner. All 6 recovery actions now real. |
 | Scheduler (deterministic, budget-aware) | DONE | `scheduler/`, SC-*; parallel admission with defer reasons. |
 | Budget engine | DONE | `budget/`, BU-*. |
 | Checkpoint + crash recovery | DONE | `checkpoint/`, `recovery/` (crash), CP-*. |
@@ -108,7 +108,7 @@ next investment.
 | Planner + PlanValidator + PlanCritic | DONE | `planning/`, MG-*/GI-009; advisory critic refinement round. |
 | Task decomposition + dependency ordering | DONE | Planner emits GraphMutation; scheduler orders. |
 | Architecture-first / roadmap-driven planning | PARTIAL | The Planner now consumes the mission's expert persona + verbosity (P12.8 prompt shaping), but still NOT the architecture blueprint or planning-mode. |
-| Replanning | DEFERRED | REPLAN recovery action is a Phase-5.5 stub. |
+| Replanning | DONE | Lightweight REPLAN (SUPERSEDE_TASK GraphMutation) — see the Recovery: REPLAN row. |
 | Autonomous ReAct execution loop | DONE | `execution/task-executor.ts`; tool calls, verify, retry, in-loop approval, progress events. |
 
 ### Product surface
@@ -164,12 +164,21 @@ next investment.
    are computed and observable but not applied. (Highest-value integration debt.)
 2. **Task correctness is unmeasured.** No benchmark has ever run end-to-end; we cannot currently
    state a success rate for real goals. (The reason the eval system is being built now.)
-3. **ROLLBACK recovery is still a stub; REPLAN is now real.** REPLAN was implemented as a
+3. **The recovery vocabulary is now complete — ROLLBACK is real (P12.14).** REPLAN was a
    lightweight re-plan: on a REPLAN decision the orchestrator commits a SUPERSEDE_TASK
    GraphMutation that replaces the failing task with a `replanner` successor carrying the failure
    evidence (RC-005 a new version, GI-007 old task → SUPERSEDED, GI-009 via GraphCommitService).
-   So 7 of 8 recovery actions are real; only ROLLBACK (workspace revert to a checkpoint revision)
-   remains deferred — it needs a workspace-revert port. The earlier REPLAN residual (a new taskId
+   ROLLBACK (P12.14) follows the SAME engine-signals / orchestrator-performs pattern: the engine
+   sets `shouldRollback` (outcome PENDING), and the orchestrator reverts the workspace to the last
+   clean checkpoint through an injected `WorkspaceRollback` port (`WorkspaceSnapshotRollback` in
+   infra — a content snapshot of the clean baseline, restored by overwriting drifted files,
+   re-creating deleted ones, and deleting agent-created ones), then re-arms the task to retry on
+   that known-good tree. It is enabled for the SYNTAX class only (`FIX→ROLLBACK→ESCALATE`,
+   `rollbackAllowed=true` — RC-004; policy bumped to v2), and is fail-safe: with no port wired (or
+   a revert the port could not complete) ROLLBACK degrades to a plain re-arm, never a crash, and
+   stays bounded by maxAttempts/no-progress. Wired in the CLI and the benchmark runner (both
+   snapshot the clean workspace before the run). So ALL recovery actions are now real; nothing in
+   the vocabulary is a stub. The earlier REPLAN residual (a new taskId
    each replan resetting the per-task no-progress detector) is now FIXED: the orchestrator tracks
    the supersession lineage and feeds the whole lineage's failure history to the detector, so a
    same-class REPLAN loop trips no-progress → ESCALATE after a bounded few replans (RC-002/003)

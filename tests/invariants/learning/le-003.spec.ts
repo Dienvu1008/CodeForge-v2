@@ -77,10 +77,10 @@ describe('LE-003 — advice may only reorder/score within the allowed-set', () =
 // P11.4 — advice reaching decide() may reorder the try-order but NEVER the set, count, or
 // maxAttempts. The reachable action set over all attempts must equal the policy's own set.
 describe('LE-003 — advised decide() preserves the allowed-set and bounds', () => {
-  // SYNTAX default: ['FIX','REPLAN','ESCALATE'], maxAttempts 3.
+  // SYNTAX default (policy v2): ['FIX','ROLLBACK','ESCALATE'], maxAttempts 3.
   const RULE = DEFAULT_RECOVERY_POLICY.SYNTAX;
   // Advice reorders ESCALATE first — the clamp against rule.actions must still preserve the set.
-  const advice: SafeRecoveryOrderAdvice = { kind: 'recovery_order', failureClass: 'SYNTAX', order: ['ESCALATE', 'REPLAN', 'FIX'] };
+  const advice: SafeRecoveryOrderAdvice = { kind: 'recovery_order', failureClass: 'SYNTAX', order: ['ESCALATE', 'ROLLBACK', 'FIX'] };
 
   it('the set of actions reachable with advice equals the default set (no add/drop)', () => {
     const reachable = new Set<RecoveryKind>();
@@ -97,7 +97,9 @@ describe('LE-003 — advised decide() preserves the allowed-set and bounds', () 
   });
 
   it('advice that names only out-of-rule actions is ignored (set unchanged)', () => {
-    const bogus: SafeRecoveryOrderAdvice = { kind: 'recovery_order', failureClass: 'SYNTAX', order: ['ROLLBACK', 'ABORT'] as RecoveryKind[] };
+    // REPLAN + ABORT are NOT in SYNTAX's rule (v2 = FIX→ROLLBACK→ESCALATE), so this advice is
+    // wholly out-of-rule and must be ignored.
+    const bogus: SafeRecoveryOrderAdvice = { kind: 'recovery_order', failureClass: 'SYNTAX', order: ['REPLAN', 'ABORT'] as RecoveryKind[] };
     const a0 = decide({ failureClass: 'SYNTAX', attemptsSoFar: 0, advice: bogus }).action;
     // Falls back to the default first action (FIX) — bogus advice changed nothing.
     expect(a0).toBe(RULE.actions[0]);

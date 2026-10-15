@@ -33,8 +33,8 @@ export type RecoveryPolicyConfig = Readonly<Record<FailureClass, RecoveryRule>>;
  * Default Phase 5 recovery policy.
  *
  * Decision table:
- *   SYNTAX (BUILD_ERROR/tsc)  → FIX (LLM fixes the code), then REPLAN if FIX fails,
- *                               then ESCALATE. Max 3 attempts.
+ *   SYNTAX (BUILD_ERROR/tsc)  → FIX (LLM fixes the code), then ROLLBACK to the last clean
+ *                               checkpoint if FIX fails, then ESCALATE. Max 3 attempts.
  *   LOGIC (TEST_FAIL)         → FIX, then RETRY (maybe flaky), then ESCALATE. Max 3.
  *   TOOL (LINT)               → FIX (auto-fix), then ESCALATE. Max 2.
  *   ENVIRONMENT               → RETRY (transient), then ESCALATE. Max 2.
@@ -46,7 +46,10 @@ export type RecoveryPolicyConfig = Readonly<Record<FailureClass, RecoveryRule>>;
  *   MODEL_* errors            → RETRY once, then ESCALATE. Max 2.
  */
 export const DEFAULT_RECOVERY_POLICY: RecoveryPolicyConfig = {
-  SYNTAX:                  { actions: ['FIX', 'REPLAN', 'ESCALATE'], maxAttempts: 3, rollbackAllowed: false },
+  // SYNTAX = the agent's edit left the tree broken (build/parse fails). FIX first (patch in place);
+  // if that still fails, ROLLBACK to the last clean checkpoint and retry on that baseline (RC-004:
+  // rollbackAllowed=true is what lets decide() actually emit ROLLBACK here); then ESCALATE.
+  SYNTAX:                  { actions: ['FIX', 'ROLLBACK', 'ESCALATE'], maxAttempts: 3, rollbackAllowed: true },
   LOGIC:                   { actions: ['FIX', 'RETRY', 'ESCALATE'], maxAttempts: 3, rollbackAllowed: false },
   TOOL:                    { actions: ['FIX', 'ESCALATE'], maxAttempts: 2, rollbackAllowed: false },
   ENVIRONMENT:             { actions: ['RETRY', 'ESCALATE'], maxAttempts: 2, rollbackAllowed: false },
@@ -100,8 +103,9 @@ export interface DecisionResult {
   readonly reason:  string;
 }
 
-/** Current policy version (bump when DEFAULT_RECOVERY_POLICY changes). */
-export const RECOVERY_POLICY_VERSION = 1;
+/** Current policy version (bump when DEFAULT_RECOVERY_POLICY changes).
+ *  v2: SYNTAX now FIX→ROLLBACK→ESCALATE with rollbackAllowed=true (was FIX→REPLAN→ESCALATE). */
+export const RECOVERY_POLICY_VERSION = 2;
 
 // ── decide ────────────────────────────────────────────────────────────────────
 

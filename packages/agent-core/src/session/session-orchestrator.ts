@@ -23,7 +23,7 @@ import { isTerminalTaskState }          from '../state-machine/states.js';
 import type { FailureAnalyzer }          from '../recovery/failure-analyzer.js';
 import type { RecoveryEngine }          from '../recovery/recovery-engine.js';
 import type { FailureRepository, RecoveryActionRepository } from '../repositories/index.js';
-import { decide, DEFAULT_RECOVERY_POLICY, type RecoveryPolicyConfig } from '../recovery/recovery-policy.js';
+import { decide, DEFAULT_RECOVERY_POLICY, RECOVERY_POLICY_VERSION, type RecoveryPolicyConfig } from '../recovery/recovery-policy.js';
 import { detectNoProgress }             from '../recovery/no-progress-detector.js';
 import type { VerificationReport }      from '../domain/verification.js';
 // P11.6: OPTIONAL learning plane. When all three are wired, the orchestrator builds a
@@ -119,6 +119,25 @@ export interface MissionStage {
   analyze(sessionId: string, goal: Goal): Promise<MissionStageDecision>;
 }
 
+/**
+ * P12.14: optional ROLLBACK port. When the recovery policy authorises ROLLBACK (SYNTAX class,
+ * rollbackAllowed=true — RC-004), the orchestrator asks this port to revert the workspace to the
+ * last clean checkpoint so the next attempt starts from a known-good baseline instead of the
+ * agent's broken edit. The implementation (infrastructure) owns the WorkspaceManager and the
+ * content it needs to restore — the orchestrator stays filesystem-agnostic (DC-002). It must not
+ * throw: a revert it cannot perform returns `false` (the orchestrator then finalizes the recovery
+ * as FAILED, exactly like a replan that could not be committed). When this dep is absent, ROLLBACK
+ * degrades to a plain re-arm (retry on the current tree) — never a crash (fail-safe parity).
+ */
+export interface WorkspaceRollback {
+  /**
+   * Revert the session's workspace to the latest clean checkpoint. Returns true if a revert was
+   * applied (or the tree already matched the clean baseline), false if no clean checkpoint was
+   * available or the revert could not be completed.
+   */
+  rollbackToLastClean(sessionId: string): Promise<boolean>;
+}
+
 export class SessionOrchestratorError extends Error {
   public readonly code: 'PLAN_FAILED' | 'COMMIT_FAILED' | 'DEADLOCK' | 'SESSION_FAILED';
   constructor(code: SessionOrchestratorError['code'], message?: string) {
@@ -199,6 +218,12 @@ export interface SessionOrchestratorDeps {
    * Absent ⇒ the active model never changes (fail-safe parity).
    */
   readonly modelSelector?:       RuntimeModelSelector;
+  /**
+   * P12.14: optional ROLLBACK port. Wired → an authorised ROLLBACK reverts the workspace to the
+   * last clean checkpoint before the retry. Absent → ROLLBACK degrades to a plain re-arm (retry on
+   * the current tree); the recovery stays bounded either way (fail-safe parity).
+   */
+  readonly workspaceRollback?:   WorkspaceRollback;
   readonly now:    () => string;
   readonly nextId: () => string;
 }
@@ -484,7 +509,7 @@ export class SessionOrchestrator {
           // or yields nothing → decide() behaves exactly as Phase 10 (LE-002).
           const advice = await this.buildRecoveryAdvice(input.sessionId, failure.class, history);
           const decision = npResult.noProgress
-            ? { action: 'ESCALATE' as const, policyVersion: 1, reason: `No progress: ${npResult.reason}` }
+            ? { action: 'ESCALATE' as const, policyVersion: RECOVERY_POLICY_VERSION, reason: `No progress: ${npResult.reason}` }
             : decide({ failureClass: failure.class, attemptsSoFar: history.length,
                        policy: this.deps.recoveryPolicy, advice });
           const reResult = await this.deps.recoveryEngine.execute({
@@ -526,6 +551,21 @@ export class SessionOrchestrator {
               // and the finish path reports it.
               await this.finalizePendingRecovery(task.taskId, new Map([[task.taskId, reResult.recoveryAction.actionId]]), 'FAILED');
             }
+          } else if (reResult.shouldRollback) {
+            // ROLLBACK (P12.14): revert the workspace to the last clean checkpoint, then re-arm the
+            // SAME task to retry on that known-good baseline (RC-004 was already satisfied by
+            // decide(); the SYNTAX class is the only one that reaches here by default). The revert
+            // is performed by the injected WorkspaceRollback port — the orchestrator never touches
+            // the filesystem (DC-002). If the port is absent, or it reports it could not revert, we
+            // STILL re-arm (retry on the current tree) rather than crash: recovery stays bounded by
+            // maxAttempts/no-progress either way (fail-safe parity).
+            const reverted = this.deps.workspaceRollback !== undefined
+              ? await this.safeRollback(input.sessionId)
+              : false;
+            if (evidenceText.length > 0) priorFailureEvidence.set(task.taskId, evidenceText);
+            await this.deps.executionCoordinator.setState(task.taskId, 'READY');
+            pendingRecoveryAction.set(task.taskId, reResult.recoveryAction.actionId);
+            void reverted; // outcome is finalized when the re-armed run is verified (like RETRY)
           }
         } catch { /* recovery failure is non-fatal — continue */ }
       }
@@ -696,6 +736,19 @@ export class SessionOrchestrator {
     try { await this.deps.executionCoordinator.setState(newTaskId, 'READY'); }
     catch { /* scheduler will promote it from PENDING when deps are satisfied */ }
     return newTaskId;
+  }
+
+  /**
+   * P12.14: invoke the ROLLBACK port, swallowing any error. Returns whether a revert was applied.
+   * The port contract says it must not throw, but we guard anyway so a misbehaving implementation
+   * can never abort the recovery loop (the branch always re-arms the task regardless).
+   */
+  private async safeRollback(sessionId: string): Promise<boolean> {
+    try {
+      return (await this.deps.workspaceRollback?.rollbackToLastClean(sessionId)) ?? false;
+    } catch {
+      return false;
+    }
   }
 
   /**

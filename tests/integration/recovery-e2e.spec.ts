@@ -75,6 +75,7 @@ describe('P5-I1 — Recovery E2E', () => {
     executor: ToolExecutor,
     recoveryPolicy?: import('@codeforge/agent-core').RecoveryPolicyConfig,
     stderrEvidence?: string,
+    workspaceRollback?: import('@codeforge/agent-core').WorkspaceRollback,
   ) {
     const c = makeCounters();
     const events   = new SqliteEventLog(db);
@@ -124,6 +125,7 @@ describe('P5-I1 — Recovery E2E', () => {
       taskRunRepository: taskRuns, recoveryActionRepository: recRep,
       ...(recoveryPolicy !== undefined ? { recoveryPolicy } : {}),
       ...(stderrEvidence !== undefined ? { verificationEvidenceProvider: { lastFailureOutput: () => stderrEvidence } } : {}),
+      ...(workspaceRollback !== undefined ? { workspaceRollback } : {}),
       maxIterations: 12, now: c.now, nextId: c.nextId,
     });
 
@@ -305,5 +307,65 @@ describe('P5-I1 — Recovery E2E', () => {
     expect((replans[0]?.n ?? 0)).toBeLessThanOrEqual(5);
     const escalations = db.query<{ n: number }>("SELECT COUNT(*) AS n FROM recovery_actions WHERE action = 'ESCALATE'");
     expect((escalations[0]?.n ?? 0)).toBeGreaterThanOrEqual(1);
+  });
+
+  // ── Scenario 7: ROLLBACK reverts the workspace via the injected port (P12.14) ──
+
+  it('RC-004/P12.14: an authorised ROLLBACK invokes the WorkspaceRollback port and re-arms the task', async () => {
+    const model = new FakeModel();
+    model.setSequence([PLAN]);
+    model.setResponse(/./, 'not valid json {{'); // executor fails → recovery each iteration
+
+    const executor: ToolExecutor = {
+      execute: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+    };
+
+    // Force ROLLBACK as the recovery action. decide() only emits ROLLBACK when BOTH the action is
+    // listed AND rollbackAllowed=true (RC-004) — so set both. Index 0 and 1 are ROLLBACK (the first
+    // recovery sees attemptsSoFar=1), then ESCALATE as the bound.
+    const allClasses = ['TRANSIENT','DEPENDENCY','SYNTAX','LOGIC','ENVIRONMENT','TOOL','PERMISSION','TIMEOUT','CONTEXT','BUDGET_EXHAUSTED','MODEL_OUTPUT_INVALID','MODEL_TIMEOUT','MODEL_UNAVAILABLE','MODEL_CONTEXT_OVERFLOW','MODEL_TOOL_CALL_INVALID','UNKNOWN'];
+    const rule = { actions: ['ROLLBACK', 'ROLLBACK', 'ESCALATE'], maxAttempts: 3, rollbackAllowed: true };
+    const rollbackPolicy = Object.fromEntries(allClasses.map((cl) => [cl, rule])) as unknown as import('@codeforge/agent-core').RecoveryPolicyConfig;
+
+    // Spy port: records each revert call and reports success.
+    const reverts: string[] = [];
+    const workspaceRollback = {
+      async rollbackToLastClean(sessionId: string): Promise<boolean> { reverts.push(sessionId); return true; },
+    };
+
+    const { orchestrator, sessions } = await buildOrchestrator(model, executor, rollbackPolicy, undefined, workspaceRollback);
+    const result = await orchestrator.run({ sessionId: 'S-P5', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
+
+    // The ROLLBACK port was invoked for this session at least once.
+    expect(reverts).toContain('S-P5');
+    // A ROLLBACK recovery action was recorded (RC-006).
+    const rollbackActions = db.query<{ n: number }>("SELECT COUNT(*) AS n FROM recovery_actions WHERE action = 'ROLLBACK'");
+    expect((rollbackActions[0]?.n ?? 0)).toBeGreaterThanOrEqual(1);
+    // Bounded: it eventually escalates (maxAttempts) rather than looping forever.
+    expect(['AWAITING_HUMAN', 'COMPLETED']).toContain(result.sessionState);
+    void sessions;
+  });
+
+  it('P12.14 fail-safe: ROLLBACK with NO port wired still re-arms (no crash) and records the action', async () => {
+    const model = new FakeModel();
+    model.setSequence([PLAN]);
+    model.setResponse(/./, 'not valid json {{');
+
+    const executor: ToolExecutor = {
+      execute: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+    };
+
+    const allClasses = ['TRANSIENT','DEPENDENCY','SYNTAX','LOGIC','ENVIRONMENT','TOOL','PERMISSION','TIMEOUT','CONTEXT','BUDGET_EXHAUSTED','MODEL_OUTPUT_INVALID','MODEL_TIMEOUT','MODEL_UNAVAILABLE','MODEL_CONTEXT_OVERFLOW','MODEL_TOOL_CALL_INVALID','UNKNOWN'];
+    const rule = { actions: ['ROLLBACK', 'ROLLBACK', 'ESCALATE'], maxAttempts: 3, rollbackAllowed: true };
+    const rollbackPolicy = Object.fromEntries(allClasses.map((cl) => [cl, rule])) as unknown as import('@codeforge/agent-core').RecoveryPolicyConfig;
+
+    // No workspaceRollback dep wired at all.
+    const { orchestrator } = await buildOrchestrator(model, executor, rollbackPolicy);
+    const result = await orchestrator.run({ sessionId: 'S-P5', goal: makeGoal(), revision: REVISION, graphVersion: 1 });
+
+    // Still terminates cleanly (ROLLBACK degraded to a plain re-arm, bounded by maxAttempts).
+    expect(['AWAITING_HUMAN', 'COMPLETED']).toContain(result.sessionState);
+    const rollbackActions = db.query<{ n: number }>("SELECT COUNT(*) AS n FROM recovery_actions WHERE action = 'ROLLBACK'");
+    expect((rollbackActions[0]?.n ?? 0)).toBeGreaterThanOrEqual(1);
   });
 });

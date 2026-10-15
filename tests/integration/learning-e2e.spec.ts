@@ -68,7 +68,8 @@ function ctxItem(itemId: string, priority: number, path?: string, pinned = false
   };
 }
 
-// History where SYNTAX has succeeded with REPLAN more than with FIX.
+// History where SYNTAX has succeeded with ROLLBACK more than with FIX.
+// (SYNTAX's allowed-set is FIX→ROLLBACK→ESCALATE as of policy v2.)
 function history(): { failures: Failure[]; recoveries: RecoveryAction[] } {
   return {
     failures: [
@@ -78,8 +79,8 @@ function history(): { failures: Failure[]; recoveries: RecoveryAction[] } {
     recoveries: [
       recovery('x1', 'f1', 'FIX', 'FAILED'),
       recovery('x2', 'f2', 'FIX', 'FAILED'),
-      recovery('x3', 'f3', 'REPLAN', 'SUCCEEDED'),
-      recovery('x4', 'f4', 'REPLAN', 'SUCCEEDED'),
+      recovery('x3', 'f3', 'ROLLBACK', 'SUCCEEDED'),
+      recovery('x4', 'f4', 'ROLLBACK', 'SUCCEEDED'),
     ],
   };
 }
@@ -113,13 +114,13 @@ describe('P11-I1 — learning plane end-to-end', () => {
     const persisted = await store.query({ limit: 100 });
     expect(persisted.length).toBe(written.length);
 
-    // Advise + gate + decide: SYNTAX should now try REPLAN first (its better history).
+    // Advise + gate + decide: SYNTAX should now try ROLLBACK first (its better history).
     const advisor = new RecoveryAdvisor();
     const gate = new AdviceGate();
     const raw = advisor.advise(model, 'SYNTAX');
     const safe = asRecoveryOrder(gate.sanitize(raw!, { allowedActions: DEFAULT_RECOVERY_POLICY.SYNTAX.actions }));
     const first = decide({ failureClass: 'SYNTAX', attemptsSoFar: 0, advice: safe });
-    expect(first.action).toBe('REPLAN');
+    expect(first.action).toBe('ROLLBACK');
 
     // But the kernel still owns the bounds: the reachable set equals the policy's own set.
     const reachable = new Set<RecoveryKind>();

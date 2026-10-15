@@ -12,11 +12,12 @@
 //   REPLAN   — authorised here (shouldReplan=true); the caller commits a GraphMutation that
 //              SUPERSEDEs the failing task with a fresh one carrying the failure evidence
 //              (GI-009 via GraphCommitService; RC-005 a new version, never an overwrite).
-//   ROLLBACK — revert workspace to last checkpoint revision (still deferred — caller implements).
+//   ROLLBACK — authorised here (shouldRollback=true); the caller reverts the workspace to the last
+//              clean checkpoint through an injected WorkspaceRollback port, then re-arms the task.
 //   ESCALATE — session → AWAITING_HUMAN (RC-007).
 //   ABORT    — session → ABORTED via CANCEL_REQUESTED.
 //
-// REPLAN returns PENDING + shouldReplan; ROLLBACK returns PENDING (caller implements the revert).
+// REPLAN returns PENDING + shouldReplan; ROLLBACK returns PENDING + shouldRollback (caller reverts).
 // RETRY and FIX also return PENDING: the attempt is authorised but
 // its success is unknown until the retried run is verified — the orchestrator retroactively
 // finalizes the outcome (SUCCEEDED/FAILED) then (P11.6+). ESCALATE/ABORT return SUCCEEDED
@@ -82,6 +83,15 @@ export interface ExecuteResult {
    * run is verified, exactly like RETRY/FIX.
    */
   readonly shouldReplan:    boolean;
+  /**
+   * For ROLLBACK: the engine authorised reverting the workspace to the last clean checkpoint;
+   * the caller (SessionOrchestrator) performs the revert through an injected WorkspaceRollback
+   * port (DC-002 — the engine stays domain-pure and never touches the filesystem). Like REPLAN,
+   * the outcome stays PENDING: ROLLBACK re-arms the task to retry on the reverted baseline, and
+   * the orchestrator finalizes SUCCEEDED/FAILED once that retry's verification is known.
+   * RC-004: the engine only reaches this branch when decide() already allowed ROLLBACK.
+   */
+  readonly shouldRollback:  boolean;
 }
 
 // ── RecoveryEngine ────────────────────────────────────────────────────────────
@@ -101,6 +111,7 @@ export class RecoveryEngine {
     let shouldRetry = false;
     let sessionEscalated = false;
     let shouldReplan = false;
+    let shouldRollback = false;
 
     switch (input.action) {
       case 'RETRY':
@@ -146,9 +157,14 @@ export class RecoveryEngine {
         break;
 
       case 'ROLLBACK':
-        // Phase 5.5: requires workspace revert — caller implements.
+        // Authorise a workspace revert to the last clean checkpoint. The caller (orchestrator)
+        // performs it through an injected WorkspaceRollback port — the engine never touches the
+        // filesystem (DC-002, domain-pure). RC-004 is already satisfied: decide() only emits
+        // ROLLBACK when the class's rollbackAllowed=true. Outcome stays PENDING: after the revert
+        // the task is re-armed and the orchestrator finalizes the outcome when the retry on the
+        // reverted baseline is verified (like RETRY/FIX/REPLAN).
         outcome = 'PENDING';
-        shouldRetry = false;
+        shouldRollback = true;
         break;
 
       default:
@@ -179,7 +195,7 @@ export class RecoveryEngine {
     // Emit event (RC-006: every action must be auditable).
     await this.emitRecoveryAction(input, recoveryAction);
 
-    return { recoveryAction, shouldRetry, sessionEscalated, shouldReplan };
+    return { recoveryAction, shouldRetry, sessionEscalated, shouldReplan, shouldRollback };
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────

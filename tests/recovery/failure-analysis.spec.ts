@@ -170,15 +170,31 @@ describe('RecoveryPolicy (P5-RP1)', () => {
     expect(r.action).toBe('ESCALATE');
   });
 
-  it('RC-004: ROLLBACK not in default policy → skip to next action', () => {
-    // None of the default rules allow ROLLBACK, so it can never be returned.
+  it('RC-004: ROLLBACK only returned for a class whose rollbackAllowed=true', () => {
+    // decide() may only emit ROLLBACK when the class rule BOTH lists it AND sets rollbackAllowed.
+    // v2 policy: only SYNTAX qualifies. Every other class must never yield ROLLBACK at any attempt.
     for (const cls of Object.keys(DEFAULT_RECOVERY_POLICY) as Array<keyof typeof DEFAULT_RECOVERY_POLICY>) {
+      const rule = DEFAULT_RECOVERY_POLICY[cls];
+      const canRollback = rule.rollbackAllowed && rule.actions.includes('ROLLBACK');
       for (let i = 0; i < 5; i++) {
         const r = decide({ failureClass: cls, attemptsSoFar: i });
-        // ROLLBACK is not in any default actions list
-        expect(r.action).not.toBe('ROLLBACK');
+        if (!canRollback) expect(r.action).not.toBe('ROLLBACK');
       }
     }
+    // SYNTAX allows it and reaches it at attempt index 1 (FIX → ROLLBACK → ESCALATE).
+    expect(decide({ failureClass: 'SYNTAX', attemptsSoFar: 1 }).action).toBe('ROLLBACK');
+  });
+
+  it('RC-004: a class listing ROLLBACK but with rollbackAllowed=false falls through', () => {
+    // Guard the policy-level RC-004 check directly: same class, flip only rollbackAllowed.
+    const policy = {
+      ...DEFAULT_RECOVERY_POLICY,
+      SYNTAX: { actions: ['FIX', 'ROLLBACK', 'ESCALATE'] as const, maxAttempts: 3, rollbackAllowed: false },
+    };
+    const r = decide({ failureClass: 'SYNTAX', attemptsSoFar: 1, policy });
+    expect(r.action).not.toBe('ROLLBACK'); // falls through to the next action (ESCALATE)
+    expect(r.action).toBe('ESCALATE');
+    expect(r.reason).toMatch('RC-004');
   });
 
   it('RC-008: budget with recoveryAttempts exhausted → ESCALATE', () => {
@@ -218,9 +234,9 @@ describe('RecoveryPolicy (P5-RP1)', () => {
     const a0 = decide({ failureClass: 'SYNTAX', attemptsSoFar: 0 }).action;
     const a1 = decide({ failureClass: 'SYNTAX', attemptsSoFar: 1 }).action;
     const a2 = decide({ failureClass: 'SYNTAX', attemptsSoFar: 2 }).action;
-    // Should be FIX → REPLAN → ESCALATE
+    // v2 SYNTAX order: FIX → ROLLBACK → ESCALATE
     expect(a0).toBe('FIX');
-    expect(a1).toBe('REPLAN');
+    expect(a1).toBe('ROLLBACK');
     expect(a2).toBe('ESCALATE');
   });
 });
