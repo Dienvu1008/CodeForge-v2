@@ -37,14 +37,36 @@ harness applies afterwards. The gold patch is retained in the setup for debuggin
 
 ## End-to-end wiring
 
-Per case, a SWE-bench-aware `AgentRunner`:
+`SweBenchAgentRunner` (infrastructure) is the `AgentRunner` the `BenchmarkRunner` invokes. It
+threads the harness phases around the real runtime, all inside one `run()` call so the existing
+runner order holds:
 
 1. `prepareBaseline(root, setup)` — clone the repo into the isolated workspace and check out
    `base_commit` (BEFORE the agent runs).
-2. run the CodeForge orchestrator against the repo with `task.description` as the goal.
+2. `runOrchestrator(...)` — drive the CodeForge orchestrator against the repo with
+   `task.description` as the goal (injected, so the runner is free of the whole runtime graph).
 3. `applyTestPatch(root, setup)` — apply `test_patch` on top of the agent's edits (AFTER the run,
    BEFORE the check).
 4. the existing `command` check runs the `FAIL_TO_PASS` + `PASS_TO_PASS` selection; exit 0 = SUCCESS.
+
+A failed setup phase (clone/checkout/apply) reports the case **INVALID** (a harness problem), never
+**FAILURE** (which is reserved for "the agent's fix did not pass the tests").
+
+## Running it
+
+```
+node scripts/run-swe-bench.mjs --dataset benchmarks/swe-bench/sample.jsonl \
+     --provider openai-compatible --endpoint https://api.groq.com/openai/v1 \
+     --model openai/gpt-oss-20b                       # key via CODEFORGE_API_KEY
+```
+
+Flags: `--only <instance_id[,id]>` (subset), `--test-command "<tpl with {tests}>"`,
+`--repo-mirror <path>` (offline clone source), `--min-call-interval-ms <ms>` (RPM throttle),
+`--max-steps <n>`. `CF_DEBUG=1` prints per-step errors and failing-check output.
+
+A **live** run needs `git` on PATH, network (or `--repo-mirror`), and the per-repo test environment
+(python/pytest/tox). Without those the clone/test steps fail and cases report INVALID — the adapter
+and runner still execute; only the real repo/env is missing.
 
 ### Repo source and environment
 

@@ -27,3 +27,8 @@ export {
   type SweBenchWorkspaceSetupDeps,
   type SweBenchSetupResult,
 } from './swe-bench-workspace-setup.js';
+export {
+  SweBenchAgentRunner,
+  type SweBenchAgentRunnerDeps,
+  type SweBenchOrchestratorRun,
+} from './swe-bench-agent-runner.js';
