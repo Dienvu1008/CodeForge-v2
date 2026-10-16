@@ -160,6 +160,31 @@ export const FILESYSTEM_TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     idempotencyStrategy:  'none',
   },
   {
+    toolName:             'grep',
+    version:              '1.0',
+    description:          'Search file contents by regular expression across the workspace. Returns matching path:line:text lines. Use to find where a symbol/string is used before editing.',
+    riskClass:            'READ_ONLY',
+    argsSchema:           {
+      pattern:        { type: 'string', required: true },
+      path:           { type: 'string' },
+      include:        { type: 'string' },
+      caseSensitive:  { type: 'boolean' },
+      maxResults:     { type: 'number', min: 1, max: 1000 },
+    },
+    idempotencyStrategy:  'none',
+  },
+  {
+    toolName:             'glob',
+    version:              '1.0',
+    description:          'Find files whose workspace-relative path matches a glob pattern (e.g. "src/**/*.ts"). Returns matching paths. Use to locate files by name/type.',
+    riskClass:            'READ_ONLY',
+    argsSchema:           {
+      pattern:     { type: 'string', required: true },
+      maxResults:  { type: 'number', min: 1, max: 1000 },
+    },
+    idempotencyStrategy:  'none',
+  },
+  {
     toolName:             'delete_file',
     version:              '1.0',
     description:          'Delete a file at a workspace-relative path.',

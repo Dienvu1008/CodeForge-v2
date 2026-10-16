@@ -225,6 +225,90 @@ describe('FilesystemExecutor', () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toMatch(/identical/i);
   });
+
+  // ── grep — content search ────────────────────────────────────────────────
+
+  it('grep finds a literal match and reports path:line:text', async () => {
+    const result = await exec.execute(fakeToolCall('grep', { pattern: 'const x' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('hello.ts:1:');
+    expect(result.stdout).toMatch(/export const x = 1/);
+  });
+
+  it('grep supports a regular expression and is case-insensitive by default', async () => {
+    const result = await exec.execute(fakeToolCall('grep', { pattern: 'EXPORT\\s+const' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('hello.ts:1:');
+  });
+
+  it('grep caseSensitive=true excludes a wrong-case match', async () => {
+    const result = await exec.execute(fakeToolCall('grep', { pattern: 'EXPORT', caseSensitive: true }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/no matches/i);
+  });
+
+  it('grep "include" restricts to matching paths', async () => {
+    await wm.writeFile('src/main.ts', 'export const target = 1;\n', 'S');
+    const all   = await exec.execute(fakeToolCall('grep', { pattern: 'export' }));
+    expect(all.stdout).toContain('hello.ts');
+    const scoped = await exec.execute(fakeToolCall('grep', { pattern: 'export', include: 'src/**/*.ts' }));
+    expect(scoped.stdout).toContain('src/main.ts');
+    expect(scoped.stdout).not.toContain('hello.ts:'); // hello.ts is outside src/
+  });
+
+  it('grep reports no matches cleanly (exitCode 0, "no matches")', async () => {
+    const result = await exec.execute(fakeToolCall('grep', { pattern: 'zzz_not_present_zzz' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/no matches/i);
+  });
+
+  it('grep rejects an invalid regular expression', async () => {
+    const result = await exec.execute(fakeToolCall('grep', { pattern: '(' }));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/invalid regular expression/i);
+  });
+
+  it('grep rejects a missing pattern', async () => {
+    const result = await exec.execute(fakeToolCall('grep', {}));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/pattern/i);
+  });
+
+  // ── glob — path pattern search ─────────────────────────────────────────────
+
+  it('glob matches files by a ** pattern', async () => {
+    const result = await exec.execute(fakeToolCall('glob', { pattern: '**/*.ts' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('hello.ts');
+    expect(result.stdout).toContain('src/main.ts');
+  });
+
+  it('glob scopes to a subtree', async () => {
+    const result = await exec.execute(fakeToolCall('glob', { pattern: 'src/**/*.ts' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('src/main.ts');
+    expect(result.stdout).not.toContain('hello.ts');
+  });
+
+  it('glob reports no matches cleanly', async () => {
+    const result = await exec.execute(fakeToolCall('glob', { pattern: '**/*.py' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/no files match/i);
+  });
+
+  it('glob rejects a missing pattern', async () => {
+    const result = await exec.execute(fakeToolCall('glob', {}));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/pattern/i);
+  });
+
+  it('grep/glob skip node_modules (noise dirs are not descended)', async () => {
+    await wm.writeFile('node_modules/pkg/index.js', 'export const x = 1;\n', 'S');
+    const g = await exec.execute(fakeToolCall('grep', { pattern: 'const x' }));
+    expect(g.stdout).not.toContain('node_modules');
+    const gl = await exec.execute(fakeToolCall('glob', { pattern: '**/*.js' }));
+    expect(gl.stdout).not.toContain('node_modules');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

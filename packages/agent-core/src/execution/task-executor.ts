@@ -77,6 +77,8 @@ Available tools:
   edit_file     {"path": "<relative-path>", "oldString": "...", "newString": "..."} — replace ONE exact occurrence of oldString with newString in an existing file (PREFER THIS for small in-place fixes)
   write_file    {"path": "<relative-path>", "content": "..."}  — create a new file, or fully overwrite one (read it first to preserve unrelated lines)
   list_dir      {"path": "<relative-path>"}                   — list directory contents
+  grep          {"pattern": "<regex>", "include": "<glob?>"}  — search file contents; returns path:line:text (find where a symbol is used)
+  glob          {"pattern": "<glob>"}                         — find files by path pattern, e.g. "src/**/*.ts"
   delete_file   {"path": "<relative-path>"}                   — delete a file
   move_file     {"path": "<from>", "to": "<to>"}               — rename/move a file
   run_command   {"command": "<shell command>"}                 — run a shell command
@@ -128,7 +130,7 @@ RULES (follow strictly — these are enforced; wasted steps make the task FAIL):
 // ── Anti-loop detector (pure, exported for testing) ───────────────────────────
 
 /** Read-only tools: "looking", not "doing". Repeating these is the hallmark of a stuck model. */
-const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'git_status', 'git_log', 'git_diff']);
+const READONLY_TOOLS: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'grep', 'glob', 'git_status', 'git_log', 'git_diff']);
 
 /**
  * Tools that actually CHANGE the workspace. A coding task that finishes without ever calling one
@@ -1288,6 +1290,8 @@ export class TaskExecutor {
     switch (toolName) {
       case 'read_file':
       case 'list_dir':
+      case 'grep':
+      case 'glob':
       case 'git_status':
       case 'git_diff':
       case 'git_log':

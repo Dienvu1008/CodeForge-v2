@@ -4,7 +4,7 @@
 // and dispatches each ToolCall to the right one based on the toolName.
 //
 // Routing rules:
-//   read_file, write_file, list_dir, delete_file, move_file  → FilesystemExecutor
+//   read_file, write_file, list_dir, delete_file, move_file, grep, glob → FilesystemExecutor
 //   git_status, git_diff, git_add, git_commit, git_log       → GitExecutor
 //   run_command                                               → ShellExecutor
 //   anything else                                             → error (no bypass)
@@ -22,7 +22,7 @@ import { ShellExecutor }               from './shell-executor.js';
 // ── Tool name routing sets ────────────────────────────────────────────────────
 
 const FILESYSTEM_TOOLS = new Set([
-  'read_file', 'write_file', 'edit_file', 'list_dir', 'delete_file', 'move_file',
+  'read_file', 'write_file', 'edit_file', 'list_dir', 'delete_file', 'move_file', 'grep', 'glob',
 ]);
 
 const GIT_TOOLS = new Set([

@@ -114,6 +114,19 @@ describe('createDefaultRegistry — built-in tools', () => {
     expect(def.riskClass).toBe('SYSTEM');
   });
 
+  it('grep is READ_ONLY with a required "pattern" arg (search is not SYSTEM)', () => {
+    const def = createDefaultRegistry().getOrThrow('grep');
+    expect(def.riskClass).toBe('READ_ONLY');
+    expect(def.idempotencyStrategy).toBe('none');
+    expect(def.argsSchema.pattern).toMatchObject({ type: 'string', required: true });
+  });
+
+  it('glob is READ_ONLY with a required "pattern" arg', () => {
+    const def = createDefaultRegistry().getOrThrow('glob');
+    expect(def.riskClass).toBe('READ_ONLY');
+    expect(def.argsSchema.pattern).toMatchObject({ type: 'string', required: true });
+  });
+
   it('every tool has a non-empty description (TG-008 provenance aid)', () => {
     const reg = createDefaultRegistry();
     for (const name of reg.list()) {

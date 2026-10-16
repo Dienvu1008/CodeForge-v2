@@ -203,6 +203,20 @@ describe('NodeToolExecutor — routing', () => {
     expect(r.exitCode).toBe(0);
     expect(fake.callCount).toBe(0); // filesystem executor uses no supervisor
   });
+
+  it('routes grep and glob to FilesystemExecutor without spawning', async () => {
+    const base = {
+      toolVersion: '1.0', riskClass: 'READ_ONLY' as const,
+      argumentsHash: 'h', state: 'RUNNING' as const, proposedBy: 'model' as const,
+      provenance: { provenanceId: 'PV-5', source: { kind: 'runtime' as const, id: 'S1' }, inputs: [], reason: 'test', at: '2026-01-01T00:00:00.000Z' },
+      requestedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const grepR = await executor.execute({ ...base, toolCallId: 'TC-5', sessionId: 'S1', toolName: 'grep', arguments: { pattern: 'describe' } });
+    expect(grepR.exitCode).toBe(0); // searches this repo's cwd — routing works, no spawn
+    const globR = await executor.execute({ ...base, toolCallId: 'TC-6', sessionId: 'S1', toolName: 'glob', arguments: { pattern: 'package.json' } });
+    expect(globR.exitCode).toBe(0);
+    expect(fake.callCount).toBe(0); // neither spawns a process
+  });
 });
 
 // ── TaskExecutor unit ─────────────────────────────────────────────────────────

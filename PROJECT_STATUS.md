@@ -272,6 +272,19 @@ Driven by running the real runtime against live goals:
   rewrote the entire file. Added through existing seams (ToolRegistry MODIFY_WORKSPACE +
   content-hash, FilesystemExecutor, MUTATING_TOOLS, executor prompt "prefer edit_file"); no
   contract change (ToolCall.toolName is already an open string, DC/§12.1).
+- **`grep` + `glob` search tools (P12.15, infra + core wiring)** — first-class READ_ONLY search:
+  `grep` (regex over file CONTENTS → `path:line:text`, with optional `include` glob + case flag)
+  and `glob` (find files by path pattern, e.g. `src/**/*.ts`). Both recurse the workspace via
+  WorkspaceManager.listDir/readFile (WS-003/004/005 boundary applies to every path), skip noise
+  dirs (node_modules/.git/dist/…), and return bounded results. This closes the agent's only way to
+  *actively* search: before this it could search solely by shelling out `grep`/`find` through
+  `run_command` — which is SYSTEM-risk, NOT cross-platform (no `grep`/GNU-`find` on bare Windows),
+  and gives unstructured output. The new tools are in-process (cross-platform), READ_ONLY (auto-
+  allowed, no approval), and advertised in the executor prompt so the model actually uses them.
+  Added through the same seams as edit_file (ToolRegistry READ_ONLY, FilesystemExecutor, routing,
+  resolveRiskClass, READONLY_TOOLS for the anti-loop detector); no contract change. This shifts the
+  agent from pure PUSH-context (ContextCollector snapshot) toward PUSH + on-demand PULL, narrowing
+  the gap vs. an interactive agent when the pre-built context misses the needed file.
 - **Google Gemini provider (`GeminiModelGateway`)** — a native-wire adapter (`x-goog-api-key` +
   `contents`/`parts` + `:generateContent`), since Gemini's OpenAI-compat endpoint 404s for AI Studio
   keys. Same `ModelGateway` contract, infrastructure only. `--provider gemini` in the runner;
