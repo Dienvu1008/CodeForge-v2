@@ -151,7 +151,7 @@ function makeRealAgentRunner() {
   };
 }
 
-const benchmark = loadBenchmarkFile('benchmarks/codeforge-progressive/benchmark.json');
+const benchmark = loadBenchmarkFile(flag('benchmark', 'benchmarks/codeforge-progressive/benchmark.json'));
 // Optional case filter: --only PG-12  (or comma-separated: --only PG-05,PG-12). Lets a focused
 // re-measure of one or a few cases run without burning the whole curve's RPM budget.
 const onlyArg = flag('only', undefined);
