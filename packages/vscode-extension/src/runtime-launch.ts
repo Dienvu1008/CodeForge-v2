@@ -72,6 +72,19 @@ export function runtimeUrlForPort(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
+/**
+ * Choose which `node` binary to spawn the runtime with. We MUST NOT use VS Code's own executable
+ * (process.execPath points at the Electron runtime), because the runtime loads native modules
+ * (better-sqlite3) built against the system Node's ABI — launching under Electron's Node throws
+ * ERR_DLOPEN_FAILED (NODE_MODULE_VERSION mismatch). Precedence:
+ *   1. an explicit `codeforge.nodePath` setting (absolute path to node), else
+ *   2. the bare command "node" so the OS resolves it from PATH (the user's system Node).
+ */
+export function resolveNodeCommand(configuredNodePath?: string): string {
+  const p = configuredNodePath?.trim();
+  return p !== undefined && p !== '' ? p : 'node';
+}
+
 /** Join two path fragments with a single forward slash (works for display + Node path resolution). */
 function joinPath(a: string, b: string): string {
   const left = a.replace(/[\\/]+$/, '');

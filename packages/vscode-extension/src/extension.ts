@@ -18,7 +18,7 @@ import {
   findPendingApproval, approvalDetail, type ViewNode,
 } from './view-model.js';
 import {
-  resolveRuntimeEntry, buildRuntimeArgv, runtimeUrlForPort,
+  resolveRuntimeEntry, buildRuntimeArgv, runtimeUrlForPort, resolveNodeCommand,
 } from './runtime-launch.js';
 import {
   newGoalEntry, withGoalId, reconcileHistory, type GoalEntry,
@@ -344,13 +344,16 @@ function activateInner(context: vscode.ExtensionContext): void {
 
       const port = cfg.get<number>('port', 9500);
       const argv = buildRuntimeArgv({ entryPath: entry, workspace: folder, model, port, autonomy: 'edits' });
+      // Use the SYSTEM node (not process.execPath, which is VS Code's Electron) so native modules
+      // like better-sqlite3 load against the ABI they were built for.
+      const nodeCmd = resolveNodeCommand(cfg.get<string>('nodePath', ''));
 
       runtimeOutput ??= vscode.window.createOutputChannel('CodeForge Runtime');
       runtimeOutput.clear();
       runtimeOutput.show(true);
-      runtimeOutput.appendLine(`$ node ${argv.join(' ')}`);
+      runtimeOutput.appendLine(`$ ${nodeCmd} ${argv.join(' ')}`);
 
-      const child = spawn(process.execPath, argv, { cwd: folder, env: process.env });
+      const child = spawn(nodeCmd, argv, { cwd: folder, env: process.env, shell: false });
       runtimeProc = child;
       child.stdout?.on('data', (b: Buffer) => runtimeOutput?.append(b.toString()));
       child.stderr?.on('data', (b: Buffer) => runtimeOutput?.append(b.toString()));

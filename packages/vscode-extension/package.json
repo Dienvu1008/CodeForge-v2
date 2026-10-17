@@ -65,6 +65,11 @@
           "default": "",
           "description": "Absolute path to a built runtime-cli.js. Required for 'Start Runtime Here' when the extension is installed as a .vsix (in a dev checkout the opened workspace is used)."
         },
+        "codeforge.nodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Node.js binary used to run the runtime. Leave empty to use 'node' from PATH. Must be the SYSTEM Node the runtime's native modules (better-sqlite3) were built for — do NOT point at VS Code itself."
+        },
         "codeforge.model": {
           "type": "string",
           "default": "qwen2.5-coder:latest",

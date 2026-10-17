@@ -1,7 +1,7 @@
 // runtime-launch (P12.23) — pure argv/path helpers for "Start Runtime Here" (no vscode, no spawn).
 import { describe, it, expect } from 'vitest';
 import {
-  resolveRuntimeEntry, buildRuntimeArgv, runtimeUrlForPort, RUNTIME_ENTRY_RELATIVE,
+  resolveRuntimeEntry, buildRuntimeArgv, runtimeUrlForPort, resolveNodeCommand, RUNTIME_ENTRY_RELATIVE,
 } from '../../packages/vscode-extension/src/runtime-launch.js';
 
 describe('resolveRuntimeEntry', () => {
@@ -54,5 +54,16 @@ describe('buildRuntimeArgv', () => {
 describe('runtimeUrlForPort', () => {
   it('builds a loopback URL', () => {
     expect(runtimeUrlForPort(9500)).toBe('http://127.0.0.1:9500');
+  });
+});
+
+describe('resolveNodeCommand', () => {
+  it('prefers an explicit configured node path', () => {
+    expect(resolveNodeCommand('/usr/bin/node')).toBe('/usr/bin/node');
+  });
+  it('falls back to the bare "node" command (resolved from PATH)', () => {
+    expect(resolveNodeCommand()).toBe('node');
+    expect(resolveNodeCommand('')).toBe('node');
+    expect(resolveNodeCommand('   ')).toBe('node');
   });
 });
