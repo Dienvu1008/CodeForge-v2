@@ -83,6 +83,37 @@ export class SqliteWorkspaceLockService implements WorkspaceLockService {
     );
     return rows[0] ? rowToLock(rows[0]) : null;
   }
+
+  /**
+   * Crash recovery: release an active lock on this workspace iff it was taken by a process on THIS
+   * host whose PID is no longer alive (checked via `isAlive`). A hard crash (SIGKILL, the earlier
+   * Electron-ABI exit) leaves the lock row with `released_at IS NULL` forever, wedging the
+   * workspace with "already locked". We never reclaim a lock from a LIVE process or a different
+   * host — only a provably-dead owner on the same machine. Returns true when a stale lock was
+   * reclaimed. Marks it RELEASED (never deletes) so the audit trail is preserved.
+   */
+  async reclaimStale(
+    workspaceId: string,
+    thisHostname: string,
+    isAlive: (pid: number) => boolean,
+    at: string,
+  ): Promise<boolean> {
+    return this.db.transaction((tx): boolean => {
+      const rows = tx.query<LockRow>(
+        'SELECT * FROM locks WHERE workspace_id = ? AND released_at IS NULL LIMIT 1',
+        [workspaceId],
+      );
+      const row = rows[0];
+      if (row === undefined) return false;                 // nothing held
+      if (row.hostname !== thisHostname) return false;      // different machine — leave it
+      if (isAlive(row.process_id)) return false;            // owner still running — not stale
+      tx.execute(
+        "UPDATE locks SET state = 'RELEASED', released_at = ? WHERE lock_id = ?",
+        [at, row.lock_id],
+      );
+      return true;
+    });
+  }
 }
 
 function rowToLock(row: LockRow): WorkspaceLock {

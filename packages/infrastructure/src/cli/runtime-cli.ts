@@ -175,7 +175,11 @@ async function main(): Promise<void> {
   const workspaceRoot = resolve(args['workspace'] ?? process.cwd());
   let modelName       = args['model']    ?? 'qwen2.5-coder';
   const endpoint      = args['endpoint'] ?? 'http://localhost:11434';
-  const goalDesc      = args['goal']     ?? 'Describe what CodeForge should do with --goal "..."';
+  // When --goal is omitted the runtime starts IDLE and waits for POST /goal (the normal mode when
+  // the VS Code extension spawns it). We must NOT seed a placeholder goal: a seeded goal starts a
+  // session that holds the workspace lock (SS-001), which blocks every real goal with
+  // "workspace already locked" until the placeholder's session ends.
+  const goalDesc      = args['goal'];
   const port          = parseInt(args['port'] ?? '9500', 10);
   const maxSteps      = parseInt(args['max-steps'] ?? '40', 10);
   const dbPath        = args['db'] ?? join(workspaceRoot, '.codeforge', 'runtime.db');
@@ -211,7 +215,7 @@ async function main(): Promise<void> {
   console.log(`  workspace:  ${workspaceRoot}`);
   console.log(`  model:      ${modelName}`);
   console.log(`  endpoint:   ${endpoint}`);
-  console.log(`  goal:       ${goalDesc}`);
+  console.log(`  goal:       ${goalDesc ?? '(idle — waiting for POST /goal)'}`);
   console.log(`  port:       ${port}`);
   console.log(`  db:         ${dbPath}`);
   console.log(`  max-steps:  ${maxSteps}`);
@@ -613,8 +617,23 @@ async function main(): Promise<void> {
     }
   }
 
-  // 13. Seed the first goal from --goal, then run the queue worker (stays alive).
-  goalIngress.submitGoal({ description: goalDesc });
+  // 12b. Crash recovery: if a previous run on THIS host died hard (SIGKILL / ABI crash) it may
+  //      have left a workspace lock held forever, which would reject every goal with "workspace
+  //      already locked". Reclaim it iff the owning PID is provably dead. Never touches a lock
+  //      owned by a live process or another machine.
+  const reclaimed = await lock.reclaimStale(
+    'ws-' + workspaceRoot,
+    hostname(),
+    (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } },
+    rt.now(),
+  );
+  if (reclaimed) console.log('  Recovered a stale workspace lock from a previous crashed run.');
+
+  // 13. Seed the first goal from --goal (if any), then run the queue worker (stays alive).
+  //     With no --goal the queue starts empty and the worker idles until a POST /goal arrives.
+  if (goalDesc !== undefined && goalDesc.trim() !== '') {
+    goalIngress.submitGoal({ description: goalDesc });
+  }
   console.log('  Goal queue worker running. POST /goal {"description":"..."} to enqueue more.');
   console.log('  Press Ctrl+C to stop.');
 
