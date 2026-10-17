@@ -134,6 +134,18 @@ describe('P9.3 HttpTransport — reads', () => {
     expect(Array.isArray(m.eventTypeCounts)).toBe(true);
   });
 
+  it('GET /changes returns a changes array (empty when toolCalls lister not wired)', async () => {
+    const r = await fetch(`${base}/changes?session=S`);
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { changes: unknown[] };
+    expect(Array.isArray(body.changes)).toBe(true);
+  });
+
+  it('GET /changes requires a session', async () => {
+    const r = await fetch(`${base}/changes`);
+    expect(r.status).toBe(400);
+  });
+
   it('GET / serves the dashboard HTML and /app.js the script', async () => {
     const html = await fetch(`${base}/`);
     expect(html.headers.get('content-type')).toContain('text/html');

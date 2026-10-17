@@ -116,7 +116,7 @@ next investment.
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| Observability dashboard (HTTP + SSE) | PARTIAL | Single-page view (`observability-server/dashboard-assets.ts`): read projection + POST /control, SSE live activity (MISSION_* reasoning lines), approval card, goals chat, model admin, and **a task-graph DAG (P12.18)** — SVG, nodes colored by state, edges = `depends_on`, laid out in dependency layers (frontend-only; uses `TaskProjection.dependsOn` already in `/state`). Still missing: live diff panel + governance timeline. |
+| Observability dashboard (HTTP + SSE) | PARTIAL | Single-page view (`observability-server/dashboard-assets.ts`): read projection + POST /control, SSE live activity (MISSION_* reasoning lines), approval card, goals chat, model admin, **a task-graph DAG (P12.18)** (SVG, nodes by state, edges = `depends_on`, dependency-layered), and **a change transcript + diffs (P12.19)** — `GET /changes` reconstructs the diffs the agent produced from each mutating tool call's arguments (edit_file → −old/+new hunk, write_file → new content, delete/move → summary), rendered as reviewable change cards updated live. Still missing: governance timeline. |
 | Runtime controls (pause/resume/stop/approve) | DONE | ControlPlane + admitted control path (OB-006); exercised by dashboard/VS Code/Telegram. |
 | VS Code extension | PARTIAL | Thin HTTP client (`vscode-extension/`), connect + dashboard webview + control commands. `.vsix` built but uncommitted. |
 | Mission submission / goal queue | DONE | `POST /goal` → `GoalIngressService` FIFO; worker routes through Planner → GraphCommit (GI-009). |

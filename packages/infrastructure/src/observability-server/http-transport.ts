@@ -7,6 +7,7 @@
 //   GET  /state?session=<id>        -> RuntimeProjection (OB-005)
 //   GET  /trace?session=<id>        -> ActivityTrace (OB-007)
 //   GET  /events?session=<id>&from= -> DomainEvent[] (replay, OB-004)
+//   GET  /changes?session=<id>      -> { changes: ChangeView[] } (agent change transcript + diffs)
 //   GET  /sessions?limit=           -> { sessions: [{sessionId,state,createdAt}] } (recent, read-only)
 //   GET  /workspace/files           -> { files: [{path,sizeBytes}] } (the agent's result, read-only)
 //   GET  /config                    -> { workspaceRoot, model, endpoint } (runtime config)
@@ -106,6 +107,10 @@ export class HttpTransport {
       if (method === 'GET' && path === '/events') {
         if (session === '') return this.sendJson(res, 400, { error: 'session required' });
         return this.sendJson(res, 200, await this.opts.service.getEvents(session, from));
+      }
+      if (method === 'GET' && path === '/changes') {
+        if (session === '') return this.sendJson(res, 400, { error: 'session required' });
+        return this.sendJson(res, 200, { changes: await this.opts.service.getChanges(session) });
       }
       if (method === 'GET' && path === '/sessions') {
         const limit = Number(url.searchParams.get('limit') ?? '20') || 20;

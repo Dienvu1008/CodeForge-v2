@@ -9,10 +9,12 @@ import {
   SqliteTaskGraphRepository,
   SqliteEventLog,
   SqliteWorkspaceLockService,
+  SqliteToolCallRepository,
   ObservabilityService,
   runMigrations,
   createMigrationRegistry,
 } from '@codeforge/infrastructure';
+import type { ToolCall } from '@codeforge/agent-core';
 import {
   ControlPlane,
   SessionService,
@@ -42,6 +44,17 @@ function makeSession(): Session {
 let db: SqliteDatabaseAdapter;
 let service: ObservabilityService;
 let sessionSvc: SessionService;
+let toolCalls: SqliteToolCallRepository;
+
+function makeToolCall(id: string, name: string, args: unknown, at: string): ToolCall {
+  return {
+    toolCallId: id, sessionId: 'S', taskId: 'T1', toolName: name, toolVersion: '1.0',
+    riskClass: name === 'read_file' ? 'READ_ONLY' : 'MODIFY_WORKSPACE',
+    arguments: args, argumentsHash: 'h-' + id, state: 'SUCCEEDED', proposedBy: 'model',
+    provenance: { provenanceId: 'PV-' + id, source: { kind: 'model', id: 'test' }, inputs: [], reason: 't', at },
+    requestedAt: at,
+  };
+}
 
 beforeEach(async () => {
   db = new SqliteDatabaseAdapter(':memory:');
@@ -79,10 +92,12 @@ beforeEach(async () => {
   await coord.init('T1'); await coord.init('T2');
   await coord.setState('T2', 'PASSED');
 
+  toolCalls = new SqliteToolCallRepository(db);
   service = new ObservabilityService({
     sessions, graphs, executions, taskRuns, events,
     controlPlane: new ControlPlane(),
     sessionControl: { transition: (id, ev) => sessionSvc.transition(id, ev as never) },
+    toolCalls: { listBySession: (sid) => toolCalls.listBySession(sid) },
     now: c.now, nextId: c.nextId,
   });
 });
@@ -120,6 +135,62 @@ describe('P9.3 ObservabilityService — getTrace / getEvents', () => {
     const events = await service.getEvents('S', 0);
     const seqs = events.map((e) => e.sequenceNumber);
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+  });
+});
+
+describe('P12.19 ObservabilityService — getChanges (change transcript + diffs)', () => {
+  it('reconstructs diffs from write_file / edit_file tool calls, oldest first', async () => {
+    await toolCalls.create(makeToolCall('TC1', 'write_file', { path: 'src/a.js', content: 'const x = 1;\n' }, '2026-01-01T00:00:01.000Z'));
+    await toolCalls.create(makeToolCall('TC2', 'edit_file', { path: 'src/a.js', oldString: 'const x = 1;', newString: 'const x = 42;' }, '2026-01-01T00:00:02.000Z'));
+    await toolCalls.create(makeToolCall('TC3', 'read_file', { path: 'src/a.js' }, '2026-01-01T00:00:03.000Z'));
+
+    const changes = await service.getChanges('S');
+    expect(changes.map((c) => c.toolCallId)).toEqual(['TC1', 'TC2', 'TC3']); // oldest first
+
+    const write = changes[0]!;
+    expect(write.kind).toBe('write');
+    expect(write.path).toBe('src/a.js');
+    expect(write.diff).toContain('+ const x = 1;');
+
+    const edit = changes[1]!;
+    expect(edit.kind).toBe('edit');
+    expect(edit.diff).toContain('- const x = 1;');
+    expect(edit.diff).toContain('+ const x = 42;');
+
+    const read = changes[2]!;
+    expect(read.kind).toBe('other');
+    expect(read.diff).toBeUndefined(); // read is not a change — no diff
+  });
+
+  it('summarizes delete and move without a diff', async () => {
+    await toolCalls.create(makeToolCall('TD1', 'delete_file', { path: 'old.js' }, '2026-01-01T00:00:01.000Z'));
+    await toolCalls.create(makeToolCall('TM1', 'move_file', { path: 'a.js', to: 'b.js' }, '2026-01-01T00:00:02.000Z'));
+    const changes = await service.getChanges('S');
+    const del = changes.find((c) => c.toolCallId === 'TD1')!;
+    const mov = changes.find((c) => c.toolCallId === 'TM1')!;
+    expect(del.kind).toBe('delete');
+    expect(del.summary).toContain('delete old.js');
+    expect(mov.kind).toBe('move');
+    expect(mov.summary).toContain('a.js → b.js');
+  });
+
+  it('returns [] when the toolCalls lister is not wired (fail-safe)', async () => {
+    const c = makeCounters();
+    const bare = new ObservabilityService({
+      sessions: new SqliteSessionRepository(db), graphs: new SqliteTaskGraphRepository(db),
+      executions: new SqliteTaskExecutionRepository(db), taskRuns: new SqliteTaskRunRepository(db),
+      events: new SqliteEventLog(db), controlPlane: new ControlPlane(),
+      sessionControl: { transition: (id, ev) => sessionSvc.transition(id, ev as never) },
+      now: c.now, nextId: c.nextId,
+    });
+    expect(await bare.getChanges('S')).toEqual([]);
+  });
+
+  it('listBySession returns a session tool calls ordered by requestedAt', async () => {
+    await toolCalls.create(makeToolCall('B', 'write_file', { path: 'b.js', content: 'b' }, '2026-01-01T00:00:02.000Z'));
+    await toolCalls.create(makeToolCall('A', 'write_file', { path: 'a.js', content: 'a' }, '2026-01-01T00:00:01.000Z'));
+    const list = await toolCalls.listBySession('S');
+    expect(list.map((c) => c.toolCallId)).toEqual(['A', 'B']); // by requestedAt ASC
   });
 });
 

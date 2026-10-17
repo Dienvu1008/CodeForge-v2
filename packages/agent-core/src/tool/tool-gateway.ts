@@ -36,6 +36,8 @@ export interface ToolCallRepository {
   getById(toolCallId: string): Promise<ToolCall | null>;
   /** Transition state in place (only for non-terminal transitions). */
   transition(toolCallId: string, patch: ToolCallPatch): Promise<void>;
+  /** All tool calls for a session, ordered by requestedAt (read-only; observability). Optional. */
+  listBySession?(sessionId: string): Promise<readonly ToolCall[]>;
 }
 
 export interface ToolCallPatch {

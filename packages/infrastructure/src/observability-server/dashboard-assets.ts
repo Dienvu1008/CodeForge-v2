@@ -74,6 +74,19 @@ export const DASHBOARD_HTML = `<!doctype html>
   .legend { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; font-size:10px; color:#8b949e; }
   .legend span { display:flex; gap:4px; align-items:center; }
   .legend i { width:9px; height:9px; border-radius:2px; display:inline-block; border:1px solid; }
+  /* Change transcript: the diffs the agent produced (reconstructed from tool-call args) */
+  #changes { max-height:420px; overflow:auto; }
+  .change { border:1px solid #222; border-radius:6px; margin-bottom:8px; background:#0e1116; }
+  .change .chd { display:flex; gap:8px; align-items:center; padding:6px 10px; border-bottom:1px solid #1c2128; flex-wrap:wrap; }
+  .change .chd .k { padding:1px 7px; border-radius:10px; font-size:10px; text-transform:uppercase; border:1px solid #30363d; color:#8b949e; }
+  .change .chd .k.edit { color:#58a6ff; border-color:#1f3a5a; }
+  .change .chd .k.write { color:#3fb950; border-color:#1f5a2e; }
+  .change .chd .k.delete { color:#f85149; border-color:#5a1f22; }
+  .change .chd .k.move { color:#d29922; border-color:#5a4a1a; }
+  .change .chd .p { color:#d7dde5; }
+  .change .chd .t { color:#8b949e; margin-left:auto; font-size:11px; }
+  .change pre { margin:0; padding:8px 10px; overflow:auto; max-height:220px; font:11px/1.45 ui-monospace, Menlo, monospace; }
+  .change pre .add { color:#3fb950; } .change pre .del { color:#f85149; }
 </style>
 </head>
 <body>
@@ -130,6 +143,10 @@ export const DASHBOARD_HTML = `<!doctype html>
   <section>
     <h2>Live Activity</h2>
     <ul id="activity"></ul>
+  </section>
+  <section>
+    <h2>Changes — what the agent edited</h2>
+    <div id="changes"></div>
   </section>
   <section>
     <h2>Goals</h2>
@@ -195,6 +212,36 @@ export const DASHBOARD_JS = `"use strict";
       });
     refreshApproval();
     refreshResult();
+    refreshChanges();
+  }
+
+  // The agent's change transcript: each mutating tool call with its reconstructed diff. This is
+  // the "what did the agent actually do" view — write_file shows new content, edit_file shows a
+  // -old/+new hunk, delete/move a one-line summary.
+  function renderDiff(diff) {
+    return diff.split("\\n").map(function (l) {
+      var cls = l.charAt(0) === "+" ? "add" : (l.charAt(0) === "-" ? "del" : "");
+      return "<span class='" + cls + "'>" + esc2(l) + "</span>";
+    }).join("\\n");
+  }
+  function refreshChanges() {
+    if (!sessionId) { $("changes").innerHTML = ""; return; }
+    fetch("/changes?session=" + encodeURIComponent(sessionId))
+      .then(function (r) { return r.ok ? r.json() : { changes: [] }; })
+      .then(function (b) {
+        var changes = (b.changes || []);
+        if (changes.length === 0) { $("changes").innerHTML = "<div style='color:#8b949e'>(no changes yet)</div>"; return; }
+        // Newest first — the most recent edit is the most interesting.
+        $("changes").innerHTML = changes.slice().reverse().map(function (c) {
+          var head =
+            "<div class='chd'><span class='k " + esc2(c.kind) + "'>" + esc2(c.kind) + "</span>" +
+            "<span class='p'>" + esc2(c.path || c.summary) + "</span>" +
+            "<span class='t'>" + esc2(c.state) + " · " + esc2((c.at || "").slice(11, 19)) + "</span></div>";
+          var body = c.diff ? "<pre>" + renderDiff(c.diff) + "</pre>" : "";
+          return "<div class='change'>" + head + body + "</div>";
+        }).join("");
+      })
+      .catch(function () {});
   }
 
   function gesc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }

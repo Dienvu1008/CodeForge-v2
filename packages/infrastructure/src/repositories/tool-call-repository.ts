@@ -127,6 +127,15 @@ export class SqliteToolCallRepository implements ToolCallRepository {
     return rows[0] ? rowToCall(rows[0]) : null;
   }
 
+  /** All tool calls for a session, oldest first (by requestedAt). Read-only (observability). */
+  async listBySession(sessionId: string): Promise<readonly ToolCall[]> {
+    const rows = this.db.query<ToolCallRow>(
+      'SELECT * FROM tool_calls WHERE session_id = ? ORDER BY requested_at ASC, tool_call_id ASC',
+      [sessionId],
+    );
+    return rows.map(rowToCall);
+  }
+
   async transition(toolCallId: string, patch: ToolCallPatch): Promise<void> {
     this.db.transaction((tx) => {
       const rows = tx.query<{ state: string }>(

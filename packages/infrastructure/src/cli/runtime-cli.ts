@@ -508,6 +508,8 @@ async function main(): Promise<void> {
     // P10.5: lets the ControlPlane admit approve/deny only for a call that is actually
     // APPROVAL_PENDING (gate against stray decisions).
     toolStateReader: { getState: async (id) => (await toolCalls.getById(id))?.state ?? null },
+    // P12.19: the change transcript (GET /changes) — a session's tool calls → diffs for the UI.
+    toolCalls: { listBySession: (sid) => toolCalls.listBySession(sid) },
     // P10.9: POST /goal enqueues work while the runtime is already running.
     goalIngress,
     // Model management (GET /models, POST /models/pull): list + download Ollama models.

@@ -27,6 +27,7 @@ import type {
   InterventionRecord,
   SessionState,
   ToolCallState,
+  ToolCall,
   TaskState,
   EdgeInput,
   TaskStateInput,
@@ -97,8 +98,39 @@ export interface ObservabilityServiceDeps {
   readonly workspaceFiles?: WorkspaceFilesPort;
   /** Runtime config: report workspace/model + switch the active model. Optional. */
   readonly runtimeConfig?: RuntimeConfigPort;
+  /**
+   * P12.19: lists a session's tool calls so the dashboard can show a live transcript + the
+   * diffs the agent produced (reconstructed from write_file/edit_file arguments). Optional;
+   * when absent, GET /changes returns an empty list (fail-safe). Read-only, no authority.
+   */
+  readonly toolCalls?: ToolCallListerPort;
   readonly now: () => string;
   readonly nextId: () => string;
+}
+
+/** Read-only lister of a session's tool calls (observability transcript + diffs). Optional. */
+export interface ToolCallListerPort {
+  listBySession(sessionId: string): Promise<readonly ToolCall[]>;
+}
+
+/**
+ * One entry in the agent's change transcript — a mutating tool call rendered as a reviewable
+ * change. `diff` is a unified-ish text block reconstructed from the tool call's arguments:
+ *   edit_file  → a - oldString / + newString hunk;
+ *   write_file → the full new content (whole-file write);
+ *   delete_file/move_file → a one-line summary.
+ * Non-mutating tool calls are summarized without a diff.
+ */
+export interface ChangeView {
+  readonly toolCallId: string;
+  readonly taskId?: string;
+  readonly toolName: string;
+  readonly path?: string;
+  readonly state: string;
+  readonly at: string;
+  readonly kind: 'edit' | 'write' | 'delete' | 'move' | 'other';
+  readonly diff?: string;
+  readonly summary: string;
 }
 
 /** Read-only lister of workspace files (what the agent produced). Optional; no authority. */
@@ -198,6 +230,17 @@ export class ObservabilityService {
   /** Raw ordered events for replay/audit (OB-004). */
   async getEvents(sessionId: string, fromSequence = 0): Promise<readonly DomainEvent[]> {
     return this.deps.events.query({ sessionId, fromSequence });
+  }
+
+  /**
+   * P12.19: the agent's CHANGE TRANSCRIPT — each tool call rendered as a reviewable change, with
+   * a reconstructed diff for the mutating ones (write_file/edit_file arguments ARE the change).
+   * Read-only; returns [] when the toolCalls lister is not wired (fail-safe). Oldest first.
+   */
+  async getChanges(sessionId: string): Promise<readonly ChangeView[]> {
+    if (this.deps.toolCalls === undefined) return [];
+    const calls = await this.deps.toolCalls.listBySession(sessionId);
+    return calls.map((c) => toChangeView(c));
   }
 
   /**
@@ -345,5 +388,47 @@ export class ObservabilityService {
       default:
         return;
     }
+  }
+}
+
+// ── change-transcript reconstruction (pure) ───────────────────────────────────
+
+/** The arguments shape we read for diff reconstruction (tool args are an open object). */
+function argStr(args: unknown, key: string): string | undefined {
+  if (typeof args !== 'object' || args === null) return undefined;
+  const v = (args as Record<string, unknown>)[key];
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** Render a tool call as a reviewable ChangeView (diff reconstructed from its arguments). */
+function toChangeView(c: ToolCall): ChangeView {
+  const base = {
+    toolCallId: c.toolCallId,
+    ...(c.taskId !== undefined ? { taskId: c.taskId } : {}),
+    toolName: c.toolName,
+    state: c.state,
+    at: c.requestedAt,
+  };
+  const path = argStr(c.arguments, 'path');
+  switch (c.toolName) {
+    case 'edit_file': {
+      const oldS = argStr(c.arguments, 'oldString') ?? '';
+      const newS = argStr(c.arguments, 'newString') ?? '';
+      const diff = [...oldS.split('\n').map((l) => '- ' + l), ...newS.split('\n').map((l) => '+ ' + l)].join('\n');
+      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'edit', diff, summary: `edit ${path ?? '?'} (${oldS.length}→${newS.length} chars)` };
+    }
+    case 'write_file': {
+      const content = argStr(c.arguments, 'content') ?? '';
+      const diff = content.split('\n').map((l) => '+ ' + l).join('\n');
+      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'write', diff, summary: `write ${path ?? '?'} (${content.length} chars)` };
+    }
+    case 'delete_file':
+      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'delete', summary: `delete ${path ?? '?'}` };
+    case 'move_file': {
+      const to = argStr(c.arguments, 'to');
+      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'move', summary: `move ${path ?? '?'} → ${to ?? '?'}` };
+    }
+    default:
+      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'other', summary: `${c.toolName}${path ? ' ' + path : ''}` };
   }
 }
