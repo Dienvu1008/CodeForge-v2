@@ -11,17 +11,45 @@
     "vscode": "^1.90.0"
   },
   "categories": ["Other"],
-  "activationEvents": [],
+  "activationEvents": ["onView:codeforge.sessions", "onView:codeforge.taskGraph", "onView:codeforge.governance"],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "codeforge", "title": "CodeForge", "icon": "$(server-process)" }
+      ]
+    },
+    "views": {
+      "codeforge": [
+        { "id": "codeforge.sessions",  "name": "Sessions" },
+        { "id": "codeforge.taskGraph", "name": "Task Graph" },
+        { "id": "codeforge.governance","name": "Governance" }
+      ]
+    },
     "commands": [
       { "command": "codeforge.connect",    "title": "CodeForge: Connect to Runtime" },
-      { "command": "codeforge.dashboard",  "title": "CodeForge: Open Dashboard" },
-      { "command": "codeforge.pause",      "title": "CodeForge: Pause Session" },
-      { "command": "codeforge.resume",     "title": "CodeForge: Resume Session" },
-      { "command": "codeforge.cancel",     "title": "CodeForge: Cancel Session" },
-      { "command": "codeforge.checkpoint", "title": "CodeForge: Checkpoint" }
-    ]
+      { "command": "codeforge.dashboard",  "title": "CodeForge: Open Dashboard", "icon": "$(browser)" },
+      { "command": "codeforge.refresh",    "title": "CodeForge: Refresh", "icon": "$(refresh)" },
+      { "command": "codeforge.attachSession", "title": "CodeForge: Attach to Session" },
+      { "command": "codeforge.submitGoal", "title": "CodeForge: Submit Goal", "icon": "$(add)" },
+      { "command": "codeforge.pause",      "title": "CodeForge: Pause Session", "icon": "$(debug-pause)" },
+      { "command": "codeforge.resume",     "title": "CodeForge: Resume Session", "icon": "$(debug-continue)" },
+      { "command": "codeforge.cancel",     "title": "CodeForge: Cancel Session", "icon": "$(debug-stop)" },
+      { "command": "codeforge.checkpoint", "title": "CodeForge: Checkpoint", "icon": "$(save)" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "codeforge.refresh",   "when": "view == codeforge.sessions",  "group": "navigation@1" },
+        { "command": "codeforge.submitGoal","when": "view == codeforge.sessions",  "group": "navigation@2" },
+        { "command": "codeforge.dashboard", "when": "view == codeforge.sessions",  "group": "navigation@3" },
+        { "command": "codeforge.pause",     "when": "view == codeforge.taskGraph", "group": "navigation@1" },
+        { "command": "codeforge.resume",    "when": "view == codeforge.taskGraph", "group": "navigation@2" },
+        { "command": "codeforge.cancel",    "when": "view == codeforge.taskGraph", "group": "navigation@3" }
+      ],
+      "view/item/context": [
+        { "command": "codeforge.attachSession", "when": "view == codeforge.sessions && viewItem == session", "group": "inline" }
+      ]
+    }
   },
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node",
