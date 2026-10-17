@@ -87,6 +87,16 @@ export const DASHBOARD_HTML = `<!doctype html>
   .change .chd .t { color:#8b949e; margin-left:auto; font-size:11px; }
   .change pre { margin:0; padding:8px 10px; overflow:auto; max-height:220px; font:11px/1.45 ui-monospace, Menlo, monospace; }
   .change pre .add { color:#3fb950; } .change pre .del { color:#f85149; }
+  /* Governance timeline: verification / recovery / gate / approval events as a vertical thread */
+  #governance { max-height:420px; overflow:auto; }
+  .gov { display:flex; gap:8px; align-items:baseline; padding:3px 0; border-bottom:1px solid #1c2128; }
+  .gov .gi { width:18px; text-align:center; flex:0 0 18px; }
+  .gov .gt { color:#8b949e; font-size:11px; flex:0 0 58px; }
+  .gov .gm { flex:1; }
+  .gov.pass .gm b { color:#3fb950; } .gov.fail .gm b { color:#f85149; }
+  .gov.recover .gm b { color:#58a6ff; } .gov.gate .gm b { color:#d29922; }
+  .gov.approve .gm b { color:#3fb950; } .gov.deny .gm b { color:#f85149; }
+  .gov .sub { color:#8b949e; }
 </style>
 </head>
 <body>
@@ -147,6 +157,10 @@ export const DASHBOARD_HTML = `<!doctype html>
   <section>
     <h2>Changes — what the agent edited</h2>
     <div id="changes"></div>
+  </section>
+  <section>
+    <h2>Governance — verify · recover · gate · approve</h2>
+    <div id="governance"></div>
   </section>
   <section>
     <h2>Goals</h2>
@@ -213,6 +227,54 @@ export const DASHBOARD_JS = `"use strict";
     refreshApproval();
     refreshResult();
     refreshChanges();
+    refreshGovernance();
+  }
+
+  // The governance timeline: the runtime's SAFETY events — verification verdicts, failure
+  // classifications, recovery actions (RETRY/FIX/REPLAN/ROLLBACK/ESCALATE), completion-gate
+  // challenges, and tool approvals/denials. This is the kernel's distinctive value made visible:
+  // the agent's output is GOVERNED, not just produced. Reconstructed from /events (no new API).
+  function govLine(e) {
+    var p = e.payload || {};
+    var t = e.type;
+    if (t === "VERIFICATION_ENDED") {
+      var ok = p.status === "PASS";
+      return { cls: ok ? "pass" : "fail", icon: ok ? "✓" : "✗",
+        html: "verification <b>" + esc2(p.status) + "</b> <span class='sub'>" + esc2(p.scope || "") + "</span>" };
+    }
+    if (t === "TASK_FAILED" || t === "FAILURE_DETECTED") {
+      return { cls: "fail", icon: "⚠", html: "failure <b>" + esc2(p.class || "UNKNOWN") + "</b> <span class='sub'>" + esc2(p.stage || "") + "</span>" };
+    }
+    if (t === "RECOVERY_ACTION_TAKEN" || t === "RECOVERY_ACTION_CHOSEN") {
+      return { cls: "recover", icon: "↻",
+        html: "recovery <b>" + esc2(p.action || "?") + "</b>" + (p.outcome ? " <span class='sub'>→ " + esc2(p.outcome) + "</span>" : "") +
+          (p.reason ? " <span class='sub'>" + esc2(String(p.reason).slice(0, 80)) + "</span>" : "") };
+    }
+    if (t === "DECISION_COMPLETED" && typeof p.decision === "string" && p.decision.indexOf("done_rejected") === 0) {
+      var why = p.decision === "done_rejected_missing_paths" ? "named files not written" : "no change made";
+      return { cls: "gate", icon: "⛔", html: "completion gate challenged <b>done</b> <span class='sub'>(" + why + ")</span>" };
+    }
+    if (t === "TOOL_CALL_APPROVED") return { cls: "approve", icon: "👍", html: "tool call <b>approved</b> <span class='sub'>" + esc2(p.toolCallId || "") + "</span>" };
+    if (t === "TOOL_CALL_DENIED")   return { cls: "deny", icon: "👎", html: "tool call <b>denied</b> <span class='sub'>" + esc2(p.toolCallId || "") + "</span>" };
+    if (t === "MISSION_ARCHITECTURE_GATE_BLOCKED") return { cls: "gate", icon: "⛔", html: "architecture gate <b>BLOCKED</b>" };
+    return null; // not a governance event
+  }
+  function refreshGovernance() {
+    if (!sessionId) { $("governance").innerHTML = ""; return; }
+    fetch("/events?session=" + encodeURIComponent(sessionId))
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (events) {
+        var rows = [];
+        events.forEach(function (e) {
+          var g = govLine(e);
+          if (g) rows.push("<div class='gov " + g.cls + "'><span class='gi'>" + g.icon + "</span>" +
+            "<span class='gt'>" + esc2((e.at || "").slice(11, 19)) + "</span>" +
+            "<span class='gm'>" + g.html + "</span></div>");
+        });
+        $("governance").innerHTML = rows.length ? rows.join("") : "<div style='color:#8b949e'>(no governance events yet)</div>";
+        var el = $("governance"); el.scrollTop = el.scrollHeight;
+      })
+      .catch(function () {});
   }
 
   // The agent's change transcript: each mutating tool call with its reconstructed diff. This is
