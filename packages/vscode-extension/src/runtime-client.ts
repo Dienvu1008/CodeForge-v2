@@ -48,6 +48,14 @@ export interface RuntimeConfigView {
   readonly endpoint: string;
 }
 
+/** One installed model (GET /models). */
+export interface ModelInfo {
+  readonly name: string;
+  readonly sizeBytes?: number;
+  readonly parameterSize?: string;
+  readonly quantization?: string;
+}
+
 /** Admission result shape returned by POST /control (we only read admitted + reason). */
 export interface ControlResult {
   readonly admission?: { readonly admitted: boolean; readonly reason?: string };
@@ -104,6 +112,18 @@ export class RuntimeClient {
   /** GET /config — runtime config, or null. */
   async getConfig(): Promise<RuntimeConfigView | null> {
     return this.getJson<RuntimeConfigView>('/config');
+  }
+
+  /** GET /models — installed models (for the model picker). Empty on any error. */
+  async getModels(): Promise<readonly ModelInfo[]> {
+    const body = await this.getJson<{ models?: readonly ModelInfo[] }>('/models');
+    return body?.models ?? [];
+  }
+
+  /** GET /health — true when the runtime HTTP server answers {ok:true}. */
+  async health(): Promise<boolean> {
+    const body = await this.getJson<{ ok?: boolean }>('/health');
+    return body?.ok === true;
   }
 
   /** POST /control — submit a ControlRequest (pause/resume/cancel/checkpoint/approve/deny). */

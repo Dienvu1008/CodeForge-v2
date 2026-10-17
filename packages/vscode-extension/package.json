@@ -29,6 +29,10 @@
     },
     "commands": [
       { "command": "codeforge.connect",    "title": "CodeForge: Connect to Runtime" },
+      { "command": "codeforge.startRuntime","title": "CodeForge: Start Runtime Here", "icon": "$(play)" },
+      { "command": "codeforge.stopRuntime", "title": "CodeForge: Stop Runtime", "icon": "$(debug-stop)" },
+      { "command": "codeforge.goals",       "title": "CodeForge: Goals", "icon": "$(comment-discussion)" },
+      { "command": "codeforge.pickModel",   "title": "CodeForge: Select Model" },
       { "command": "codeforge.dashboard",  "title": "CodeForge: Open Dashboard", "icon": "$(browser)" },
       { "command": "codeforge.refresh",    "title": "CodeForge: Refresh", "icon": "$(refresh)" },
       { "command": "codeforge.attachSession", "title": "CodeForge: Attach to Session" },
@@ -41,9 +45,10 @@
     ],
     "menus": {
       "view/title": [
-        { "command": "codeforge.refresh",   "when": "view == codeforge.sessions",  "group": "navigation@1" },
-        { "command": "codeforge.submitGoal","when": "view == codeforge.sessions",  "group": "navigation@2" },
-        { "command": "codeforge.dashboard", "when": "view == codeforge.sessions",  "group": "navigation@3" },
+        { "command": "codeforge.goals",      "when": "view == codeforge.sessions",  "group": "navigation@1" },
+        { "command": "codeforge.startRuntime","when": "view == codeforge.sessions", "group": "navigation@2" },
+        { "command": "codeforge.refresh",   "when": "view == codeforge.sessions",  "group": "navigation@3" },
+        { "command": "codeforge.dashboard", "when": "view == codeforge.sessions",  "group": "navigation@4" },
         { "command": "codeforge.pause",     "when": "view == codeforge.taskGraph", "group": "navigation@1" },
         { "command": "codeforge.resume",    "when": "view == codeforge.taskGraph", "group": "navigation@2" },
         { "command": "codeforge.cancel",    "when": "view == codeforge.taskGraph", "group": "navigation@3" }
@@ -51,6 +56,26 @@
       "view/item/context": [
         { "command": "codeforge.attachSession", "when": "view == codeforge.sessions && viewItem == session", "group": "inline" }
       ]
+    },
+    "configuration": {
+      "title": "CodeForge",
+      "properties": {
+        "codeforge.runtimePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to a built runtime-cli.js. Required for 'Start Runtime Here' when the extension is installed as a .vsix (in a dev checkout the opened workspace is used)."
+        },
+        "codeforge.model": {
+          "type": "string",
+          "default": "qwen2.5-coder:latest",
+          "description": "Default model id the runtime runs when started here."
+        },
+        "codeforge.port": {
+          "type": "number",
+          "default": 9500,
+          "description": "HTTP port the runtime's observability server listens on."
+        }
+      }
     }
   },
   "scripts": {

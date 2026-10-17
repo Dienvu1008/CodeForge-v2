@@ -8,6 +8,7 @@
 // controls via POST /control (OB-006, same ControlRequest shape as dashboard/Telegram). No
 // authority, no runtime duplication.
 import * as vscode from 'vscode';
+import { spawn, type ChildProcess } from 'node:child_process';
 import {
   commandToControlRequest, isControlCommand, type VscodeCommandId,
 } from './vscode-control-mapper.js';
@@ -16,10 +17,21 @@ import {
   sessionNodes, taskGraphNodes, governanceNodes, changeNodes, statusBarText,
   findPendingApproval, approvalDetail, type ViewNode,
 } from './view-model.js';
+import {
+  resolveRuntimeEntry, buildRuntimeArgv, runtimeUrlForPort,
+} from './runtime-launch.js';
+import {
+  newGoalEntry, withGoalId, reconcileHistory, type GoalEntry,
+} from './goal-history.js';
+import { goalsPanelHtml, type GoalEntryView } from './goals-webview.js';
 
 let runtimeUrl = 'http://127.0.0.1:9500';
 let sessionId = '';
 let client: RuntimeClient | null = null;
+
+// The runtime child process started by "Start Runtime Here" (null when we did not spawn one).
+let runtimeProc: ChildProcess | null = null;
+let runtimeOutput: vscode.OutputChannel | null = null;
 
 // ── A generic TreeDataProvider driven by a function that yields ViewNode[] ──────
 class NodeTreeProvider implements vscode.TreeDataProvider<ViewNode> {
@@ -100,6 +112,28 @@ function activateInner(context: vscode.ExtensionContext): void {
   // Latest change transcript (kept so the diff command + content provider can resolve a id).
   let latestChanges: readonly ChangeView[] = [];
 
+  // ── Goals panel state ──────────────────────────────────────────────────────
+  // Conversational history of goals the user submitted. Persisted across reloads via globalState
+  // so the "chat" survives window reloads (the authoritative record still lives in the runtime DB;
+  // this is just the local view binding goals→sessions).
+  let goalHistory: GoalEntry[] = context.globalState.get<GoalEntry[]>('codeforge.goalHistory', []);
+  let localIdSeq = goalHistory.length;
+  let goalsPanel: vscode.WebviewPanel | null = null;
+
+  const toEntryView = (e: GoalEntry): GoalEntryView => ({
+    localId: e.localId, description: e.description, submittedAt: e.submittedAt,
+    status: e.status, sessionId: e.sessionId, goalId: e.goalId,
+  });
+
+  const pushGoalsToPanel = (connected: boolean): void => {
+    if (goalsPanel === null) return;
+    void goalsPanel.webview.postMessage({
+      type: 'history', entries: goalHistory.map(toEntryView), connected, url: runtimeUrl,
+    });
+  };
+
+  const persistGoals = (): void => { void context.globalState.update('codeforge.goalHistory', goalHistory); };
+
   // ── Tree providers ────────────────────────────────────────────────────────
   const sessionsProvider = new NodeTreeProvider(async () => sessionNodes(await (client as RuntimeClient).listSessions(), sessionId));
   const taskProvider = new NodeTreeProvider(async () => taskGraphNodes(sessionId ? await (client as RuntimeClient).getState(sessionId) : null));
@@ -157,6 +191,19 @@ function activateInner(context: vscode.ExtensionContext): void {
     const st = sessionId && client ? await client.getState(sessionId) : null;
     statusBar.text = statusBarText(st);
     void maybePromptApproval();
+
+    // Reconcile the Goals history against live sessions, then push to the panel if open.
+    if (goalsPanel !== null && client !== null) {
+      const sessions = await client.listSessions();
+      const connected = sessions.length > 0 || (await client.health());
+      const next = reconcileHistory(goalHistory, sessions);
+      // Only persist/repaint when something actually changed (avoid churn every 2s).
+      if (JSON.stringify(next) !== JSON.stringify(goalHistory)) {
+        goalHistory = next;
+        persistGoals();
+      }
+      pushGoalsToPanel(connected);
+    }
   };
 
   // Poll the runtime periodically so the views stay live (SSE streaming is a Step-3 refinement).
@@ -212,6 +259,130 @@ function activateInner(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // ── Goals webview panel (conversational history of goals + live status) ─────
+  const openGoalsPanel = (): void => {
+    if (goalsPanel !== null) { goalsPanel.reveal(vscode.ViewColumn.Beside); return; }
+    const panel = vscode.window.createWebviewPanel(
+      'codeforge.goals', 'CodeForge Goals', vscode.ViewColumn.Beside,
+      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] },
+    );
+    goalsPanel = panel;
+    const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    panel.webview.html = goalsPanelHtml(nonce);
+    panel.onDidDispose(() => { goalsPanel = null; }, null, context.subscriptions);
+    panel.webview.onDidReceiveMessage(async (m: { type?: string; description?: string }) => {
+      if (m.type === 'ready') { void refreshAll(); return; }
+      if (m.type === 'submit' && typeof m.description === 'string') {
+        const desc = m.description.trim();
+        if (desc === '' || client === null) return;
+        // Optimistically add the goal to the history, then confirm with the runtime.
+        const entry = newGoalEntry(`g${++localIdSeq}`, desc, new Date().toISOString());
+        goalHistory = [...goalHistory, entry];
+        persistGoals();
+        pushGoalsToPanel(true);
+        const res = await client.postGoal(desc);
+        if (res?.goalId) {
+          goalHistory = goalHistory.map((e) => (e.localId === entry.localId ? withGoalId(e, res.goalId as string) : e));
+          persistGoals();
+        } else {
+          vscode.window.showErrorMessage(
+            `CodeForge: goal submit failed — ${res?.error ?? `cannot reach runtime at ${runtimeUrl}`}. Run "CodeForge: Start Runtime Here" or start a runtime on :9500.`,
+          );
+        }
+        await refreshAll();
+      }
+    }, null, context.subscriptions);
+  };
+  context.subscriptions.push(vscode.commands.registerCommand('codeforge.goals', openGoalsPanel));
+
+  // ── Model picker ────────────────────────────────────────────────────────────
+  // When a runtime is reachable we list its installed models via GET /models; otherwise we fall
+  // back to a free-text entry (so the user can still pick a model BEFORE spawning a runtime).
+  const pickModel = async (): Promise<string | undefined> => {
+    const models = client !== null ? await client.getModels() : [];
+    if (models.length > 0) {
+      const pick = await vscode.window.showQuickPick(
+        models.map((m) => ({ label: m.name, description: [m.parameterSize, m.quantization].filter(Boolean).join(' · ') })),
+        { placeHolder: 'Select a model for the runtime' },
+      );
+      return pick?.label;
+    }
+    return vscode.window.showInputBox({
+      prompt: 'Model id (runtime not reachable to list — enter one, e.g. qwen2.5-coder:latest)',
+      value: vscode.workspace.getConfiguration('codeforge').get<string>('model', 'qwen2.5-coder:latest'),
+    });
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeforge.pickModel', async () => {
+      const model = await pickModel();
+      if (model !== undefined && model !== '') {
+        await vscode.workspace.getConfiguration('codeforge').update('model', model, vscode.ConfigurationTarget.Workspace);
+        vscode.window.showInformationMessage(`CodeForge: model set to ${model}`);
+      }
+    }),
+  );
+
+  // ── Start / Stop Runtime Here (spawn a SEPARATE runtime process in the open workspace) ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeforge.startRuntime', async () => {
+      if (runtimeProc !== null) { vscode.window.showInformationMessage('CodeForge: a runtime is already running (started here).'); return; }
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (folder === undefined) { vscode.window.showErrorMessage('CodeForge: open a folder first — the runtime operates in the workspace.'); return; }
+
+      const cfg = vscode.workspace.getConfiguration('codeforge');
+      const configuredPath = cfg.get<string>('runtimePath', '').trim();
+      // In a dev checkout the runtime lives in the same repo; when installed as a .vsix it does not
+      // ship, so the user must set codeforge.runtimePath. repoRoot = the opened workspace (dev case).
+      const entry = resolveRuntimeEntry({ configuredPath: configuredPath || undefined, repoRoot: folder });
+      if (entry === null) {
+        vscode.window.showErrorMessage('CodeForge: set "codeforge.runtimePath" to your built runtime-cli.js.');
+        return;
+      }
+
+      const model = await pickModel();
+      if (model === undefined || model === '') return;
+
+      const port = cfg.get<number>('port', 9500);
+      const argv = buildRuntimeArgv({ entryPath: entry, workspace: folder, model, port, autonomy: 'edits' });
+
+      runtimeOutput ??= vscode.window.createOutputChannel('CodeForge Runtime');
+      runtimeOutput.clear();
+      runtimeOutput.show(true);
+      runtimeOutput.appendLine(`$ node ${argv.join(' ')}`);
+
+      const child = spawn(process.execPath, argv, { cwd: folder, env: process.env });
+      runtimeProc = child;
+      child.stdout?.on('data', (b: Buffer) => runtimeOutput?.append(b.toString()));
+      child.stderr?.on('data', (b: Buffer) => runtimeOutput?.append(b.toString()));
+      child.on('exit', (code) => {
+        runtimeOutput?.appendLine(`\n[runtime exited with code ${code ?? 'null'}]`);
+        runtimeProc = null;
+      });
+
+      // Point the client at the spawned runtime and poll /health until it answers (max ~15s).
+      runtimeUrl = runtimeUrlForPort(port);
+      client = makeClient();
+      vscode.window.showInformationMessage(`CodeForge: starting runtime in ${folder} on :${port}…`);
+      let healthy = false;
+      for (let i = 0; i < 30 && runtimeProc !== null && !healthy; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        healthy = await (client as RuntimeClient).health();
+      }
+      if (healthy) {
+        vscode.window.showInformationMessage(`CodeForge: runtime ready at ${runtimeUrl}. Open "CodeForge: Goals" to send one.`);
+        await refreshAll();
+      } else {
+        vscode.window.showWarningMessage('CodeForge: runtime did not become healthy in time — check the "CodeForge Runtime" output.');
+      }
+    }),
+    vscode.commands.registerCommand('codeforge.stopRuntime', () => {
+      if (runtimeProc === null) { vscode.window.showInformationMessage('CodeForge: no runtime was started from here.'); return; }
+      runtimeProc.kill();
+      runtimeProc = null;
+      vscode.window.showInformationMessage('CodeForge: runtime stopped.');
+    }),
+  );
+
   // ── Control commands (pause/resume/cancel/checkpoint) ──────────────────────
   for (const cmd of ['codeforge.pause', 'codeforge.resume', 'codeforge.cancel', 'codeforge.checkpoint'] as const) {
     context.subscriptions.push(
@@ -235,7 +406,9 @@ function activateInner(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  // nothing to clean up — all authoritative state lives on the runtime
+  // Kill a runtime we spawned so we never leak a child process; the runtime holds all other
+  // authoritative state, so there is nothing else to clean up here.
+  if (runtimeProc !== null) { runtimeProc.kill(); runtimeProc = null; }
 }
 
 /** A minimal webview HTML that loads the dashboard from the runtime's HTTP server (iframe). */
