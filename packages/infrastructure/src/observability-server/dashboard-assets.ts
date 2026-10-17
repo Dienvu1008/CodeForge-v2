@@ -97,6 +97,23 @@ export const DASHBOARD_HTML = `<!doctype html>
   .gov.recover .gm b { color:#58a6ff; } .gov.gate .gm b { color:#d29922; }
   .gov.approve .gm b { color:#3fb950; } .gov.deny .gm b { color:#f85149; }
   .gov .sub { color:#8b949e; }
+  /* Prominent approval banner — the agent is BLOCKED waiting for a human decision. */
+  #approvalBanner { display:none; margin:0 16px; margin-top:12px; border:1px solid #8a6d1a;
+    background:#2a2410; border-radius:8px; padding:12px 14px; animation:apulse 2s ease-in-out infinite; }
+  #approvalBanner.show { display:block; }
+  #approvalBanner .ab-top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  #approvalBanner .ab-badge { background:#d29922; color:#1a1203; font-weight:700; font-size:11px;
+    text-transform:uppercase; letter-spacing:.04em; padding:3px 9px; border-radius:10px; }
+  #approvalBanner .ab-title { color:#f0d58a; font-weight:600; }
+  #approvalBanner .ab-detail { margin-top:8px; color:#d7dde5; }
+  #approvalBanner .ab-detail code { background:#0e1116; border:1px solid #30363d; border-radius:4px; padding:1px 6px; }
+  #approvalBanner .ab-risk { display:inline-block; margin-left:6px; font-size:10px; text-transform:uppercase;
+    border:1px solid #5a1f22; color:#f85149; border-radius:10px; padding:1px 7px; }
+  #approvalBanner .ab-actions { margin-top:10px; display:flex; gap:8px; }
+  #approvalBanner .ab-actions button { padding:6px 16px; border-radius:5px; cursor:pointer; border:1px solid #30363d; font-weight:600; }
+  #approvalBanner #abApprove { background:#1f5a2e; color:#d7f5df; border-color:#2ea043; }
+  #approvalBanner #abDeny { background:#5a1f22; color:#f5d7d9; border-color:#f85149; }
+  @keyframes apulse { 0%,100% { box-shadow:0 0 0 0 rgba(210,153,34,.35); } 50% { box-shadow:0 0 0 4px rgba(210,153,34,0); } }
 </style>
 </head>
 <body>
@@ -112,6 +129,14 @@ export const DASHBOARD_HTML = `<!doctype html>
     </label>
   </span>
 </header>
+<div id="approvalBanner" role="alert">
+  <div class="ab-top">
+    <span class="ab-badge">Approval needed</span>
+    <span class="ab-title">The agent is paused, waiting for your decision</span>
+  </div>
+  <div class="ab-detail" id="abDetail"></div>
+  <div class="ab-actions"><button id="abApprove">Approve</button><button id="abDeny">Deny</button></div>
+</div>
 <main>
   <section>
     <h2>Agent State</h2>
@@ -397,11 +422,26 @@ export const DASHBOARD_JS = `"use strict";
       edgesSvg + nodesSvg + "</svg>";
   }
 
-  // Find a tool call that is APPROVAL_PENDING and not yet resolved, from the event log, and
-  // render Approve/Deny. The agent parks the session at AWAITING_HUMAN until a decision is made;
-  // without this the run looks "stuck" in RUNNING/VERIFYING.
+  // Approval: when a tool call is APPROVAL_PENDING the agent is BLOCKED at AWAITING_HUMAN until a
+  // decision is made. Make it impossible to miss — a pulsing top-of-page banner that names WHAT
+  // the agent wants to do (tool + path/command + risk), not just the opaque toolCallId. Details
+  // come from /changes (the per-session tool-call list we already serve); if that lookup fails we
+  // still show the id so the decision is never blocked. Also mirrors into the small Control panel.
+  function hideApprovalBanner() {
+    $("approvalBanner").className = "";
+    $("approval").textContent = "none";
+  }
+  function showApprovalBanner(pending, detailHtml) {
+    $("abDetail").innerHTML = detailHtml;
+    $("approvalBanner").className = "show";
+    $("approval").innerHTML = "<b>1 pending</b> — see the banner at the top";
+    // Rebind buttons each render (innerHTML of detail doesn't touch the buttons, but the pending
+    // id changes, so re-wire with the current id).
+    $("abApprove").onclick = function () { decideTool("approve", pending); };
+    $("abDeny").onclick = function () { decideTool("deny", pending); };
+  }
   function refreshApproval() {
-    if (!sessionId) { $("approval").textContent = "none"; return; }
+    if (!sessionId) { hideApprovalBanner(); return; }
     fetch("/events?session=" + encodeURIComponent(sessionId))
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (events) {
@@ -416,13 +456,26 @@ export const DASHBOARD_JS = `"use strict";
             pending = null;
           }
         });
-        if (!pending) { $("approval").textContent = "none"; return; }
-        $("approval").innerHTML =
-          "<div>tool call <b>" + pending + "</b> awaiting your decision</div>" +
-          "<div class='controls' style='margin-top:6px'>" +
-          "<button id='approveBtn'>Approve</button><button id='denyBtn'>Deny</button></div>";
-        $("approveBtn").addEventListener("click", function () { decideTool("approve", pending); });
-        $("denyBtn").addEventListener("click", function () { decideTool("deny", pending); });
+        if (!pending) { hideApprovalBanner(); return; }
+        // Enrich with the tool details from /changes (toolName/kind/path/summary) so the human sees
+        // exactly what will run. Fail-safe: on any error, fall back to the bare id.
+        fetch("/changes?session=" + encodeURIComponent(sessionId))
+          .then(function (r) { return r.ok ? r.json() : { changes: [] }; })
+          .then(function (b) {
+            var c = (b.changes || []).filter(function (x) { return x.toolCallId === pending; })[0];
+            var detail;
+            if (c) {
+              var what = c.summary || (c.toolName + (c.path ? " " + c.path : ""));
+              detail = "The agent wants to run <code>" + esc2(c.toolName || c.kind) + "</code>" +
+                (c.path ? " on <code>" + esc2(c.path) + "</code>" : "") +
+                "<span class='ab-risk'>needs approval</span>" +
+                "<div style='margin-top:6px;color:#8b949e'>" + esc2(what) + " · <code>" + esc2(pending) + "</code></div>";
+            } else {
+              detail = "Tool call <code>" + esc2(pending) + "</code> is awaiting your decision.";
+            }
+            showApprovalBanner(pending, detail);
+          })
+          .catch(function () { showApprovalBanner(pending, "Tool call <code>" + esc2(pending) + "</code> is awaiting your decision."); });
       })
       .catch(function () {});
   }
