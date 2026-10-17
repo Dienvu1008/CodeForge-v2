@@ -79,6 +79,19 @@ class DiffContentProvider implements vscode.TextDocumentContentProvider {
 const diffProvider = new DiffContentProvider();
 
 export function activate(context: vscode.ExtensionContext): void {
+  try {
+    activateInner(context);
+  } catch (err) {
+    // Surface activation failures instead of a silent "no data provider" view.
+    const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    vscode.window.showErrorMessage(`CodeForge extension failed to activate: ${msg}`);
+    const out = vscode.window.createOutputChannel('CodeForge');
+    out.appendLine('activation error:\n' + msg);
+    out.show(true);
+  }
+}
+
+function activateInner(context: vscode.ExtensionContext): void {
   // The extension host (Node 18+) provides a global fetch; the pure RuntimeClient accepts it via
   // its FetchLike port so the module stays testable with a fake under vitest.
   const makeClient = (): RuntimeClient => new RuntimeClient({ baseUrl: runtimeUrl, fetch: globalThis.fetch as never });

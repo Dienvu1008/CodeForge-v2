@@ -11,8 +11,8 @@
     "vscode": "^1.90.0"
   },
   "categories": ["Other"],
-  "activationEvents": ["onView:codeforge.sessions", "onView:codeforge.taskGraph", "onView:codeforge.governance"],
-  "main": "./dist/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.cjs",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -54,7 +54,7 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.cjs --external:vscode --format=cjs --platform=node",
     "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
