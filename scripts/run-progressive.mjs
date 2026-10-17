@@ -18,7 +18,7 @@ import {
   NodeWorkspaceManager, NodeProcessSupervisor, NodeToolExecutor, WorkspaceProcessSupervisor,
   BenchmarkRunner, loadBenchmarkFile, inspectProject, SwitchableModelGateway,
   SqliteFailureRepository, SqliteRecoveryActionRepository, ContextCollector,
-  WorkspaceSnapshotRollback,
+  WorkspaceSnapshotRollback, LspPool,
 } from '../packages/infrastructure/dist/index.js';
 import {
   SessionService, SessionOrchestrator, Planner, GraphCommitService, GraphService,
@@ -112,7 +112,8 @@ function makeRealAgentRunner() {
         // instead of guessing — the product CLI always wires this. Critical for cross-file tasks
         // (rename + update all call sites): importReverseEdges tells the model which files call the
         // symbol. Without it the benchmark under-measures the runtime (same gap as recovery was).
-        const contextCollector = new ContextCollector({ workspaceRoot });
+        const useLsp = argv.includes('--lsp');
+        const contextCollector = new ContextCollector({ workspaceRoot, ...(useLsp ? { lspPool: new LspPool({ rootDir: workspaceRoot }) } : {}) });
         const taskExec = new TaskExecutor({
           taskRunService: taskRunSvc, executionCoordinator: coordinator,
           contextBuilder: new ContextBuilder({ now: c.now, nextId: c.nextId }),

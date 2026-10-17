@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { ContextCollector } from '@codeforge/infrastructure';
 
 let root: string;
@@ -105,5 +106,58 @@ describe('P10.3 ContextCollector', () => {
     const b = await collector.collect([], undefined); // explicit undefined plan
     expect(a.workspaceFiles.size).toBe(b.workspaceFiles.size);
     expect(a.workspaceFiles.size).toBeGreaterThanOrEqual(3); // the 3 seed files at least
+  });
+
+  // ── P12.17: optional LSP augmentation of the reverse-edge graph ───────────────
+
+  // A minimal fake LspPool: forFile() returns an adapter whose references() reports that the
+  // given symbol is referenced from `refFromRel`. Enough to exercise the merge without a server.
+  function fakePool(refFromRel: string, root: string): import('@codeforge/infrastructure').LspPool {
+    const adapter = {
+      languageId: 'typescript',
+      async documentSymbol(): Promise<{ name: string; kind: number; range: { start: { line: number; character: number }; end: { line: number; character: number } } }[]> {
+        return [{ name: 'add', kind: 12, range: { start: { line: 0, character: 16 }, end: { line: 0, character: 19 } } }];
+      },
+      async references(): Promise<{ uri: string; range: { start: { line: number; character: number }; end: { line: number; character: number } } }[]> {
+        return [{ uri: pathToFileURL(join(root, refFromRel)).href, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } }];
+      },
+    };
+    return { async forFile() { return adapter; }, supports() { return true; }, async stopAll() {} } as unknown as import('@codeforge/infrastructure').LspPool;
+  }
+
+  it('augments reverse edges with LSP references for a changed file', async () => {
+    // Baseline (no LSP): util.ts reverse edges come only from the import graph → {math.ts}.
+    const base = await new ContextCollector({ workspaceRoot: root }).collect(['util.ts']);
+    expect([...(base.importReverseEdges.get('util.ts') ?? [])].sort()).toEqual(['math.ts']);
+
+    // With a fake pool reporting that main.ts references util.ts's `add`, main.ts is added as a
+    // reverse-edge neighbour — the kind of cross-file precision the import graph alone misses.
+    const withLsp = new ContextCollector({ workspaceRoot: root, lspPool: fakePool('main.ts', root) });
+    const r = await withLsp.collect(['util.ts']);
+    const neighbours = [...(r.importReverseEdges.get('util.ts') ?? [])].sort();
+    expect(neighbours).toContain('math.ts'); // tree-sitter edge preserved (additive, never removed)
+    expect(neighbours).toContain('main.ts'); // LSP reference edge added
+  });
+
+  it('LSP augmentation only runs for changed files (no changed set → unchanged)', async () => {
+    const withLsp = new ContextCollector({ workspaceRoot: root, lspPool: fakePool('main.ts', root) });
+    const r = await withLsp.collect([]); // no changed paths → augmentation skipped
+    expect([...(r.importReverseEdges.get('util.ts') ?? [])].sort()).toEqual(['math.ts']);
+  });
+
+  it('degrades silently when the pool has no server for the file (forFile → null)', async () => {
+    const nullPool = { async forFile() { return null; }, supports() { return false; }, async stopAll() {} } as unknown as import('@codeforge/infrastructure').LspPool;
+    const withLsp = new ContextCollector({ workspaceRoot: root, lspPool: nullPool });
+    const r = await withLsp.collect(['util.ts']);
+    // Identical to the tree-sitter-only edges.
+    expect([...(r.importReverseEdges.get('util.ts') ?? [])].sort()).toEqual(['math.ts']);
+  });
+
+  it('a throwing pool never breaks collect() (graceful)', async () => {
+    const throwingPool = { async forFile() { throw new Error('boom'); }, supports() { return true; }, async stopAll() {} } as unknown as import('@codeforge/infrastructure').LspPool;
+    const withLsp = new ContextCollector({ workspaceRoot: root, lspPool: throwingPool });
+    const r = await withLsp.collect(['util.ts']);
+    expect(r.workspaceFiles.size).toBeGreaterThanOrEqual(3);
+    expect([...(r.importReverseEdges.get('util.ts') ?? [])]).toContain('math.ts');
   });
 });

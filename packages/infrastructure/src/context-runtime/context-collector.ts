@@ -16,10 +16,12 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { join, relative, sep, extname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { RetrievedSymbol, ContextPlan } from '@codeforge/agent-core';
 import { TreeSitterAdapter } from '../code-intelligence/tree-sitter-adapter.js';
 import { SymbolExtractor } from '../code-intelligence/symbol-extractor.js';
 import { ImportGraphBuilder } from '../code-intelligence/import-graph-builder.js';
+import type { LspPool } from '../code-intelligence/lsp-adapter.js';
 
 // ── Collected signals (plain data for agent-core) ────────────────────────────
 
@@ -44,6 +46,19 @@ export interface ContextCollectorOptions {
   readonly maxFileBytes?: number;
   /** Max total bytes across all files. Default 2 MiB. */
   readonly maxTotalBytes?: number;
+  /**
+   * P12.17 (opt-in): an LspPool for symbol-level cross-file precision. When provided, collect()
+   * augments the import-graph reverse edges with LSP `references`: for each CHANGED TS/JS file,
+   * the files that actually reference its top-level symbols become reverse-edge neighbours, so the
+   * Retriever pulls the real call-sites of a changed symbol — including through package/alias
+   * imports the relative-only import graph misses. Absent ⇒ behavior is byte-identical to before
+   * (tree-sitter only). Any LSP failure degrades silently to the tree-sitter edges.
+   */
+  readonly lspPool?: LspPool;
+  /** Cap on changed files probed via LSP per collect() (keeps it bounded). Default 20. */
+  readonly lspMaxChangedFiles?: number;
+  /** Cap on symbols probed per file via LSP references. Default 40. */
+  readonly lspMaxSymbolsPerFile?: number;
 }
 
 const DEFAULT_SKIP_DIRS = new Set([
@@ -102,16 +117,87 @@ export class ContextCollector {
     // TokenBudgeter still trims to the policy budget.
     const caps = this.resolveCaps(plan);
     const workspaceFiles = await this.readWorkspaceFiles(caps);
+    const effectiveChanged = changedPaths.filter((p) => workspaceFiles.has(p));
 
     // Code-intelligence over the TS/JS/… subset. Degrades to empty on any failure.
     const { symbols, importReverseEdges } = await this.analyze(workspaceFiles);
 
+    // P12.17 (opt-in): enrich the reverse-edge graph with LSP references for the CHANGED files, so
+    // the Retriever pulls the real call-sites of a changed symbol (cross-package/alias too). Pure
+    // additive — never removes a tree-sitter edge; degrades silently when the pool/server is absent.
+    const edges = this.opts.lspPool !== undefined && effectiveChanged.length > 0
+      ? await this.augmentWithLsp(importReverseEdges, workspaceFiles, effectiveChanged)
+      : importReverseEdges;
+
     return {
       workspaceFiles,
       symbols,
-      importReverseEdges,
-      changedPaths: changedPaths.filter((p) => workspaceFiles.has(p)),
+      importReverseEdges: edges,
+      changedPaths: effectiveChanged,
     };
+  }
+
+  /**
+   * P12.17: merge LSP `references` edges into the import-graph reverse edges. For each changed
+   * TS/JS file (bounded), ask the pool's adapter for the file's top-level symbols, then the
+   * references to each symbol; every referencing file becomes a reverse-edge neighbour of the
+   * changed (definition) file — the same shape the Retriever already uses to expand the affected
+   * set. Returns a NEW merged map; the input is never mutated. Never throws (degrade → input).
+   */
+  private async augmentWithLsp(
+    base: ReadonlyMap<string, ReadonlySet<string>>,
+    files: ReadonlyMap<string, string>,
+    changed: readonly string[],
+  ): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+    const pool = this.opts.lspPool;
+    if (pool === undefined) return base;
+    const maxFiles   = this.opts.lspMaxChangedFiles ?? 20;
+    const maxSymbols = this.opts.lspMaxSymbolsPerFile ?? 40;
+    const root = this.opts.workspaceRoot;
+
+    // Copy base into a mutable map of mutable sets (never touch the input).
+    const merged = new Map<string, Set<string>>();
+    for (const [k, v] of base) merged.set(k, new Set(v));
+    const addEdge = (def: string, referrer: string): void => {
+      if (def === referrer) return;
+      let set = merged.get(def);
+      if (set === undefined) { set = new Set(); merged.set(def, set); }
+      set.add(referrer);
+    };
+    // Map an LSP file:// uri back to a canonical project-relative path we actually hold.
+    const uriToRel = (uri: string): string | null => {
+      try {
+        const abs = decodeURIComponent(new URL(uri).pathname).replace(/^\/([A-Za-z]:)/, '$1');
+        const rel = canonical(root, abs);
+        return files.has(rel) ? rel : null;
+      } catch { return null; }
+    };
+
+    let probed = 0;
+    for (const rel of changed) {
+      if (probed >= maxFiles) break;
+      if (languageForFile(rel) === null) continue;
+      const content = files.get(rel);
+      if (content === undefined) continue;
+      let adapter;
+      try { adapter = await pool.forFile(rel); } catch { adapter = null; }
+      if (adapter === null) continue; // no server for this language / unavailable → skip
+      probed++;
+      const uri = pathToFileURL(join(root, rel)).href;
+      try {
+        const syms = await adapter.documentSymbol(uri, content);
+        for (const sym of syms.slice(0, maxSymbols)) {
+          const refs = await adapter.references(uri, content, sym.range.start);
+          for (const loc of refs) {
+            const referrer = uriToRel(loc.uri);
+            if (referrer !== null) addEdge(rel, referrer);
+          }
+        }
+      } catch {
+        // per-file LSP failure — keep whatever edges we have, continue with the next file
+      }
+    }
+    return merged;
   }
 
   /**

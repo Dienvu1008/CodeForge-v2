@@ -77,6 +77,7 @@ import { SessionStateControlGate }        from '../observability-server/session-
 import { inspectProject }                 from '../verification-runtime/index.js';
 import { WorkspaceProcessSupervisor }     from '../verification-runtime/index.js';
 import { ContextCollector }               from '../context-runtime/index.js';
+import { LspPool }                         from '../code-intelligence/index.js';
 import { NodeApprovalCoordinator }         from '../approval-runtime/index.js';
 
 // Agent-core (pure domain)
@@ -353,7 +354,15 @@ async function main(): Promise<void> {
   // 6b. Context collector (P10.3): reads the workspace (files + symbols + import graph)
   //     and feeds the signals to the ContextBuilder so the agent sees the real codebase
   //     instead of guessing. Excludes the .codeforge/ scratch zone (its own skip list).
-  const contextCollector = new ContextCollector({ workspaceRoot });
+  //     P12.17: --lsp enables symbol-level cross-file precision (LSP references augment the
+  //     import-graph edges). Opt-in; degrades to tree-sitter when a server is absent.
+  const useLsp = args['lsp'] !== undefined && args['lsp'] !== 'false';
+  const lspPool = useLsp ? new LspPool({ rootDir: workspaceRoot }) : undefined;
+  if (useLsp) console.log('  LSP: enabled (TS/JS references augment cross-file context)');
+  const contextCollector = new ContextCollector({
+    workspaceRoot,
+    ...(lspPool !== undefined ? { lspPool } : {}),
+  });
 
   // 6c. Control gate (reads authoritative session state). Shared by the orchestrator
   //     (between tasks) and the TaskExecutor (P10.6: between ReAct steps).
