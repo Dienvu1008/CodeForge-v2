@@ -96,7 +96,8 @@ next investment.
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| Repository analysis (symbols, import graph) | DONE | `infrastructure/code-intelligence/` (Tree-sitter / LSP), consumed by `ContextCollector`. |
+| Repository analysis (symbols, import graph) | DONE | `infrastructure/code-intelligence/`. Tree-sitter (SymbolExtractor + ImportGraphBuilder) is consumed by `ContextCollector` in the live path. LSP (`LspAdapter`) is built + tested but NOT yet wired into the context pipeline — see the LSP row below. |
+| LSP code intelligence (`LspAdapter`) | PARTIAL | `documentSymbol`/`definition`/`references` over LSP stdio. **P12.16: generalized to a server registry** — `LspServerSpec` + `DEFAULT_LSP_SERVERS` + `lspServerForExtension` + an `LspPool` that routes a file (by extension) to a per-language adapter with `isAvailable` gating and graceful degradation; the 3 old TS/JS hard-codes (server entry, spawn shape, languageId) are gone, so adding a language = register one spec. Default + only registered server today = `typescript-language-server` (TS/JS). Live tests pass (server present). STILL not wired into `ContextCollector` — that is the next step (opt-in `--lsp`: use `references` for cross-file precision, degrade to tree-sitter). |
 | ContextBuilder + token budget + trust marking | DONE | `context/`, CX-*. |
 | Changed-paths / retrieval | DONE | `context-runtime/`. |
 | Mission → Context strategy integration | DONE (P12.7) | Strategy flattened to `ContextPlan`, threaded through the orchestrator to the executor; sizes the ContextBuilder policy + the ContextCollector caps. Fail-safe when absent. |

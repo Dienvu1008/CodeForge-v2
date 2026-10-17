@@ -3,7 +3,11 @@
 // absence). As a pinned dependency it is normally present, so these run.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { pathToFileURL } from 'node:url';
-import { LspAdapter, LspError } from '@codeforge/infrastructure';
+import {
+  LspAdapter, LspError, LspPool,
+  TYPESCRIPT_LSP_SERVER, DEFAULT_LSP_SERVERS, lspServerForExtension,
+  type LspServerSpec,
+} from '@codeforge/infrastructure';
 
 const available = LspAdapter.isAvailable();
 
@@ -30,6 +34,76 @@ describe('P7-LX1 LspAdapter — unit (no server needed)', () => {
   it('stop() is a no-op when never started', async () => {
     const a = new LspAdapter();
     await expect(a.stop()).resolves.toBeUndefined();
+  });
+
+  it('default adapter announces the typescript languageId', () => {
+    expect(new LspAdapter().languageId).toBe('typescript');
+  });
+});
+
+// ── P12.16: server registry + pool (no server process needed) ─────────────────
+
+describe('LSP server registry', () => {
+  it('TS/JS server handles the TS/JS extensions', () => {
+    expect(TYPESCRIPT_LSP_SERVER.languageId).toBe('typescript');
+    for (const ext of ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']) {
+      expect(TYPESCRIPT_LSP_SERVER.extensions).toContain(ext);
+    }
+  });
+
+  it('lspServerForExtension routes a .ts file to the TS server, case-insensitively', () => {
+    expect(lspServerForExtension('.ts')).toBe(TYPESCRIPT_LSP_SERVER);
+    expect(lspServerForExtension('.TSX')).toBe(TYPESCRIPT_LSP_SERVER);
+  });
+
+  it('lspServerForExtension returns null for an unregistered extension', () => {
+    expect(lspServerForExtension('.py')).toBeNull();
+    expect(lspServerForExtension('.go')).toBeNull();
+  });
+
+  it('an adapter built from a custom spec announces that spec languageId', () => {
+    const fakeSpec: LspServerSpec = {
+      languageId: 'python',
+      extensions: ['.py'],
+      resolveLaunch: () => ({ command: 'pyright-langserver', args: ['--stdio'] }),
+    };
+    expect(new LspAdapter({ server: fakeSpec }).languageId).toBe('python');
+    // A spec that resolves a (fake) launch reports available even without the TS package.
+    expect(LspAdapter.isAvailable(fakeSpec)).toBe(true);
+  });
+
+  it('isAvailable(spec) is false when the spec cannot resolve its launch', () => {
+    const missing: LspServerSpec = {
+      languageId: 'nope',
+      extensions: ['.nope'],
+      resolveLaunch: () => { throw new LspError('SERVER_NOT_FOUND', 'absent'); },
+    };
+    expect(LspAdapter.isAvailable(missing)).toBe(false);
+  });
+});
+
+describe('LspPool — routing + graceful degradation', () => {
+  it('returns null for a file whose extension has no registered server', async () => {
+    const pool = new LspPool({ rootDir: process.cwd() });
+    expect(await pool.forFile('main.py')).toBeNull();   // no python server registered by default
+    expect(pool.supports('main.py')).toBe(false);
+    await pool.stopAll();
+  });
+
+  it('returns null (never throws) when the matched server is unavailable', async () => {
+    const unavailable: LspServerSpec = {
+      languageId: 'ghost', extensions: ['.ghost'],
+      resolveLaunch: () => { throw new LspError('SERVER_NOT_FOUND', 'absent'); },
+    };
+    const pool = new LspPool({ rootDir: process.cwd(), servers: [unavailable] });
+    expect(await pool.forFile('x.ghost')).toBeNull();
+    expect(pool.supports('x.ghost')).toBe(false);
+    await pool.stopAll();
+  });
+
+  it('DEFAULT_LSP_SERVERS contains exactly the TS/JS server for now', () => {
+    expect(DEFAULT_LSP_SERVERS).toContain(TYPESCRIPT_LSP_SERVER);
+    expect(DEFAULT_LSP_SERVERS.length).toBe(1);
   });
 });
 
@@ -82,4 +156,18 @@ describe.skipIf(!available)('P7-LX1 LspAdapter — live server (skipped if absen
     const syms = await adapter.documentSymbol(URI, SOURCE);
     expect(syms.length).toBeGreaterThan(0);
   }, 30000);
+
+  it('LspPool.forFile routes a .ts file to a started TS adapter', async () => {
+    const pool = new LspPool({ rootDir: process.cwd(), requestTimeoutMs: 20000 });
+    try {
+      expect(pool.supports('src/foo.ts')).toBe(true);
+      const a = await pool.forFile('src/foo.ts');
+      expect(a).not.toBeNull();
+      expect(a!.languageId).toBe('typescript');
+      // Reuses the same adapter instance for another TS file.
+      expect(await pool.forFile('src/bar.tsx')).toBe(a);
+    } finally {
+      await pool.stopAll();
+    }
+  }, 40000);
 });
