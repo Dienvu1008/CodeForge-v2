@@ -36,6 +36,9 @@ export interface ChangeView {
   readonly kind: 'edit' | 'write' | 'delete' | 'move' | 'other';
   readonly diff?: string;
   readonly summary: string;
+  /** Raw before/after content for a side-by-side diff (vscode.diff). Present for edit/write. */
+  readonly before?: string;
+  readonly after?: string;
 }
 
 /** Runtime config (GET /config). */

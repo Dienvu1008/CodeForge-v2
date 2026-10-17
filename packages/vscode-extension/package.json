@@ -23,6 +23,7 @@
       "codeforge": [
         { "id": "codeforge.sessions",  "name": "Sessions" },
         { "id": "codeforge.taskGraph", "name": "Task Graph" },
+        { "id": "codeforge.changes",   "name": "Changes" },
         { "id": "codeforge.governance","name": "Governance" }
       ]
     },
@@ -31,6 +32,7 @@
       { "command": "codeforge.dashboard",  "title": "CodeForge: Open Dashboard", "icon": "$(browser)" },
       { "command": "codeforge.refresh",    "title": "CodeForge: Refresh", "icon": "$(refresh)" },
       { "command": "codeforge.attachSession", "title": "CodeForge: Attach to Session" },
+      { "command": "codeforge.viewDiff", "title": "CodeForge: View Change Diff" },
       { "command": "codeforge.submitGoal", "title": "CodeForge: Submit Goal", "icon": "$(add)" },
       { "command": "codeforge.pause",      "title": "CodeForge: Pause Session", "icon": "$(debug-pause)" },
       { "command": "codeforge.resume",     "title": "CodeForge: Resume Session", "icon": "$(debug-continue)" },

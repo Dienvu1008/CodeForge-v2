@@ -131,6 +131,13 @@ export interface ChangeView {
   readonly kind: 'edit' | 'write' | 'delete' | 'move' | 'other';
   readonly diff?: string;
   readonly summary: string;
+  /**
+   * Raw before/after content for a side-by-side diff view (e.g. the VS Code extension's
+   * vscode.diff). Present for edit_file (oldString/newString) and write_file (''/content);
+   * absent for delete/move/other, which have no two-sided content to diff.
+   */
+  readonly before?: string;
+  readonly after?: string;
 }
 
 /** Read-only lister of workspace files (what the agent produced). Optional; no authority. */
@@ -415,12 +422,12 @@ function toChangeView(c: ToolCall): ChangeView {
       const oldS = argStr(c.arguments, 'oldString') ?? '';
       const newS = argStr(c.arguments, 'newString') ?? '';
       const diff = [...oldS.split('\n').map((l) => '- ' + l), ...newS.split('\n').map((l) => '+ ' + l)].join('\n');
-      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'edit', diff, summary: `edit ${path ?? '?'} (${oldS.length}→${newS.length} chars)` };
+      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'edit', diff, before: oldS, after: newS, summary: `edit ${path ?? '?'} (${oldS.length}→${newS.length} chars)` };
     }
     case 'write_file': {
       const content = argStr(c.arguments, 'content') ?? '';
       const diff = content.split('\n').map((l) => '+ ' + l).join('\n');
-      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'write', diff, summary: `write ${path ?? '?'} (${content.length} chars)` };
+      return { ...base, ...(path !== undefined ? { path } : {}), kind: 'write', diff, before: '', after: content, summary: `write ${path ?? '?'} (${content.length} chars)` };
     }
     case 'delete_file':
       return { ...base, ...(path !== undefined ? { path } : {}), kind: 'delete', summary: `delete ${path ?? '?'}` };

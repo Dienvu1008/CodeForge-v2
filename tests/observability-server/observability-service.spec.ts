@@ -156,6 +156,11 @@ describe('P12.19 ObservabilityService — getChanges (change transcript + diffs)
     expect(edit.kind).toBe('edit');
     expect(edit.diff).toContain('- const x = 1;');
     expect(edit.diff).toContain('+ const x = 42;');
+    // before/after carry the raw two-sided content for a side-by-side (vscode.diff) view.
+    expect(edit.before).toBe('const x = 1;');
+    expect(edit.after).toBe('const x = 42;');
+    expect(write.before).toBe('');
+    expect(write.after).toContain('const x = 1;');
 
     const read = changes[2]!;
     expect(read.kind).toBe('other');

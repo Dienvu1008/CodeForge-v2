@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   sessionNodes, taskGraphNodes, governanceNodes, governanceNode, changeNodes, statusBarText, taskIconId,
+  findPendingApproval, approvalDetail,
 } from '../../packages/vscode-extension/src/view-model.js';
 import type { RuntimeProjection, DomainEvent } from '@codeforge/agent-core';
 import type { ChangeView } from '../../packages/vscode-extension/src/runtime-client.js';
@@ -93,6 +94,44 @@ describe('changeNodes', () => {
     expect(nodes[0]!.value).toBe('TC2');            // newest first
     expect(nodes[0]!.contextValue).toBe('change');  // no diff
     expect(nodes[1]!.contextValue).toBe('change-diff'); // has a diff
+  });
+});
+
+describe('findPendingApproval', () => {
+  it('returns the pending toolCallId until it is resolved', () => {
+    const pendingEvents = [ev('TOOL_CALL_REQUESTED', { toolCallId: 'TC1', state: 'APPROVAL_PENDING' })];
+    expect(findPendingApproval(pendingEvents)).toBe('TC1');
+    const resolved = [...pendingEvents, ev('TOOL_CALL_APPROVED', { toolCallId: 'TC1' })];
+    expect(findPendingApproval(resolved)).toBeNull();
+  });
+  it('returns null when no approval is pending', () => {
+    expect(findPendingApproval([ev('VERIFICATION_ENDED', { status: 'PASS' })])).toBeNull();
+  });
+  it('tracks only the latest unresolved pending call', () => {
+    const events = [
+      ev('TOOL_CALL_REQUESTED', { toolCallId: 'TC1', state: 'APPROVAL_PENDING' }),
+      ev('TOOL_CALL_ENDED', { toolCallId: 'TC1' }),
+      ev('TOOL_CALL_REQUESTED', { toolCallId: 'TC2', state: 'APPROVAL_PENDING' }),
+    ];
+    expect(findPendingApproval(events)).toBe('TC2');
+  });
+});
+
+describe('approvalDetail', () => {
+  it('names the tool + path when the change is known', () => {
+    const detail = approvalDetail('TC1', [{ toolCallId: 'TC1', toolName: 'run_command', kind: 'other', state: 'APPROVAL_PENDING', at: 't', path: 'npm install', summary: 'run_command npm install' }]);
+    expect(detail).toContain('run_command');
+    expect(detail).toContain('npm install');
+  });
+  it('falls back to the id when the change is unknown', () => {
+    expect(approvalDetail('TCX', [])).toContain('TCX');
+  });
+});
+
+describe('changeNodes before/after', () => {
+  it('a change with before/after keeps a diffable contextValue', () => {
+    const nodes = changeNodes([{ toolCallId: 'TC1', toolName: 'edit_file', kind: 'edit', state: 'SUCCEEDED', at: 't', path: 'a.js', summary: 'edit a.js', diff: '- x\n+ y', before: 'x', after: 'y' }]);
+    expect(nodes[0]!.contextValue).toBe('change-diff');
   });
 });
 

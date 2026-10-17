@@ -187,6 +187,38 @@ function changeIconId(kind: ChangeView['kind']): string {
   }
 }
 
+// ── Approval detection (pure) ─────────────────────────────────────────────────
+
+/**
+ * Scan the event stream for a tool call that is APPROVAL_PENDING and not yet resolved. Mirrors
+ * the dashboard's logic: a TOOL_CALL_REQUESTED with state APPROVAL_PENDING is pending until that
+ * same toolCallId is approved/denied/started/ended. Returns the pending toolCallId, or null.
+ */
+export function findPendingApproval(events: readonly DomainEvent[]): string | null {
+  let pending: string | null = null;
+  for (const e of events) {
+    const p = (e.payload ?? {}) as Record<string, unknown>;
+    const tcId = typeof p['toolCallId'] === 'string' ? p['toolCallId'] : undefined;
+    if (e.type === 'TOOL_CALL_REQUESTED' && p['state'] === 'APPROVAL_PENDING' && tcId !== undefined) {
+      pending = tcId;
+    }
+    if (tcId !== undefined && pending === tcId &&
+        (e.type === 'TOOL_CALL_APPROVED' || e.type === 'TOOL_CALL_DENIED' ||
+         e.type === 'TOOL_CALL_STARTED' || e.type === 'TOOL_CALL_ENDED')) {
+      pending = null;
+    }
+  }
+  return pending;
+}
+
+/** Human-readable detail for a pending approval, enriched from the change transcript. */
+export function approvalDetail(toolCallId: string, changes: readonly ChangeView[]): string {
+  const c = changes.find((x) => x.toolCallId === toolCallId);
+  if (c === undefined) return `Tool call ${toolCallId} is awaiting your decision.`;
+  const target = c.path ? ` on ${c.path}` : '';
+  return `The agent wants to run ${c.toolName}${target}. (${c.summary})`;
+}
+
 /** Status-bar summary string for the active session (compact). */
 export function statusBarText(projection: RuntimeProjection | null): string {
   if (projection === null) return '$(circle-outline) CodeForge: not connected';
