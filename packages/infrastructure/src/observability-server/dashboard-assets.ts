@@ -56,6 +56,24 @@ export const DASHBOARD_HTML = `<!doctype html>
   li.reasoning i { color:#8b949e; font-style:italic; }
   ul.reasoning-sub { margin:4px 0 2px 16px; padding:0; max-height:none; }
   ul.reasoning-sub li { border:none; padding:1px 0; color:#9aa4b2; }
+  /* Task graph (SVG DAG): nodes colored by state, edges = depends_on */
+  #taskGraph { width:100%; overflow:auto; max-height:420px; }
+  #taskGraph svg { display:block; }
+  #taskGraph .edge { stroke:#30363d; stroke-width:1.5; fill:none; }
+  #taskGraph .node rect { rx:5; ry:5; stroke-width:1.5; fill:#0e1116; }
+  #taskGraph .node text { fill:#d7dde5; font:11px ui-monospace, Menlo, monospace; }
+  #taskGraph .node .st { font-size:9px; }
+  #taskGraph .node.pending  rect { stroke:#30363d; }
+  #taskGraph .node.ready    rect { stroke:#1f3a5a; }
+  #taskGraph .node.active   rect { stroke:#3fb950; fill:#0f1f14; }
+  #taskGraph .node.blocked  rect { stroke:#d29922; }
+  #taskGraph .node.passed   rect { stroke:#2ea043; }
+  #taskGraph .node.failed   rect { stroke:#f85149; fill:#1f1113; }
+  #taskGraph .node.verifying rect { stroke:#8957e5; }
+  #taskGraph .node.superseded rect { stroke:#444c56; stroke-dasharray:3 3; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; font-size:10px; color:#8b949e; }
+  .legend span { display:flex; gap:4px; align-items:center; }
+  .legend i { width:9px; height:9px; border-radius:2px; display:inline-block; border:1px solid; }
 </style>
 </head>
 <body>
@@ -93,7 +111,16 @@ export const DASHBOARD_HTML = `<!doctype html>
   </section>
   <section>
     <h2>Task Graph</h2>
-    <ul id="tasks"></ul>
+    <div id="taskGraph"></div>
+    <div class="legend">
+      <span><i style="border-color:#3fb950;background:#0f1f14"></i>active</span>
+      <span><i style="border-color:#2ea043"></i>passed</span>
+      <span><i style="border-color:#d29922"></i>blocked</span>
+      <span><i style="border-color:#f85149;background:#1f1113"></i>failed</span>
+      <span><i style="border-color:#8957e5"></i>verifying</span>
+      <span><i style="border-color:#1f3a5a"></i>ready</span>
+      <span><i style="border-color:#30363d"></i>pending</span>
+    </div>
   </section>
   <section>
     <h2>Result — Workspace Files</h2>
@@ -164,17 +191,101 @@ export const DASHBOARD_JS = `"use strict";
         // workspace has no verification checks, so there is no evidence to pass). Show that
         // honestly as "done (unverified)" instead of a spinning/active state.
         var sessionDone = st.sessionState === "COMPLETED" || st.sessionState === "ABORTED" || st.sessionState === "AWAITING_HUMAN";
-        var tl = st.tasks.map(function (t) {
-          var unverified = sessionDone && t.state === "VERIFYING";
-          var label = unverified ? "VERIFYING (done, unverified — no checks)" : t.state;
-          var cls = unverified ? "passed" : (t.isActive ? "active" : (t.isBlocked ? "blocked" : (t.state === "PASSED" ? "passed" : "")));
-          var mark = unverified ? "◍" : (t.isActive ? "●" : (t.state === "PASSED" ? "✓" : (t.isBlocked ? "⊘" : "○")));
-          return "<li class='task " + cls + "'>" + mark + " " + t.taskId + " — " + label + "</li>";
-        }).join("");
-        $("tasks").innerHTML = tl || "<li>(no tasks)</li>";
+        renderTaskGraph(st.tasks, sessionDone);
       });
     refreshApproval();
     refreshResult();
+  }
+
+  function gesc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  // Map a task projection to a CSS state class for the graph node (mirrors the old list marks).
+  function taskClass(t, sessionDone) {
+    if (sessionDone && t.state === "VERIFYING") return "passed"; // done, unverified (no checks)
+    if (t.isActive || t.state === "RUNNING") return "active";
+    if (t.state === "PASSED") return "passed";
+    if (t.state === "FAILED" || t.state === "TIMEOUT") return "failed";
+    if (t.state === "VERIFYING") return "verifying";
+    if (t.state === "SUPERSEDED") return "superseded";
+    if (t.isBlocked) return "blocked";
+    if (t.state === "READY") return "ready";
+    return "pending";
+  }
+
+  // Render the task graph as an SVG DAG: nodes laid out in dependency LAYERS (a node sits one row
+  // below its deepest dependency), edges = depends_on. Pure layout from /state (TaskProjection
+  // carries dependsOn); no backend change. Degrades to "(no tasks)" when empty.
+  function renderTaskGraph(tasks, sessionDone) {
+    var host = $("taskGraph");
+    if (!tasks || tasks.length === 0) { host.innerHTML = "<div style='color:#8b949e'>(no tasks)</div>"; return; }
+
+    var byId = {};
+    tasks.forEach(function (t) { byId[t.taskId] = t; });
+
+    // Longest-path layer per node (memoized DFS; tolerant of cycles via a visiting guard).
+    var layer = {}, visiting = {};
+    function depthOf(id) {
+      if (layer[id] !== undefined) return layer[id];
+      if (visiting[id]) return 0; // cycle guard — treat as root
+      visiting[id] = true;
+      var deps = (byId[id] && byId[id].dependsOn) || [];
+      var d = 0;
+      deps.forEach(function (p) { if (byId[p]) d = Math.max(d, depthOf(p) + 1); });
+      visiting[id] = false;
+      layer[id] = d;
+      return d;
+    }
+    tasks.forEach(function (t) { depthOf(t.taskId); });
+
+    // Group nodes by layer (deterministic order within a layer).
+    var rows = {};
+    tasks.forEach(function (t) { (rows[layer[t.taskId]] = rows[layer[t.taskId]] || []).push(t); });
+    var layers = Object.keys(rows).map(Number).sort(function (a, b) { return a - b; });
+    layers.forEach(function (L) { rows[L].sort(function (a, b) { return a.taskId < b.taskId ? -1 : 1; }); });
+
+    // Geometry.
+    var NW = 150, NH = 38, GAPX = 26, GAPY = 34, PADX = 12, PADY = 12;
+    var pos = {}; // taskId -> {x,y}
+    var maxCols = 0;
+    layers.forEach(function (L, ri) {
+      rows[L].forEach(function (t, ci) {
+        pos[t.taskId] = { x: PADX + ci * (NW + GAPX), y: PADY + ri * (NH + GAPY) };
+      });
+      maxCols = Math.max(maxCols, rows[L].length);
+    });
+    var width = PADX * 2 + maxCols * NW + (maxCols - 1) * GAPX;
+    var height = PADY * 2 + layers.length * NH + (layers.length - 1) * GAPY;
+
+    // Edges (depends_on): dependency (top) -> dependent (bottom).
+    var edgesSvg = "";
+    tasks.forEach(function (t) {
+      ((t.dependsOn) || []).forEach(function (p) {
+        if (!pos[p] || !pos[t.taskId]) return;
+        var x1 = pos[p].x + NW / 2, y1 = pos[p].y + NH;
+        var x2 = pos[t.taskId].x + NW / 2, y2 = pos[t.taskId].y;
+        var my = (y1 + y2) / 2;
+        edgesSvg += "<path class='edge' d='M" + x1 + " " + y1 + " C" + x1 + " " + my + " " + x2 + " " + my + " " + x2 + " " + y2 + "' marker-end='url(#arrow)'/>";
+      });
+    });
+
+    // Nodes.
+    var nodesSvg = tasks.map(function (t) {
+      var p = pos[t.taskId]; if (!p) return "";
+      var cls = taskClass(t, sessionDone);
+      var shortId = t.taskId.length > 18 ? t.taskId.slice(0, 17) + "…" : t.taskId;
+      var stLabel = (sessionDone && t.state === "VERIFYING") ? "done (unverified)" : t.state;
+      return "<g class='node " + cls + "'>" +
+        "<rect x='" + p.x + "' y='" + p.y + "' width='" + NW + "' height='" + NH + "'/>" +
+        "<text x='" + (p.x + 8) + "' y='" + (p.y + 15) + "'>" + gesc(shortId) + "</text>" +
+        "<text class='st' x='" + (p.x + 8) + "' y='" + (p.y + 29) + "'>" + gesc(stLabel) + "</text>" +
+      "</g>";
+    }).join("");
+
+    host.innerHTML =
+      "<svg width='" + width + "' height='" + height + "' viewBox='0 0 " + width + " " + height + "'>" +
+      "<defs><marker id='arrow' viewBox='0 0 8 8' refX='7' refY='4' markerWidth='6' markerHeight='6' orient='auto'>" +
+      "<path d='M0 0 L8 4 L0 8 z' fill='#30363d'/></marker></defs>" +
+      edgesSvg + nodesSvg + "</svg>";
   }
 
   // Find a tool call that is APPROVAL_PENDING and not yet resolved, from the event log, and

@@ -116,11 +116,11 @@ next investment.
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| Observability dashboard (HTTP + SSE) | PARTIAL | Real single-page view (`observability-server/dashboard-assets.ts`), read projection + POST /control. Minimal UI. |
+| Observability dashboard (HTTP + SSE) | PARTIAL | Single-page view (`observability-server/dashboard-assets.ts`): read projection + POST /control, SSE live activity (MISSION_* reasoning lines), approval card, goals chat, model admin, and **a task-graph DAG (P12.18)** — SVG, nodes colored by state, edges = `depends_on`, laid out in dependency layers (frontend-only; uses `TaskProjection.dependsOn` already in `/state`). Still missing: live diff panel + governance timeline. |
 | Runtime controls (pause/resume/stop/approve) | DONE | ControlPlane + admitted control path (OB-006); exercised by dashboard/VS Code/Telegram. |
 | VS Code extension | PARTIAL | Thin HTTP client (`vscode-extension/`), connect + dashboard webview + control commands. `.vsix` built but uncommitted. |
 | Mission submission / goal queue | DONE | `POST /goal` → `GoalIngressService` FIFO; worker routes through Planner → GraphCommit (GI-009). |
-| Task-graph visualization | PLANNED | Dashboard shows task list/states, not a graph view. |
+| Task-graph visualization | DONE (P12.18) | Dashboard renders an SVG DAG: nodes = tasks (colored by state: active/passed/blocked/failed/verifying/ready/pending), edges = `depends_on`, dependency-layered layout + legend. Frontend-only (data from `/state`); no backend/contract change. |
 | Telegram integration (remote approve/control) | PARTIAL | `infrastructure/telegram/` transport + command-router + client present; not exercised end-to-end here. |
 
 ### Learning (Phase 11)
