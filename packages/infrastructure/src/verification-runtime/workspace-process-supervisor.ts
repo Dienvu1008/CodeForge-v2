@@ -50,9 +50,34 @@ function resolveSpawn(command: string, args: readonly string[]): { command: stri
 }
 
 /**
- * Build a minimal, safe env for verification checks: PATH (so node/npm resolve) plus the
- * OS essentials a child process needs on each platform. We deliberately pass a filtered
- * env, not the whole process.env, to avoid leaking secrets (SE-004 spirit).
+ * Env vars every real toolchain needs to locate its CACHE / HOME / config. We pass a curated
+ * ALLOWLIST (not the whole process.env) so secrets never leak (SE-004 spirit), but it must be
+ * complete enough that `dart pub get`, `go build`, `cargo test`, `pytest`, etc. can actually run.
+ * These are tool *location* vars, not credentials.
+ *
+ * Why this matters (P12.29): the previous minimal env omitted LOCALAPPDATA, so on Windows
+ * `dart pub get` failed ("Could not find the pub cache. No LOCALAPPDATA environment variable
+ * exists") and `go build` failed ("GOCACHE is not defined and %LocalAppData% is not defined") —
+ * verification could never run for Dart/Go/Rust workspaces, which looked like a task failure but
+ * was an environment gap in the harness itself.
+ */
+const TOOLCHAIN_ENV_PASSTHROUGH: readonly string[] = [
+  // Windows user/cache roots — Dart (PUB_CACHE default), Go (GOCACHE default), many others.
+  'LOCALAPPDATA', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+  // POSIX home (cargo/go/dart caches default under it).
+  'HOME', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME',
+  // Per-toolchain explicit overrides (honour them if the user set them).
+  'PUB_CACHE', 'FLUTTER_ROOT', 'DART_SDK',
+  'GOPATH', 'GOCACHE', 'GOMODCACHE', 'GOROOT',
+  'CARGO_HOME', 'RUSTUP_HOME',
+  'PYTHONPATH', 'PIP_CACHE_DIR', 'VIRTUAL_ENV',
+];
+
+/**
+ * Build a minimal, safe env for verification checks: PATH (so tools resolve) plus the OS
+ * essentials AND the toolchain cache/home allowlist (TOOLCHAIN_ENV_PASSTHROUGH) a child process
+ * needs. We deliberately pass a filtered env, not the whole process.env, to avoid leaking secrets
+ * (SE-004 spirit) — but the allowlist is wide enough that real multi-language checks can run.
  */
 function buildCheckEnv(extra: Readonly<Record<string, string>> = {}): Record<string, string> {
   const env: Record<string, string> = {};
@@ -63,16 +88,22 @@ function buildCheckEnv(extra: Readonly<Record<string, string>> = {}): Record<str
     if (process.env['SystemRoot'] !== undefined) env['SystemRoot'] = process.env['SystemRoot'];
     if (process.env['windir'] !== undefined) env['windir'] = process.env['windir'];
     if (process.env['TEMP'] !== undefined) env['TEMP'] = process.env['TEMP'];
+    if (process.env['TMP'] !== undefined) env['TMP'] = process.env['TMP'];
     if (process.env['APPDATA'] !== undefined) env['APPDATA'] = process.env['APPDATA'];
     if (process.env['ProgramFiles'] !== undefined) env['ProgramFiles'] = process.env['ProgramFiles'];
+    if (process.env['ProgramFiles(x86)'] !== undefined) env['ProgramFiles(x86)'] = process.env['ProgramFiles(x86)'];
+    if (process.env['ProgramData'] !== undefined) env['ProgramData'] = process.env['ProgramData'];
     // cmd.exe launcher needs COMSPEC + PATHEXT to find and run npm.cmd (shell:false path).
     if (process.env['COMSPEC'] !== undefined) env['COMSPEC'] = process.env['COMSPEC'];
     if (process.env['ComSpec'] !== undefined) env['ComSpec'] = process.env['ComSpec'];
     env['PATHEXT'] = process.env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD';
     // Node's own bin dir, in case PATH omits it.
     env['Path'] = path;
-  } else {
-    if (process.env['HOME'] !== undefined) env['HOME'] = process.env['HOME'];
+  }
+  // Toolchain cache/home vars on every platform (Dart/Go/Rust/Python need these to find caches).
+  for (const key of TOOLCHAIN_ENV_PASSTHROUGH) {
+    const v = process.env[key];
+    if (v !== undefined) env[key] = v;
   }
   return { ...env, ...extra };
 }

@@ -404,7 +404,7 @@
       },
       "verification": [
         { "kind": "command", "target": "clang++", "args": ["-std=c++17", "sum.cpp", "test.cpp", "-o", "app.exe"], "description": "compiles with clang++", "timeoutMs": 180000 },
-        { "kind": "command", "target": "app.exe", "args": [], "description": "sum_to_n sums 1..n inclusive", "timeoutMs": 60000 }
+        { "kind": "command", "target": "${WORKSPACE}/app.exe", "args": [], "description": "sum_to_n sums 1..n inclusive", "timeoutMs": 60000 }
       ],
       "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
       "difficulty": "EASY",
@@ -426,7 +426,7 @@
         { "kind": "file_exists", "target": "util.hpp", "description": "util.hpp created" },
         { "kind": "file_exists", "target": "util.cpp", "description": "util.cpp created" },
         { "kind": "command", "target": "clang++", "args": ["-std=c++17", "sum.cpp", "util.cpp", "test.cpp", "-o", "app.exe"], "description": "all TUs compile + link", "timeoutMs": 180000 },
-        { "kind": "command", "target": "app.exe", "args": [], "description": "clamp_i works; sum preserved", "timeoutMs": 60000 }
+        { "kind": "command", "target": "${WORKSPACE}/app.exe", "args": [], "description": "clamp_i works; sum preserved", "timeoutMs": 60000 }
       ],
       "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
       "difficulty": "MEDIUM",

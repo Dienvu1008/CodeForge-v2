@@ -15,7 +15,7 @@
 //   2. the conventional install: C:\Program Files\MetaTrader 5\MetaEditor64.exe
 // On non-Windows there is no MetaEditor → exit 2 (skip/invalid), never a false FAIL.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, dirname, basename } from 'node:path';
 
 function fail(code, msg) { console.error(`[mql5-compile] ${msg}`); process.exit(code); }
@@ -26,6 +26,15 @@ const src = resolve(process.cwd(), srcArg);
 if (!existsSync(src)) fail(2, `source not found: ${src}`);
 
 if (process.platform !== 'win32') fail(2, 'MetaEditor is Windows-only; cannot verify MQL5 here');
+
+// Defensive: a leading UTF-8 BOM (EF BB BF) in a .mq5 can trip the MetaEditor compiler. Strip it
+// in place so a BOM a model happened to write is not misreported as a compile error.
+try {
+  const buf = readFileSync(src);
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+    writeFileSync(src, buf.subarray(3));
+  }
+} catch { /* non-fatal: let the compiler surface any real read error */ }
 
 const editor = process.env.METAEDITOR ?? 'C:\\Program Files\\MetaTrader 5\\MetaEditor64.exe';
 if (!existsSync(editor)) fail(2, `MetaEditor not found at ${editor} (set METAEDITOR to override)`);

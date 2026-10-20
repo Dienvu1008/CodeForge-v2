@@ -77,4 +77,26 @@ describe('WorkspaceProcessSupervisor — real npm check execution (cross-platfor
     });
     expect(r.exitCode).toBe(0);
   });
+
+  // P12.29: the minimal check env must forward toolchain cache/home vars (LOCALAPPDATA, GOCACHE,
+  // PUB_CACHE, CARGO_HOME, HOME, …) or Dart/Go/Rust verification fails with "cannot find cache"
+  // even though the task is fine. Spawn `node` (not a .cmd — real binary, cross-platform) and have
+  // it exit 0 only when the toolchain var it inherited matches what we set in the parent.
+  it('forwards toolchain cache/home env vars to the check process (LOCALAPPDATA/GOCACHE/HOME)', async () => {
+    const marker = 'cf-env-' + Date.now();
+    const keys = process.platform === 'win32'
+      ? ['LOCALAPPDATA', 'GOCACHE', 'PUB_CACHE']
+      : ['HOME', 'GOCACHE', 'CARGO_HOME'];
+    const saved = new Map<string, string | undefined>();
+    for (const k of keys) { saved.set(k, process.env[k]); process.env[k] = marker; }
+    try {
+      const sup = new WorkspaceProcessSupervisor({ workspaceRoot: root });
+      // node prints each var; exit 0 only if ALL equal the marker (i.e. all were forwarded).
+      const expr = `process.exit(${keys.map((k) => `process.env.${k}==='${marker}'`).join('&&')} ? 0 : 3)`;
+      const r = await sup.spawn({ command: 'node', args: ['-e', expr], cwd: '/', env: {}, timeoutMs: 60_000 });
+      expect(r.exitCode).toBe(0);
+    } finally {
+      for (const [k, v] of saved) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  });
 });
