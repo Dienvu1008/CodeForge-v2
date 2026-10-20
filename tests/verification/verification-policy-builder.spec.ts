@@ -67,3 +67,69 @@ describe('P10.1 buildVerificationPolicy — check derivation', () => {
     expect(p.checks.map((c) => c.kind)).toEqual(['test']);
   });
 });
+
+describe('P12.25 buildVerificationPolicy — multi-language checks', () => {
+  const noJs = (over: Partial<ProjectSignals> = {}): ProjectSignals =>
+    signals({ hasPackageJson: false, ...over });
+
+  it('Flutter: flutter analyze + flutter test', () => {
+    const p = buildVerificationPolicy(noJs({ hasPubspec: true, isFlutter: true }));
+    expect(p.checks.map((c) => `${c.command} ${c.args.join(' ')}`)).toEqual([
+      'flutter analyze', 'flutter test',
+    ]);
+  });
+
+  it('plain Dart (no flutter): dart analyze + dart test', () => {
+    const p = buildVerificationPolicy(noJs({ hasPubspec: true, isFlutter: false }));
+    expect(p.checks.map((c) => `${c.command} ${c.args.join(' ')}`)).toEqual([
+      'dart analyze', 'dart test',
+    ]);
+  });
+
+  it('Rust: cargo build then cargo test', () => {
+    const p = buildVerificationPolicy(noJs({ hasCargoToml: true }));
+    expect(p.checks.map((c) => c.kind)).toEqual(['build', 'test']);
+    expect(p.checks[0]).toMatchObject({ command: 'cargo', args: ['build', '--quiet'] });
+  });
+
+  it('Go: go build then go test over ./...', () => {
+    const p = buildVerificationPolicy(noJs({ hasGoMod: true }));
+    expect(p.checks.map((c) => `${c.command} ${c.args.join(' ')}`)).toEqual([
+      'go build ./...', 'go test ./...',
+    ]);
+  });
+
+  it('Python: compileall, plus pytest only when available', () => {
+    const noPytest = buildVerificationPolicy(noJs({ hasPython: true, hasPytest: false }));
+    expect(noPytest.checks.map((c) => c.command)).toEqual(['python']);
+    const withPytest = buildVerificationPolicy(noJs({ hasPython: true, hasPytest: true }));
+    expect(withPytest.checks.map((c) => c.command)).toEqual(['python', 'pytest']);
+  });
+
+  it('C++ (CMake): configure then build', () => {
+    const p = buildVerificationPolicy(noJs({ hasCMake: true }));
+    expect(p.checks.map((c) => `${c.command} ${c.args.join(' ')}`)).toEqual([
+      'cmake -S . -B build', 'cmake --build build',
+    ]);
+  });
+
+  it('a mixed workspace derives checks for every detected language', () => {
+    const p = buildVerificationPolicy(signals({
+      packageScripts: ['test'], hasPubspec: true, isFlutter: true, hasGoMod: true,
+    }));
+    const cmds = p.checks.map((c) => c.command);
+    expect(cmds).toContain('npm');
+    expect(cmds).toContain('flutter');
+    expect(cmds).toContain('go');
+  });
+
+  it('all multi-language checks are SMOKE-scoped and use the default timeout', () => {
+    const p = buildVerificationPolicy(noJs({ hasCargoToml: true, timeoutMs: 9000 }));
+    expect(p.checks.every((c) => c.minScope === 'SMOKE')).toBe(true);
+    expect(p.checks.every((c) => c.timeoutMs === 9000)).toBe(true);
+  });
+
+  it('stays empty when no language is detected', () => {
+    expect(buildVerificationPolicy(noJs()).checks).toEqual([]);
+  });
+});

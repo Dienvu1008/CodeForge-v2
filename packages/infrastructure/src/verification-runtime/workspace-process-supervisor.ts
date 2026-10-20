@@ -14,8 +14,13 @@ import { NodeProcessSupervisor } from '../process/index.js';
 
 const IS_WINDOWS = process.platform === 'win32';
 
-/** npm-family launchers that are `.cmd` batch shims on Windows. */
-const WINDOWS_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'pnpm']);
+/**
+ * Launchers that ship as `.cmd`/`.bat` batch shims on Windows (so `shell:false` cannot spawn a
+ * bare name — see resolveSpawn). The npm family plus the multi-language tools whose Windows SDK
+ * installs them as batch wrappers (Flutter/Dart). `cargo`, `go`, `python`, `cmake`, `pytest`,
+ * `ruff` install as real `.exe` on Windows and pass through unchanged.
+ */
+const WINDOWS_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'pnpm', 'flutter', 'dart']);
 
 /**
  * Resolve the (command, args) pair for the platform.
@@ -35,9 +40,12 @@ function resolveSpawn(command: string, args: readonly string[]): { command: stri
   if (!IS_WINDOWS || !WINDOWS_CMD_SHIMS.has(command)) {
     return { command, args: [...args] };
   }
+  // The npm family are `.cmd` shims; the Flutter SDK ships `flutter.bat`/`dart.bat`. We do not
+  // append the extension — cmd.exe resolves the right shim via PATHEXT — so one launcher form
+  // works for both. `/d` skips AutoRun, `/s /c` run then exit; argv stays an array (shell:false).
   return {
     command: 'cmd.exe',
-    args: ['/d', '/s', '/c', `${command}.cmd`, ...args],
+    args: ['/d', '/s', '/c', command, ...args],
   };
 }
 
