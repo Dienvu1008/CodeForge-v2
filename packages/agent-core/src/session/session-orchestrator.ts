@@ -11,6 +11,7 @@ import type { Task }                    from '../domain/task.js';
 import type { Provenance }              from '../domain/provenance.js';
 import type { SessionService }          from './session-service.js';
 import type { Planner }                 from '../planning/planner.js';
+import type { LanguageHint }            from '../planning/language-inference.js';
 import type { GraphCommitService }      from '../graph/graph-commit-service.js';
 import type { TaskGraphRepository, TaskRepository, TaskExecutionRepository, TaskRunRepository } from '../repositories/index.js';
 import type { ExecutionCoordinator }    from '../execution/execution-coordinator.js';
@@ -234,6 +235,11 @@ export interface SessionOrchestratorRunInput {
   readonly revision:      WorkspaceRevision;
   readonly graphVersion:  number;
   readonly graphSummary?: string;
+  /**
+   * P12.24: optional deterministic language/framework hint (caller infers it from the goal text +
+   * workspace files) passed through to the Planner so decomposition targets the right ecosystem.
+   */
+  readonly languageHint?: LanguageHint;
 }
 
 export interface SessionOrchestratorResult {
@@ -326,7 +332,7 @@ export class SessionOrchestrator {
     const baseGraph = await this.deps.graphRepository.getCurrent(input.sessionId);
     let mutation;
     try {
-      mutation = await this.deps.planner.plan(input.sessionId, input.goal, baseGraph, input.revision, promptPlan);
+      mutation = await this.deps.planner.plan(input.sessionId, input.goal, baseGraph, input.revision, promptPlan, input.languageHint);
     } catch (err) {
       await this.abortSession(input.sessionId);
       throw new SessionOrchestratorError('PLAN_FAILED',

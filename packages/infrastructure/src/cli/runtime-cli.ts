@@ -86,6 +86,7 @@ import {
   SessionOrchestrator,
   Planner,
   PlanCritic,
+  inferLanguage,
   GoalIngressService,
   GraphCommitService,
   GraphService,
@@ -585,8 +586,20 @@ async function main(): Promise<void> {
     // SYNTAX recovery later chooses ROLLBACK, the port reverts the agent's broken edit to here.
     try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal — ROLLBACK degrades to re-arm */ }
 
+    // P12.24: infer the target language/framework (deterministic) from the goal + existing
+    // workspace files, so the Planner targets the right ecosystem instead of defaulting to
+    // TypeScript. Advisory hint; fail-safe (never throws).
+    let languageHint;
     try {
-      const result = await orchestrator.run({ sessionId: sid, goal, revision, graphVersion: 1 });
+      const wsPaths = listWorkspaceFiles(workspaceRoot).map((f) => f.path);
+      languageHint = inferLanguage(goal.description, wsPaths);
+      if (languageHint.confidence !== 'none') {
+        console.log(`    Language:   ${languageHint.language}${languageHint.framework ? ' (' + languageHint.framework + ')' : ''} — ${languageHint.confidence} (${languageHint.source})`);
+      }
+    } catch { /* inference is best-effort */ }
+
+    try {
+      const result = await orchestrator.run({ sessionId: sid, goal, revision, graphVersion: 1, ...(languageHint !== undefined ? { languageHint } : {}) });
       console.log(`  < Result:   ${result.sessionState} | tasks ${result.taskRunCount}, passed ${result.passedTaskIds.length}, non-passed ${result.nonPassedTaskIds.length} (${(result.durationMs / 1000).toFixed(1)}s)`);
 
       // P11.6: when learning is on, distill this session's recovery history into persisted

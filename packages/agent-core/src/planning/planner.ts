@@ -35,6 +35,7 @@ import type { Task } from '../domain/task.js';
 import type { TaskStrategy, AcceptanceCriterion } from '../domain/common.js';
 import type { PlanCritic, CritiqueResult } from './plan-critic.js';
 import type { PromptPlan } from '../mission/prompt-composer.js';
+import { renderLanguageDirective, type LanguageHint } from './language-inference.js';
 
 // ── Strategy taxonomy (fail-safe normalization) ────────────────────────────────
 
@@ -144,6 +145,13 @@ export class Planner {
      * (fail-safe parity).
      */
     promptPlan?: PromptPlan,
+    /**
+     * P12.24: optional deterministic language/framework hint (inferred by the caller from the
+     * goal text + workspace files). Surfaced into the decomposition prompt so the Planner targets
+     * the RIGHT language instead of silently defaulting to TypeScript. Advisory; absent ⇒ a
+     * language-neutral prompt.
+     */
+    languageHint?: LanguageHint,
   ): Promise<GraphMutation> {
     // 1. Build context snapshot (CX-003: workspace items marked untrusted).
     const ctxRequest: BuildContextRequest = {
@@ -156,7 +164,7 @@ export class Planner {
     const snapshot = this.contextBuilder.build(ctxRequest);
 
     // 2. Generate the first plan.
-    let rawPlan = await this.generatePlan(goal, graph, snapshot.snapshotId, undefined, promptPlan);
+    let rawPlan = await this.generatePlan(goal, graph, snapshot.snapshotId, undefined, promptPlan, languageHint);
 
     // 2b. P10.4: optional bounded refinement driven by the advisory PlanCritic (MG-006).
     //     The critic cannot reject or commit — if it flags a weak plan, the Planner
@@ -175,7 +183,7 @@ export class Planner {
         }
         if (critique.score >= threshold && critique.issues.length === 0) break; // good enough
         const feedback = this.formatCritique(critique);
-        const refined = await this.generatePlan(goal, graph, snapshot.snapshotId, feedback, promptPlan);
+        const refined = await this.generatePlan(goal, graph, snapshot.snapshotId, feedback, promptPlan, languageHint);
         // Keep the refined plan only if it is non-empty (generatePlan guarantees this).
         rawPlan = refined;
       }
@@ -196,8 +204,9 @@ export class Planner {
     snapshotId: string,
     critique?:  string,
     promptPlan?: PromptPlan,
+    languageHint?: LanguageHint,
   ): Promise<RawPlan> {
-    const taskPrompt = this.buildPlanPrompt(goal, graph, critique, promptPlan);
+    const taskPrompt = this.buildPlanPrompt(goal, graph, critique, promptPlan, languageHint);
     const request = modelRequest(
       'plan',
       BOUNDARY_SYSTEM_PREAMBLE + planVerbosityAddendum(promptPlan?.verbosity),
@@ -255,7 +264,7 @@ export class Planner {
    * per-task acceptance criteria. `critique` (optional) carries a prior PlanCritic's
    * feedback for a bounded refinement round (MG-006 — advisory, not authority).
    */
-  private buildPlanPrompt(goal: Goal, graph: TaskGraph, critique?: string, promptPlan?: PromptPlan): string {
+  private buildPlanPrompt(goal: Goal, graph: TaskGraph, critique?: string, promptPlan?: PromptPlan, languageHint?: LanguageHint): string {
     const graphSummary = `Current graph: ${graph.nodes.length} tasks, version ${graph.version}.`;
     const acBlock = goal.acceptanceCriteria.length > 0
       ? `Acceptance criteria:\n${goal.acceptanceCriteria.map((ac) => `  - ${ac.description}`).join('\n')}`
@@ -268,6 +277,14 @@ export class Planner {
     // nothing added (static plan prompt, fail-safe parity).
     if (promptPlan?.expertPersona !== undefined && promptPlan.expertPersona.trim().length > 0) {
       sections.push({ label: 'EXPERT_PERSONA', content: promptPlan.expertPersona, trust: 'trusted' });
+    }
+
+    // P12.24: a deterministic language/framework directive inferred from the goal + workspace, so
+    // the Planner targets the right ecosystem instead of defaulting to TypeScript. TRUSTED
+    // (runtime-composed). Empty when no signal → the prompt stays language-neutral.
+    if (languageHint !== undefined) {
+      const directive = renderLanguageDirective(languageHint);
+      if (directive !== '') sections.push({ label: 'TARGET_LANGUAGE', content: directive, trust: 'trusted' });
     }
 
     sections.push({
@@ -292,6 +309,10 @@ export class Planner {
         '  - Independent tasks need no edge between them (they can run in parallel).',
         '  - Pick a strategy per task: "generate" (new code), "refactor", "fix", "test",',
         '    "migrate". Give each task 1-3 short acceptanceCriteria describing "done".',
+        '  - Use the language, framework, file extensions and project layout the GOAL asks for',
+        '    (and the TARGET_LANGUAGE section if present). Do NOT default to TypeScript/Node:',
+        '    a Flutter goal means Dart files under lib/ with a pubspec.yaml; a Python goal means',
+        '    .py modules; a Rust goal means a Cargo project; and so on.',
         '',
         'Return ONLY a JSON object of this shape:',
         '{',
@@ -303,21 +324,22 @@ export class Planner {
         '  "reason": "one line on the decomposition"',
         '}',
         '',
-        'Example — Goal: "Add a /users REST endpoint backed by a UserRepository, with tests":',
+        'Example — this shows the SHAPE of a good decomposition (data layer → feature → tests),',
+        'NOT a language. Express each task in whatever language/framework the goal requires:',
         '{',
         '  "tasks": [',
-        '    { "id": "T1", "description": "Add the User model and UserRepository with CRUD",',
-        '      "strategy": "generate", "acceptanceCriteria": ["UserRepository exposes create/find"] },',
-        '    { "id": "T2", "description": "Implement the GET/POST /users route handlers using UserRepository",',
-        '      "strategy": "generate", "acceptanceCriteria": ["GET /users returns a list", "POST /users creates a user"] },',
-        '    { "id": "T3", "description": "Write tests for the /users endpoint",',
-        '      "strategy": "test", "acceptanceCriteria": ["tests cover GET and POST", "tests pass"] }',
+        '    { "id": "T1", "description": "Create the project skeleton and the core data model for the feature",',
+        '      "strategy": "generate", "acceptanceCriteria": ["the model/entity exists with its fields"] },',
+        '    { "id": "T2", "description": "Implement the main feature logic on top of the data model",',
+        '      "strategy": "generate", "acceptanceCriteria": ["the feature performs its primary action"] },',
+        '    { "id": "T3", "description": "Add tests for the feature using the language\\u0027s test tooling",',
+        '      "strategy": "test", "acceptanceCriteria": ["tests cover the main behavior", "tests pass"] }',
         '  ],',
         '  "edges": [',
         '    { "from": "T2", "to": "T1", "kind": "depends_on" },',
         '    { "from": "T3", "to": "T2", "kind": "depends_on" }',
         '  ],',
-        '  "reason": "model → route → tests, each builds on the previous"',
+        '  "reason": "model → feature → tests, each builds on the previous"',
         '}',
         '',
         'Rules:',

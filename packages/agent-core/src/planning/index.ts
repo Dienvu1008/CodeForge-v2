@@ -25,3 +25,11 @@ export {
   type PlanCriticDeps,
   type CritiqueResult,
 } from './plan-critic.js';
+
+export {
+  inferLanguage,
+  renderLanguageDirective,
+  type LanguageId,
+  type LanguageSource,
+  type LanguageHint,
+} from './language-inference.js';
