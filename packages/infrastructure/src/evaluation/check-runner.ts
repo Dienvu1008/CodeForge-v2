@@ -61,9 +61,23 @@ export class BenchmarkCheckRunner {
     return { description: check.description, passed, detail: passed ? 'matched' : `did not match: ${needle}` };
   }
 
+  /**
+   * Expand portable tokens in a command token so benchmark.json never hardcodes a machine path:
+   *   ${CODEFORGE_REPO} → process.env.CODEFORGE_REPO (the repo root; set by the run script)
+   *   ${WORKSPACE}      → the throwaway workspace root for this case
+   * Unknown/unset tokens are left as-is so a missing value surfaces as a spawn failure, not a
+   * silent wrong path. Pure string substitution (no shell).
+   */
+  private expandTokens(s: string): string {
+    return s
+      .replace(/\$\{CODEFORGE_REPO\}/g, process.env['CODEFORGE_REPO'] ?? '${CODEFORGE_REPO}')
+      .replace(/\$\{WORKSPACE\}/g, this.deps.workspaceRoot);
+  }
+
   private async runCommand(check: BenchmarkCheck): Promise<CheckOutcome> {
     // target is the command; args optional. Split a bare "a b c" target if no args given.
-    const parts = check.args !== undefined ? [check.target, ...check.args] : check.target.split(/\s+/);
+    const rawParts = check.args !== undefined ? [check.target, ...check.args] : check.target.split(/\s+/);
+    const parts = rawParts.map((p) => this.expandTokens(p));
     const command = parts[0]!;
     const args = parts.slice(1);
     try {

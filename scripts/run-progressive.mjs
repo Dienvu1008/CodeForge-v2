@@ -28,6 +28,12 @@ import {
   buildToolPolicy, buildVerificationPolicy,
 } from '../packages/agent-core/dist/index.js';
 
+// Expose the repo root so benchmark command checks can reference repo scripts portably via the
+// ${CODEFORGE_REPO} token (e.g. the MQL5 compile wrapper), instead of hardcoding a machine path.
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve as _resolve } from 'node:path';
+process.env.CODEFORGE_REPO = _resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
 // ── parse args ────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 function flag(name, def) { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : def; }

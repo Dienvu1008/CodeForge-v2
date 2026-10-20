@@ -349,6 +349,107 @@
       "difficulty": "MEDIUM",
       "risk": "LOW",
       "timeoutMs": 300000
+    },
+
+    {
+      "id": "PG-P1",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Python: off-by-one in an inclusive sum",
+      "description": "sum_to_n(n) in app/math.py should return 1+2+...+n inclusive but stops one short. Fix it so the existing pytest passes. This is a Python project; use Python.",
+      "seedFiles": {
+        "app/__init__.py": "",
+        "app/math.py": "def sum_to_n(n):\n    total = 0\n    for i in range(1, n):\n        total += i\n    return total\n",
+        "tests/test_math.py": "from app.math import sum_to_n\n\n\ndef test_inclusive():\n    assert sum_to_n(5) == 15\n    assert sum_to_n(1) == 1\n    assert sum_to_n(0) == 0\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "python", "args": ["-m", "pytest", "-q"], "description": "sum_to_n sums 1..n inclusive", "timeoutMs": 180000 }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "TRIVIAL",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "PG-P2",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Python: add a helper and wire it through a second module",
+      "description": "Add discount(price, pct) to app/pricing.py and use it in app/checkout.py so checkout_total(price, pct) applies the discount then 10% tax. Keep pct=0 behavior identical. This is a Python project; use Python.",
+      "seedFiles": {
+        "app/__init__.py": "",
+        "app/pricing.py": "def tax(price):\n    return price * 0.1\n",
+        "app/checkout.py": "from app.pricing import tax\n\n\ndef checkout_total(price, pct):\n    return price + tax(price)\n",
+        "tests/test_checkout.py": "from app.pricing import discount\nfrom app.checkout import checkout_total\n\n\ndef test_discount():\n    assert discount(100, 10) == 90\n\n\ndef test_checkout():\n    assert round(checkout_total(100, 0)) == 110\n    assert round(checkout_total(100, 50)) == 55\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "python", "args": ["-m", "pytest", "-q"], "description": "discount + checkout integration pass", "timeoutMs": 180000 }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+
+    {
+      "id": "PG-C1",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "C++: off-by-one in an inclusive sum",
+      "description": "sum_to_n(int n) in sum.cpp should return 1+2+...+n inclusive but excludes n. Fix it. Do not change the signature in sum.hpp or edit test.cpp. This is a C++ project; use C++.",
+      "seedFiles": {
+        "sum.hpp": "#pragma once\nint sum_to_n(int n);\n",
+        "sum.cpp": "#include \"sum.hpp\"\nint sum_to_n(int n) {\n    int total = 0;\n    for (int i = 1; i < n; i++) total += i;\n    return total;\n}\n",
+        "test.cpp": "#include \"sum.hpp\"\nint main() {\n    if (sum_to_n(5) != 15) return 1;\n    if (sum_to_n(1) != 1) return 1;\n    if (sum_to_n(0) != 0) return 1;\n    return 0;\n}\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "clang++", "args": ["-std=c++17", "sum.cpp", "test.cpp", "-o", "app.exe"], "description": "compiles with clang++", "timeoutMs": 180000 },
+        { "kind": "command", "target": "app.exe", "args": [], "description": "sum_to_n sums 1..n inclusive", "timeoutMs": 60000 }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "PG-C2",
+      "version": 1,
+      "category": "MULTI_FILE",
+      "title": "C++: add a function in a new translation unit",
+      "description": "Add a function clamp_i(int n, int lo, int hi) that bounds n to [lo, hi]. Declare it in a new header util.hpp, define it in a new util.cpp, and keep sum.cpp/sum.hpp intact. Do not edit test.cpp. This is a C++ project; use C++.",
+      "seedFiles": {
+        "sum.hpp": "#pragma once\nint sum_to_n(int n);\n",
+        "sum.cpp": "#include \"sum.hpp\"\nint sum_to_n(int n) {\n    int total = 0;\n    for (int i = 1; i <= n; i++) total += i;\n    return total;\n}\n",
+        "test.cpp": "#include \"sum.hpp\"\n#include \"util.hpp\"\nint main() {\n    if (sum_to_n(5) != 15) return 1;\n    if (clamp_i(5, 0, 10) != 5) return 1;\n    if (clamp_i(-3, 0, 10) != 0) return 1;\n    if (clamp_i(42, 0, 10) != 10) return 1;\n    return 0;\n}\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "util.hpp", "description": "util.hpp created" },
+        { "kind": "file_exists", "target": "util.cpp", "description": "util.cpp created" },
+        { "kind": "command", "target": "clang++", "args": ["-std=c++17", "sum.cpp", "util.cpp", "test.cpp", "-o", "app.exe"], "description": "all TUs compile + link", "timeoutMs": 180000 },
+        { "kind": "command", "target": "app.exe", "args": [], "description": "clamp_i works; sum preserved", "timeoutMs": 60000 }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+
+    {
+      "id": "PG-M1",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "MQL5: fix a compile error in an Expert Advisor helper",
+      "description": "SumToN(int n) in Sum.mq5 should return 1+2+...+n inclusive, but the file does not compile (a syntax error). Fix the code so MetaEditor compiles it with 0 errors and the loop is inclusive. This is an MQL5 project; use MQL5 (.mq5).",
+      "seedFiles": {
+        "Sum.mq5": "int SumToN(int n)\n{\n   int total = 0\n   for(int i = 1; i < n; i++)\n      total += i;\n   return total;\n}\n\nint OnStart()\n{\n   return(SumToN(5) == 15 ? 0 : 1);\n}\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["${CODEFORGE_REPO}/scripts/mql5-compile.mjs", "Sum.mq5"], "description": "MetaEditor compiles Sum.mq5 with 0 errors", "timeoutMs": 240000 }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 300000
     }
   ]
 }

@@ -29,14 +29,14 @@ describe('codeforge-progressive dataset', () => {
     expect(diffs.has('EXPERT')).toBe(true);
   });
 
-  it('covers multiple languages (not just JS/TS) via the PG-D/R/G families', () => {
+  it('covers multiple languages (not just JS/TS) via the per-language families', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const ids = result.value.tasks.map((t) => t.id);
-    // Dart, Rust and Go families added in P12.26 (Lát 3).
-    expect(ids.some((id) => id.startsWith('PG-D'))).toBe(true);
-    expect(ids.some((id) => id.startsWith('PG-R'))).toBe(true);
-    expect(ids.some((id) => id.startsWith('PG-G'))).toBe(true);
+    // Dart/Rust/Go (P12.26) + Python/C++/MQL5 (P12.27).
+    for (const prefix of ['PG-D', 'PG-R', 'PG-G', 'PG-P', 'PG-C', 'PG-M']) {
+      expect(ids.some((id) => id.startsWith(prefix)), `${prefix} family present`).toBe(true);
+    }
   });
 
   it('every task has a deterministic command/build check (external verdict authority)', () => {
@@ -72,7 +72,7 @@ describe('codeforge-progressive dataset', () => {
   it('each per-language family is itself ordered easy→harder', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    for (const prefix of ['PG-D', 'PG-R', 'PG-G']) {
+    for (const prefix of ['PG-D', 'PG-R', 'PG-G', 'PG-P', 'PG-C', 'PG-M']) {
       const ranks = result.value.tasks
         .filter((t) => t.id.startsWith(prefix))
         .map((t) => RANK[t.difficulty]);
