@@ -230,6 +230,125 @@
       "difficulty": "HARD",
       "risk": "LOW",
       "timeoutMs": 240000
+    },
+
+    {
+      "id": "PG-D1",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Dart: one-line off-by-one fix",
+      "description": "sumToN(n) in lib/math.dart should return 1+2+...+n inclusive but stops one short. Fix it. Do not change the public signature. This is a Dart project (pubspec.yaml); keep it Dart.",
+      "seedFiles": {
+        "pubspec.yaml": "name: pg_dart\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndev_dependencies:\n  test: ^1.24.0\n",
+        "lib/math.dart": "int sumToN(int n) {\n  var total = 0;\n  for (var i = 1; i < n; i++) {\n    total += i;\n  }\n  return total;\n}\n",
+        "test/math_test.dart": "import 'package:test/test.dart';\nimport 'package:pg_dart/math.dart';\n\nvoid main() {\n  test('sumToN is inclusive', () {\n    expect(sumToN(5), 15);\n    expect(sumToN(1), 1);\n    expect(sumToN(0), 0);\n  });\n}\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "dart pub get", "description": "resolve Dart dependencies", "timeoutMs": 180000 },
+        { "kind": "command", "target": "dart test", "description": "sumToN sums 1..n inclusive", "timeoutMs": 180000 }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "TRIVIAL",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "PG-D2",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Dart: add a pure helper, keep existing API",
+      "description": "Add a top-level function clamp(int n, int lo, int hi) to lib/num.dart that returns n bounded to [lo, hi]. Keep the existing isPositive function intact. This is a Dart project; use Dart.",
+      "seedFiles": {
+        "pubspec.yaml": "name: pg_dart\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndev_dependencies:\n  test: ^1.24.0\n",
+        "lib/num.dart": "bool isPositive(int n) => n > 0;\n",
+        "test/num_test.dart": "import 'package:test/test.dart';\nimport 'package:pg_dart/num.dart';\n\nvoid main() {\n  test('clamp bounds the value', () {\n    expect(clamp(5, 0, 10), 5);\n    expect(clamp(-3, 0, 10), 0);\n    expect(clamp(42, 0, 10), 10);\n  });\n  test('isPositive still works', () {\n    expect(isPositive(1), isTrue);\n  });\n}\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "dart pub get", "description": "resolve Dart dependencies", "timeoutMs": 180000 },
+        { "kind": "command", "target": "dart test", "description": "clamp works and isPositive still exported", "timeoutMs": 180000 }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+
+    {
+      "id": "PG-R1",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Rust: off-by-one in an inclusive sum",
+      "description": "sum_to_n(n) in src/lib.rs should return 1+2+...+n inclusive but excludes n. Fix it so the existing #[test] passes. This is a Cargo project; use Rust.",
+      "seedFiles": {
+        "Cargo.toml": "[package]\nname = \"pg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "src/lib.rs": "pub fn sum_to_n(n: u32) -> u32 {\n    (1..n).sum()\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn inclusive() {\n        assert_eq!(sum_to_n(5), 15);\n        assert_eq!(sum_to_n(1), 1);\n        assert_eq!(sum_to_n(0), 0);\n    }\n}\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "cargo test --quiet", "description": "sum_to_n sums 1..=n", "timeoutMs": 240000 }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "TRIVIAL",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "PG-R2",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Rust: add a module and use it from lib.rs",
+      "description": "Create src/pricing.rs with a public fn discount(price: u32, pct: u32) -> u32 returning price reduced by pct percent (integer math). Declare the module in src/lib.rs and re-export discount. Keep the existing tax function. This is a Cargo project; use Rust.",
+      "seedFiles": {
+        "Cargo.toml": "[package]\nname = \"pg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "src/lib.rs": "pub fn tax(price: u32) -> u32 {\n    price / 10\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn feature() {\n        assert_eq!(tax(100), 10);\n        assert_eq!(discount(100, 10), 90);\n        assert_eq!(discount(100, 50), 50);\n    }\n}\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "src/pricing.rs", "description": "pricing module created" },
+        { "kind": "command", "target": "cargo test --quiet", "description": "discount added and re-exported; tax preserved", "timeoutMs": 240000 }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+
+    {
+      "id": "PG-G1",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Go: off-by-one in an inclusive sum",
+      "description": "SumToN(n) in calc.go should return 1+2+...+n inclusive but stops one short. Fix it so the existing test passes. This is a Go module; use Go.",
+      "seedFiles": {
+        "go.mod": "module pg\n\ngo 1.21\n",
+        "calc.go": "package pg\n\nfunc SumToN(n int) int {\n\ttotal := 0\n\tfor i := 1; i < n; i++ {\n\t\ttotal += i\n\t}\n\treturn total\n}\n",
+        "calc_test.go": "package pg\n\nimport \"testing\"\n\nfunc TestSumToN(t *testing.T) {\n\tif SumToN(5) != 15 {\n\t\tt.Fatalf(\"SumToN(5) = %d, want 15\", SumToN(5))\n\t}\n\tif SumToN(1) != 1 {\n\t\tt.Fatalf(\"SumToN(1) = %d, want 1\", SumToN(1))\n\t}\n}\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "go test ./...", "description": "SumToN sums 1..n inclusive", "timeoutMs": 240000 }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "TRIVIAL",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "PG-G2",
+      "version": 1,
+      "category": "MULTI_FILE",
+      "title": "Go: add a function in a new file, same package",
+      "description": "Add a function Discount(price, pct int) int to a new file pricing.go in the same package, returning price reduced by pct percent (integer math). Keep the existing Tax function in calc.go. This is a Go module; use Go.",
+      "seedFiles": {
+        "go.mod": "module pg\n\ngo 1.21\n",
+        "calc.go": "package pg\n\nfunc Tax(price int) int {\n\treturn price / 10\n}\n",
+        "calc_test.go": "package pg\n\nimport \"testing\"\n\nfunc TestFeature(t *testing.T) {\n\tif Tax(100) != 10 {\n\t\tt.Fatal(\"Tax broken\")\n\t}\n\tif Discount(100, 10) != 90 {\n\t\tt.Fatalf(\"Discount(100,10) = %d, want 90\", Discount(100, 10))\n\t}\n\tif Discount(100, 50) != 50 {\n\t\tt.Fatalf(\"Discount(100,50) = %d, want 50\", Discount(100, 50))\n\t}\n}\n"
+      },
+      "verification": [
+        { "kind": "file_exists", "target": "pricing.go", "description": "pricing.go created" },
+        { "kind": "command", "target": "go test ./...", "description": "Discount added; Tax preserved", "timeoutMs": 240000 }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
     }
   ]
 }

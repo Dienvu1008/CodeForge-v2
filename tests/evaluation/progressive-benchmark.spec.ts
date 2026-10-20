@@ -29,6 +29,16 @@ describe('codeforge-progressive dataset', () => {
     expect(diffs.has('EXPERT')).toBe(true);
   });
 
+  it('covers multiple languages (not just JS/TS) via the PG-D/R/G families', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const ids = result.value.tasks.map((t) => t.id);
+    // Dart, Rust and Go families added in P12.26 (Lát 3).
+    expect(ids.some((id) => id.startsWith('PG-D'))).toBe(true);
+    expect(ids.some((id) => id.startsWith('PG-R'))).toBe(true);
+    expect(ids.some((id) => id.startsWith('PG-G'))).toBe(true);
+  });
+
   it('every task has a deterministic command/build check (external verdict authority)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -45,13 +55,30 @@ describe('codeforge-progressive dataset', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('is broadly ordered by non-decreasing difficulty (a readable capability curve)', () => {
+  it('the JS capability curve (PG-NN) is broadly ordered by non-decreasing difficulty', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const ranks = result.value.tasks.map((t) => RANK[t.difficulty]);
-    // Allow small local dips but require the back half to be harder than the front half.
+    // The dataset now spans two axes: the original JS capability curve (PG-01..PG-12) AND
+    // per-language families (PG-D/R/G) that each start easy. The "readable curve" invariant
+    // applies to the JS family — assert ordering there, not across the whole mixed list.
+    const ranks = result.value.tasks
+      .filter((t) => /^PG-\d+$/.test(t.id))
+      .map((t) => RANK[t.difficulty]);
     const half = Math.floor(ranks.length / 2);
     const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     expect(avg(ranks.slice(half))).toBeGreaterThan(avg(ranks.slice(0, half)));
+  });
+
+  it('each per-language family is itself ordered easy→harder', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const prefix of ['PG-D', 'PG-R', 'PG-G']) {
+      const ranks = result.value.tasks
+        .filter((t) => t.id.startsWith(prefix))
+        .map((t) => RANK[t.difficulty]);
+      for (let i = 1; i < ranks.length; i++) {
+        expect(ranks[i], `${prefix} family must be non-decreasing in difficulty`).toBeGreaterThanOrEqual(ranks[i - 1]!);
+      }
+    }
   });
 });
