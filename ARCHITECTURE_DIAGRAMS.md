@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Component Relationship Flowcharts**
 
-Version: 1.1
+Version: 1.2
 Status: Architecture Baseline
 Format: Mermaid diagrams (render trong VS Code, GitHub, GitLab, Obsidian)
 Related specs:
@@ -16,9 +16,15 @@ Related specs:
 
 File này gồm **12 diagrams**, mỗi cái trả lời một câu hỏi cụ thể:
 
+> **v1.2 (P12):** Diagram 1 (5-Plane Overview) nay kèm hai **advisory plane** — Mission
+> Intelligence (P12) và Learning (P11) — cùng node **LanguageInference** trong Intelligence Plane.
+> Planning Flow (#9) và Verification Plane (#5) có ghi chú đa-ngôn-ngữ (Dart/Flutter/Rust/Go/
+> Python/C++). Các surface quan sát/điều khiển (observability server + dashboard, extension VS
+> Code native, Telegram) là **client của runtime**, không phải authority.
+
 | # | Diagram | Câu hỏi |
 |---|---|---|
-| 1 | 5-Plane Overview | Hệ thống chia thành những plane nào? |
+| 1 | 5-Plane Overview (+ advisory MI/LE) | Hệ thống chia thành những plane nào? |
 | 2 | Control Plane Detail | Authority nằm ở đâu? |
 | 3 | Intelligence Plane | LLM đề xuất gì? |
 | 4 | Execution Plane | Tool được thực thi thế nào? |
@@ -41,7 +47,22 @@ Câu hỏi: **Hệ thống chia thành những plane nào?**
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 40, 'rankSpacing': 55, 'padding': 8}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart TB
-    User([USER / VS Code])
+    User([USER / VS Code extension · dashboard · Telegram])
+
+    subgraph MI["MISSION INTELLIGENCE (advisory · pre-planning · P12)"]
+        Intake[MissionIntake]
+        Complexity[ComplexityAnalyzer]
+        Risk[RiskAnalyzer]
+        CapDisc[CapabilityDiscovery]
+        ModelRoute[ModelRouter]
+        ArchGate[ArchitectureGate]
+    end
+
+    subgraph LE["LEARNING PLANE (advisory · P11)"]
+        SelfModel[SelfModelBuilder]
+        AdviceGate[AdviceGate]
+        RecAdvisor[RecoveryAdvisor]
+    end
 
     subgraph CP["CONTROL PLANE (Authority)"]
         Goal[Goal]
@@ -55,6 +76,7 @@ flowchart TB
     end
 
     subgraph IP["INTELLIGENCE PLANE (Proposals only)"]
+        LangInfer[LanguageInference]
         Planner[Planner]
         Critic[Critic]
         Replanner[Replanner]
@@ -98,6 +120,10 @@ flowchart TB
     end
 
     User --> CP
+    User -.goal.-> MI
+    MI -.advise (model/persona/gate).-> CP
+    MI -.BLOCK → AWAITING_HUMAN.-> SM
+    LE -.advise (recovery order).-> Policy
     CP --> IP
     CP --> EP
     EP --> VP
@@ -120,14 +146,23 @@ flowchart TB
     classDef verif fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
     classDef evid fill:#fce4ec,stroke:#880e4f,stroke-width:2px
     classDef infra fill:#eceff1,stroke:#263238,stroke-width:1px
+    classDef advisory fill:#fff8e1,stroke:#9e6a00,stroke-width:1px,stroke-dasharray:4 3
 
     class Goal,Session,TG1,Sched,SM,Policy,Budget,CP2 control
-    class Planner,Critic,Replanner,CtxBuilder,Retriever,FailureAn,StrategyReg intel
+    class LangInfer,Planner,Critic,Replanner,CtxBuilder,Retriever,FailureAn,StrategyReg intel
     class TaskExec,ModelGW,ToolGW,ProcSup,WsMgr exec
     class VerEng,VerPol,VerScope,VerRep verif
     class ArtStore,WsRev,Checkpoint,EventLog,Provenance evid
     class SQLite,FS,Git,Shell,Ollama,TS,LSP infra
+    class Intake,Complexity,Risk,CapDisc,ModelRoute,ArchGate,SelfModel,AdviceGate,RecAdvisor advisory
 ```
+
+> **Advisory planes (dashed).** Mission Intelligence (P12, `--mission on`) and the Learning plane
+> (P11, `--learning on`) are **advisory only** (MI-002/MI-008, LE-002/LE-003): they shape prompts,
+> route the model, and order recovery, but never hold authority. Both are OFF by default and the
+> Control Plane is byte-identical to the prior phase when off. The one place Mission can *stop*
+> work is the ArchitectureGate (MI-004/MI-007): a BLOCK verdict transitions the session to
+> AWAITING_HUMAN — it never silently proceeds.
 
 **Nguyên tắc:**
 - Control Plane là **authority** — không ai bypass.
@@ -391,6 +426,18 @@ flowchart TB
 - Mutation ngoài scratch thì INVALID.
 - Revision thay đổi thì stale; stale thì không complete.
 - Đường vào PASSED không qua verification duy nhất là **human override** (`HUMAN_OVERRIDE_PASSED`): tạo marker `HUMAN_OVERRIDE_COMPLETED`, **không** sửa VerificationReport gốc (VR-005, HI-004). Xem `VERIFICATION_PROTOCOL §11`.
+- **Đa ngôn ngữ (P12.25).** `VerificationPolicy` không hardcode một toolchain. `buildVerificationPolicy(inspectProject(root))` phát hiện manifest trong workspace rồi derive check theo ngôn ngữ, thứ tự analyze/build → test:
+
+  | Ngôn ngữ | Tín hiệu (manifest) | Check |
+  |---|---|---|
+  | TypeScript/JS | `package.json` (+ `tsconfig.json`) | `npm run build/typecheck/lint/test` (hoặc `tsc --noEmit`) |
+  | Dart/Flutter | `pubspec.yaml` (+ `flutter:`) | `dart analyze`+`dart test` (hoặc `flutter analyze`+`flutter test`) |
+  | Rust | `Cargo.toml` | `cargo build`+`cargo test` |
+  | Go | `go.mod` | `go build ./...`+`go test ./...` |
+  | Python | `pyproject.toml`/`requirements.txt`/… (+ pytest) | `python -m compileall` (+ `pytest -q`) |
+  | C++ | `CMakeLists.txt` | `cmake` configure + build |
+
+  Workspace **0 check** ⇒ CompletionGate từ chối PASSED (guard: task không verify được thì không bao giờ "done" ngầm). Xem `VERIFICATION_PROTOCOL §9`.
 
 ---
 
@@ -633,9 +680,10 @@ sequenceDiagram
 
     U->>CP: Goal
     CP->>CP: Create Session
-    CP->>P: Plan(goal)
+    CP->>CP: inferLanguage(goal, workspaceFiles) → LanguageHint
+    CP->>P: Plan(goal, languageHint)
     P->>P: Build Context
-    P->>P: Call LLM
+    P->>P: Call LLM (prompt mang TARGET_LANGUAGE)
     P-->>CP: Plan proposal
 
     CP->>V: Validate(plan)
@@ -668,6 +716,7 @@ sequenceDiagram
 - Validator **deterministic**.
 - Critic chỉ **góp ý**, không authority.
 - Commit atomic.
+- **Language inference (P12.24).** Trước khi plan, runtime suy ra ngôn ngữ/framework đích một cách **deterministic** từ manifest workspace + từ khoá trong goal (`inferLanguage` → `LanguageHint`), rồi chèn section `TARGET_LANGUAGE` vào prompt của Planner. Few-shot của Planner là **trung lập ngôn ngữ** — không còn mặc định TypeScript. Hint là advisory; workspace thắng goal khi mâu thuẫn. Đây là lớp bỏ thiên vị "goal Flutter vẫn ra .ts".
 
 ---
 
@@ -1077,6 +1126,7 @@ Khi architecture thay đổi:
 |---|---|---|
 | 1.0 | (baseline) | 13 diagrams ban đầu. |
 | 1.1 | 2026-09-14 | **Sửa lỗi render:** thay cú pháp cạnh không hợp lệ `-.x.->` (Diagram 7, 8) và `classDef graph` (từ reserved, Diagram 13) bằng cú pháp hợp lệ; chuẩn hóa nhãn dotted link nhiều từ thành `-. text .->`. Bỏ emoji/em-dash trong subgraph title Diagram 1, 2 và thêm init spacing cho dễ đọc. **Đồng bộ nội dung với spec sau các bản vá:** Diagram 5 thêm nhánh human override (`HUMAN_OVERRIDE_PASSED`); Diagram 6 phản ánh checkpoint hash-claim + `CHECKPOINT_DIRTY_AT_CAPTURE`; Diagram 10, 12 tách nhánh TaskRun (RUN_ENDED_OK vs RUN_ENDED_ABNORMAL); Diagram 11 thêm `DEP_UNREACHABLE` + graceful degradation NoProgress; Diagram 13 thêm CP-010..012. Đã validate 13/13 diagram bằng mermaid parser. |
+| 1.2 | 2026-10-20 | **Đồng bộ P11–P12.** Diagram 1 (5-Plane Overview) thêm hai **advisory plane** dạng nét đứt — Mission Intelligence (intake→complexity/risk→capability→model-route→ArchitectureGate; BLOCK→AWAITING_HUMAN) và Learning (SelfModel/AdviceGate/RecoveryAdvisor → ordering của RecoveryPolicy), cùng node `LanguageInference` trong Intelligence Plane; nhãn User ghi rõ các client (extension VS Code native, dashboard, Telegram). Diagram 9 (Planning Flow) thêm bước `inferLanguage → LanguageHint` + `TARGET_LANGUAGE` và ghi chú bỏ thiên vị TypeScript (P12.24). Diagram 5 (Verification Plane) thêm bảng check đa ngôn ngữ Dart/Flutter/Rust/Go/Python/C++ (P12.25). |
 
 ---
 

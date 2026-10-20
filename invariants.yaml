@@ -1002,16 +1002,16 @@ invariants:
     severity: CRITICAL
     status: ACTIVE
   - id: RC-004
-    statement: "ROLLBACK chỉ được thực hiện khi policy cho phép."
-    enforcement: ["RecoveryEngine"]
+    statement: "ROLLBACK chỉ được thực hiện khi policy cho phép (rollbackAllowed). Policy versioned qua RECOVERY_POLICY_VERSION; từ v2 (P12.14) SYNTAX = FIX->ROLLBACK->ESCALATE và ROLLBACK là action thực thi."
+    enforcement: ["RecoveryPolicy.decide", "RecoveryEngine"]
     violation_class: UNAUTHORIZED_ROLLBACK
     test: "tests/invariants/recovery/rc-004.spec.ts"
     phase: 5
     severity: CRITICAL
     status: ACTIVE
   - id: RC-005
-    statement: "Replanning phải tạo GraphMutation, không overwrite graph."
-    enforcement: ["Replanner"]
+    statement: "Replanning phải tạo GraphMutation (SUPERSEDE), không overwrite graph."
+    enforcement: ["RecoveryEngine", "GraphCommitService"]
     violation_class: GRAPH_OVERWRITE
     test: "tests/invariants/recovery/rc-005.spec.ts"
     phase: 5

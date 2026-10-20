@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Verification Scope, Freshness, Evidence & Completion**
 
-Version: 1.0
+Version: 1.1
 Status: Architecture Baseline
 Owner: Verification Plane / VerificationEngine
 Scope: v1 (single user, single workspace, sequential, local)
@@ -614,7 +614,7 @@ interface VerificationPolicy {
   requiredTools: string[];
   toolVersionPolicy: 'allow_any' | 'pin' | 'minimum';
 
-  language?: string;                  // 'typescript' | 'dart' | ...
+  language?: string;                  // advisory tag; thực tế check được derive theo manifest — xem §9.4
 }
 ```
 
@@ -640,6 +640,54 @@ Không phụ thuộc LLM.
 - Policy change phải ghi event.
 
 Tham chiếu: `INVARIANTS.md` → **VR-004, VR-009, VR-010**.
+
+### 9.4 Check derivation theo ngôn ngữ (đa ngôn ngữ, P12.25)
+
+Policy **không** hardcode một toolchain. `buildVerificationPolicy(signals)` là hàm **thuần,
+deterministic**: nó nhận `ProjectSignals` (do infra `inspectProject(workspaceRoot)` phát hiện từ
+manifest trên đĩa) và derive danh sách `CheckDefinition` theo ngôn ngữ, luôn xếp
+**analyze/build → test** để lỗi tĩnh rẻ fail trước bộ test chậm. Lệnh là **logical**
+(`command` + `args`); `WorkspaceProcessSupervisor` resolve executable theo nền tảng (ví dụ chạy
+`flutter`/`dart` .bat qua `cmd.exe` trên Windows với `shell:false`).
+
+`ProjectSignals`:
+
+```typescript
+interface ProjectSignals {
+  hasPackageJson: boolean; packageScripts: string[]; hasTsconfig: boolean;
+  // P12.25 — manifest đa ngôn ngữ:
+  hasPubspec?: boolean; isFlutter?: boolean;   // Dart/Flutter
+  hasCargoToml?: boolean;                        // Rust
+  hasGoMod?: boolean;                            // Go
+  hasPython?: boolean; hasPytest?: boolean;      // Python
+  hasCMake?: boolean;                            // C++
+  timeoutMs?: number;
+}
+```
+
+Ma trận phát hiện → check:
+
+| Ngôn ngữ | Tín hiệu manifest | Check (theo thứ tự) |
+|---|---|---|
+| TypeScript/JS | `package.json` (+ `tsconfig.json`) | `npm run build` → `npm run typecheck` (hoặc `npx tsc --noEmit`) → `npm run lint` → `npm test` (chỉ thêm khi script tồn tại) |
+| Dart | `pubspec.yaml` (không có flutter) | `dart analyze` → `dart test` |
+| Flutter | `pubspec.yaml` có `flutter:` | `flutter analyze` → `flutter test` |
+| Rust | `Cargo.toml` | `cargo build --quiet` → `cargo test --quiet` |
+| Go | `go.mod` | `go build ./...` → `go test ./...` |
+| Python | `pyproject.toml`/`requirements.txt`/`setup.py`/`Pipfile` | `python -m compileall -q .` → `pytest -q` (khi phát hiện pytest) |
+| C++ | `CMakeLists.txt` | `cmake -S . -B build` → `cmake --build build` |
+
+Workspace trộn nhiều ngôn ngữ → derive check cho **từng** ngôn ngữ phát hiện được.
+
+**Guard "0 check ⇒ không PASSED".** Nếu không derive được check nào (workspace trống / không nhận
+dạng ngôn ngữ), `checks = []`. CompletionGate khi đó **từ chối** PASSED (0 check không bao giờ
+pass — đây là adversarial guard, TI-005): một task không thể verify thì không bao giờ được coi là
+"done" ngầm. Đây là lý do một goal chạy trong workspace không có manifest sẽ không có task nào
+`PASSED` cho tới khi có manifest/toolchain tương ứng.
+
+Tham chiếu code: `packages/agent-core/src/verification/verification-policy-builder.ts` (thuần),
+`packages/infrastructure/src/verification-runtime/project-inspector.ts` (I/O),
+`packages/infrastructure/src/verification-runtime/workspace-process-supervisor.ts` (resolve lệnh).
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Runtime Safety Invariants**
 
-Version: 1.4
+Version: 1.10
 Status: Architecture Baseline
 Owner: Runtime / Control Plane
 Scope: v1 (single user, single workspace, sequential, local, Ollama)
@@ -288,8 +288,8 @@ Phase gate:
 | RC-001 | Recovery action phải nằm trong allowed set của failure class. | RecoveryPolicy | 5 | CRITICAL |
 | RC-002 | UNKNOWN failure không được retry vô hạn. | RecoveryPolicy | 5 | CRITICAL |
 | RC-003 | No-progress detector phải deterministic trên **tập tín hiệu khả dụng tại phase hiện tại**. Tín hiệu chưa khả dụng (ví dụ `relevantFilesChanged` trước Phase 6) coi là "unknown", không đóng góp vào quyết định, và không được gây báo "no progress" sai. | NoProgressDetector | 5 | CRITICAL |
-| RC-004 | ROLLBACK chỉ được thực hiện khi policy cho phép. | RecoveryEngine | 5 | CRITICAL |
-| RC-005 | Replanning phải tạo GraphMutation, không overwrite graph. | Replanner | 5 | CRITICAL |
+| RC-004 | ROLLBACK chỉ được thực hiện khi policy cho phép (`rollbackAllowed`). Policy được versioned (`RECOVERY_POLICY_VERSION`); từ v2 (P12.14) SYNTAX = FIX→ROLLBACK→ESCALATE với `rollbackAllowed=true`, và ROLLBACK là action thực thi (không còn placeholder). | RecoveryPolicy.decide (gác) + RecoveryEngine (thực thi) | 5 | CRITICAL |
+| RC-005 | Replanning phải tạo GraphMutation (SUPERSEDE), không overwrite graph. | RecoveryEngine + GraphCommitService | 5 | CRITICAL |
 | RC-006 | Mỗi recovery action phải ghi provenance và lý do. | RecoveryEngine | 5 | HIGH |
 | RC-007 | ESCALATE phải chuyển session sang AWAITING_HUMAN. | RecoveryEngine | 5 | CRITICAL |
 | RC-008 | Recovery không được vi phạm budget của parent. | RecoveryPolicy | 5 | CRITICAL |
@@ -979,6 +979,12 @@ Lịch sử:
 | 1.2 | 2026-09-14 | Phase 7 (P7-INV): thêm nhóm Memory / RAG (ME-001..007) — §2 prefix `ME`, §3.21 bảng tóm tắt. Registry 144 → 151 invariant. |
 | 1.3 | 2026-09-14 | Phase 8 (P8-INV): thêm nhóm Autonomy (AU-001..007) — §2 prefix `AU`, §3.22 bảng tóm tắt. Registry 151 → 158 invariant. |
 | 1.4 | 2026-09-14 | Phase 9 (P9-INV): mở rộng nhóm Observability (OB-005..010) — projection/control/trace/continuation/tailer/telemetry không phải authority, §3.19 bảng. Registry 158 → 164 invariant. |
+| 1.5 | 2026-10-07 | Phase 10: VerificationPolicyBuilder làm TI-005 thành thật (task PASSED chỉ khi build/typecheck/lint/test xanh, derive từ project); Autonomy (AU) wired vào runtime. Không thêm ID mới. |
+| 1.6 | 2026-10-07 | Phase 11 (P11-INV): thêm nhóm Learning / Intelligence Plane (LE-001..008) — §2 prefix `LE`, §3.23. Lớp advisory thuần (SelfModel chỉ-đọc, LearningStore, AdviceGate clamp trong allowed-set, no-bypass). Registry 164 → 172 invariant. |
+| 1.7 | 2026-10-08 | Phase 12 (P12-INV): thêm nhóm Mission Intelligence (MI-001..008) — §2 prefix `MI`, §3.24. Stage pre-planning advisory (intake→complexity/risk→capability-verify→model-route→ArchitectureGate); gate có thể BLOCK → AWAITING_HUMAN (MI-004/007). Registry 172 → 180 invariant. |
+| 1.8 | 2026-10-20 | P12.14 ROLLBACK: `RECOVERY_POLICY_VERSION` bump lên 2; SYNTAX đổi từ FIX→REPLAN→ESCALATE thành FIX→ROLLBACK→ESCALATE (`rollbackAllowed=true`); ROLLBACK trở thành action thực thi qua `WorkspaceRollback` port. Làm rõ RC-004 (gác ở RecoveryPolicy.decide) + RC-005 (enforcement RecoveryEngine + GraphCommitService). Không thêm ID mới. |
+| 1.9 | 2026-10-20 | P12.15–P12.17: grep/glob tools (READ_ONLY); LspPool registry tổng quát hoá (đa ngôn ngữ, không còn hardcode TS/JS); ContextCollector nối LSP references (opt-in `--lsp`). Không thêm ID mới (TG/CX hiện hành bao phủ). |
+| 1.10 | 2026-10-20 | P12.24–P12.25: language inference ở Planner (bỏ thiên vị TypeScript) + verification đa ngôn ngữ (Dart/Flutter/Rust/Go/Python/C++) trong VerificationPolicyBuilder. Thuộc phạm vi TI-005/GI/CX hiện hành; không thêm ID mới. |
 
 ---
 

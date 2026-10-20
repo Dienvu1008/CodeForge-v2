@@ -4,7 +4,7 @@
 > view that survives across conversations. Phase docs (`PHASE_*`) hold detail; this file holds
 > the *product* trajectory. Status detail lives in `PROJECT_STATUS.md`.
 >
-> Last updated: 2026-09-14 · post-eval hardening + goal-clarification Tier A/B1/B2.
+> Last updated: 2026-10-20 · multi-language planning + verification + benchmarks shipped (P12.24–P12.27); docs synced (P12.28).
 
 ---
 
@@ -70,6 +70,14 @@ Law (never weakened): **LLM proposes, the deterministic runtime decides and enfo
   - Orchestrator graceful-stop: an unschedulable dependent task (its dependency never passed) is driven to ABORTED (SM-L8 `DEP_UNREACHABLE`) and the session COMPLETES, preserving work — replacing the old hard `DEADLOCK` abort that discarded the whole run.
   - Runtime model switching: a `SwitchableModelGateway` + `/config` endpoint let the dashboard change the active Ollama model without a restart (single gateway reference preserved — MG-001).
   - Dashboard usability: a Goals chat panel (persistent history + live status, no vanishing input), a Pending-Approval panel (approve/deny tool calls that parked the session at AWAITING_HUMAN), a Result panel (`/workspace/files` — the files the agent produced), workspace path + model selector in the header, honest "VERIFYING (done, unverified)" labeling, model list/download (`/models`, `/models/pull`), `/sessions` newest-first, and `Cache-Control: no-store` so UI changes always load.
+
+- **Phase 12.13–12.27 — multi-language + product surface:**
+  - **Multi-language planning (P12.24):** deterministic `inferLanguage(goal, workspace)` → a `TARGET_LANGUAGE` prompt hint + a language-neutral planner few-shot, removing the TypeScript default bias (a Flutter goal is now planned as Dart, not `.ts`).
+  - **Multi-language verification (P12.25):** `buildVerificationPolicy` derives real checks per detected manifest — TS/JS, Dart/Flutter, Rust, Go, Python, C++ — with Windows `.bat`-shim routing for `flutter`/`dart`.
+  - **Multi-language benchmarks (P12.26–P12.27):** the progressive capability curve gained Dart/Rust/Go/Python/C++/MQL5 families, each verified by the real toolchain (incl. a MetaEditor compile wrapper for MQL5) with portable `${CODEFORGE_REPO}`/`${WORKSPACE}` check tokens.
+  - **Dashboard (P12.18–P12.21):** task-graph DAG, change/diff transcript, governance timeline, prominent approval banner.
+  - **Native VS Code extension (P12.22–P12.23):** live tree views, editor diff, approval notification, Goals webview panel, model picker, Start-Runtime-Here (spawns the runtime in the open workspace).
+  - **Tooling/robustness:** grep/glob read-only tools (P12.15), LSP registry + context wiring (P12.16–P12.17), idle-start + stale-lock recovery in the runtime CLI, SWE-bench adapter + runner.
 
 **Kernel integrity is mature and invariant-tested (144 base + 7 ME + 7 AU + 6 OB + 8 LE + 8 MI = 180 invariants).**
 

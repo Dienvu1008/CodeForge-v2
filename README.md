@@ -33,6 +33,11 @@ User Goal → Mission Understanding → Complexity / Risk / Uncertainty → Capa
 file writes and commands go through a `ToolGateway` with autonomy levels and human-in-the-loop
 approval; task completion is decided by deterministic checks, not by the model claiming "done".
 
+**It is not TypeScript-only.** The planner infers the target language/framework from the goal and
+the workspace (no silent TypeScript default), and verification derives real checks per language —
+TypeScript/JS, Dart/Flutter, Rust, Go, Python, and C++ — so a "build a Flutter app" goal is planned
+and verified as Dart, not JavaScript.
+
 ### The two-axis correctness model
 
 CodeForge measures itself on two independent axes (`EVALUATION_MODEL.md`):
@@ -58,7 +63,7 @@ A TypeScript monorepo (`npm` workspaces, Node ≥ 20):
 | `packages/agent-core` | Pure domain + orchestration. No I/O, no infrastructure imports. Domain models, state machines, task graph, scheduler, budget, context builder, planner, recovery, mission intelligence (advisory), evaluation. |
 | `packages/infrastructure` | Adapters: SQLite event log + repositories, Ollama model gateway, process supervisor, Node tool executor, code intelligence (Tree-sitter / LSP), observability HTTP+SSE server, CLI, Telegram transport. |
 | `packages/testing` | Deterministic test doubles (e.g. `FakeModel`, fake process supervisor) for CI without a network or a live model. |
-| `packages/vscode-extension` | Thin HTTP client: connect to a running runtime, dashboard webview, control commands. |
+| `packages/vscode-extension` | Native VS Code client: live tree views (sessions / task-graph / changes / governance), editor diff + approval notifications, a Goals panel, model picker, and Start-Runtime-Here — all over HTTP (the extension is a client, never an authority). |
 | `tests` | Vitest suites: unit, integration, invariants, cross-platform, evaluation. |
 
 Dependency direction is enforced by dependency-cruiser (`agent-core` must never import
@@ -221,8 +226,13 @@ npm run bundle:cli    # → dist-cli/codeforge.cjs (native deps kept external)
 
 ### VS Code extension
 
-`packages/vscode-extension` is a thin client that connects to a running runtime and shows the
-dashboard in a webview with control commands. It is built as a `.vsix` but not yet published.
+`packages/vscode-extension` is a native VS Code client for a running runtime: an activity-bar
+container with live tree views (Sessions / Task-Graph / Changes / Governance), native editor diffs
+per change, Approve/Deny notifications for pending tool calls, a Goals panel (conversational goal
+history + live status), a model picker (`GET /models`), and a **Start Runtime Here** command that
+spawns the runtime in the open workspace. All decision logic lives in pure, unit-tested modules;
+the extension stays a client (reads over HTTP, controls via `POST /control`). Built as a `.vsix`
+(not yet published); the dashboard webview is kept as a secondary view.
 
 ---
 
@@ -284,7 +294,9 @@ Highest-value next work (evidence-gated by before/after benchmark runs):
 3. **Finish the recovery vocabulary** — implement REPLAN and ROLLBACK. (Toward step 3.)
 4. **Measure real-model task correctness** — run the benchmark against a live model so autonomy
    claims rest on evidence, not hope.
-5. **Product surface** — task-graph visualization, richer execution trace, polished VS Code `.vsix`.
+5. **Product surface** — task-graph DAG, change/diff transcript, governance timeline, and a native
+   VS Code extension are shipped (P12.18–P12.23); next is a polished, published `.vsix` and richer
+   live trace.
 
 Full detail lives in `ROADMAP.md` (trajectory) and `PROJECT_STATUS.md` (what the software actually
 does today, verified against the source tree).
@@ -304,7 +316,9 @@ does today, verified against the source tree).
 - **Local small models (6–9B) are weak agents** — they plan acceptably but often loop on reads,
   emit malformed tool-call JSON, or over-decompose. The runtime mitigates this but cannot make a
   weak model competent; agent quality is model-bound.
-- **Product surface is minimal** — a functional dashboard + thin VS Code client, no graph view.
+- **Product surface is still maturing** — a functional dashboard (task-graph DAG, change/diff
+  transcript, governance timeline, approval banner) and a native VS Code extension exist, but it is
+  not yet a polished, published IDE experience.
 
 None of these violate a kernel invariant — they are intelligence/product gaps, which is exactly the
 distinction the two-axis model exists to make.
