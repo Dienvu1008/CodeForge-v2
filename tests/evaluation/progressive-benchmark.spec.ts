@@ -50,6 +50,25 @@ describe('codeforge-progressive dataset', () => {
     expect(cats.has('ARCHITECTURE'), 'ARCHITECTURE category present').toBe(true);
   });
 
+  it('has a held-out split with distinct axes and no overlap with training (P12.32)', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const tasks = result.value.tasks;
+    const training = tasks.filter((t) => !t.heldOut);
+    const heldOut  = tasks.filter((t) => t.heldOut === true);
+    // Held-out set is non-empty and substantially smaller than training (≥10, ≤30).
+    expect(heldOut.length).toBeGreaterThanOrEqual(10);
+    expect(heldOut.length).toBeLessThanOrEqual(30);
+    expect(training.length).toBeGreaterThan(heldOut.length);
+    // Every held-out task has a diagnostic axis label.
+    const missingAxis = heldOut.filter((t) => !t.heldOutAxis || t.heldOutAxis.trim() === '');
+    expect(missingAxis.map((t) => t.id)).toEqual([]);
+    // No id collision between training and held-out.
+    const trainIds = new Set(training.map((t) => t.id));
+    const collisions = heldOut.filter((t) => trainIds.has(t.id));
+    expect(collisions.map((t) => t.id)).toEqual([]);
+  });
+
   it('every task has a deterministic command/build check (external verdict authority)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;

@@ -162,11 +162,24 @@ const benchmark = loadBenchmarkFile(flag('benchmark', 'benchmarks/codeforge-prog
 // Optional case filter: --only PG-12  (or comma-separated: --only PG-05,PG-12). Lets a focused
 // re-measure of one or a few cases run without burning the whole curve's RPM budget.
 const onlyArg = flag('only', undefined);
+// P12.32: --split train|holdout|all (default: train — held-out cases are excluded from normal runs)
+const splitArg = (flag('split', 'train') ?? 'train').toLowerCase();
+if (!['train', 'holdout', 'all'].includes(splitArg)) {
+  console.error(`--split must be train, holdout, or all (got: ${splitArg})`); process.exit(1);
+}
+
 if (onlyArg) {
   const want = new Set(onlyArg.split(',').map((s) => s.trim().toUpperCase()));
   benchmark.tasks = benchmark.tasks.filter((t) => want.has(String(t.id).toUpperCase()));
   if (benchmark.tasks.length === 0) { console.error(`--only '${onlyArg}' matched no task id`); process.exit(1); }
 }
+// Apply split filter after --only (so --only always wins).
+if (splitArg === 'train') {
+  benchmark.tasks = benchmark.tasks.filter((t) => !t.heldOut);
+} else if (splitArg === 'holdout') {
+  benchmark.tasks = benchmark.tasks.filter((t) => t.heldOut === true);
+}
+// splitArg === 'all' keeps everything.
 console.log(`\nCapability curve: ${provider} '${model}' @ ${endpoint}  (${benchmark.tasks.length} tasks)\n`);
 const runner = new BenchmarkRunner({
   agent: makeRealAgentRunner(),

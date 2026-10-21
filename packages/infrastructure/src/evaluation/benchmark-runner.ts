@@ -83,6 +83,18 @@ export class BenchmarkRunner {
   private async runCase(task: BenchmarkTask): Promise<BenchmarkCaseResult> {
     const startedAt = this.deps.now();
     const t0 = Date.now();
+
+    // P12.32: a task with `skip` is recorded as INVALID immediately — no workspace created,
+    // no agent run, no checks. The skip reason (e.g. "ruby not available") is the invalidReason.
+    if (task.skip !== undefined && task.skip !== '') {
+      const endedAt = this.deps.now();
+      return evaluateCase({
+        task, checks: [], events: [], filesChanged: [],
+        startedAt, endedAt, durationMs: Date.now() - t0,
+        invalidReason: `skipped: ${task.skip}`,
+      });
+    }
+
     let handle: IsolatedWorkspaceHandle | undefined;
     try {
       handle = createIsolatedWorkspace(task.seedFiles);

@@ -102,6 +102,27 @@ export interface BenchmarkTask {
     readonly maxModelTokens?: number;
     readonly maxIterations?: number;
   };
+
+  /**
+   * P12.32 — held-out split discipline.
+   * `heldOut: true` marks this case as part of the held-out evaluation set. These cases are NEVER
+   * used to justify a harness fix; they only measure whether a fix applied to the training set
+   * generalised. See `.agents/failure-taxonomy.md` for the full held-out discipline.
+   */
+  readonly heldOut?: boolean;
+
+  /**
+   * The failure-mode axis this case is designed to probe (for taxonomy-driven analysis).
+   * E.g. "off-by-one / bounds", "closure / this binding", "async race / locking".
+   */
+  readonly heldOutAxis?: string;
+
+  /**
+   * Skip reason: when set the runner skips this case and records INVALID with this string as the
+   * reason. Use for cases that require a toolchain not available on the current machine.
+   * E.g. "ruby not available on this machine".
+   */
+  readonly skip?: string;
 }
 
 // ── Benchmark + version (§8) ─────────────────────────────────────────────────────

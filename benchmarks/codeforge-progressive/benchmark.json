@@ -980,6 +980,295 @@
       "difficulty": "EASY",
       "risk": "LOW",
       "timeoutMs": 120000
+    },
+
+    {
+      "id": "HO-01",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Binary search returns first >= instead of first >",
+      "description": "upperBound(arr, target) in src/bs.js should return the index of the first element strictly greater than target (sorted asc). Currently it returns the first element >= target. Fix it. Behavior must remain O(log n).",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/bs.js": "function upperBound(arr, target) {\n  let lo = 0, hi = arr.length;\n  while (lo < hi) {\n    const mid = (lo + hi) >> 1;\n    if (arr[mid] < target) lo = mid + 1;\n    else hi = mid;\n  }\n  return lo;\n}\nmodule.exports = { upperBound };\n",
+        "test.js": "const assert = require('node:assert');\nconst { upperBound } = require('./src/bs.js');\nassert.strictEqual(upperBound([1,2,3,3,3,4], 3), 5);\nassert.strictEqual(upperBound([1,2,3], 2), 2);\nassert.strictEqual(upperBound([1,2,3], 5), 3);\nassert.strictEqual(upperBound([1,2,3], 0), 0);\nassert.strictEqual(upperBound([], 1), 0);\nassert.strictEqual(upperBound([3,3,3], 3), 3);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "upperBound returns first index > target" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "off-by-one / bounds"
+    },
+    {
+      "id": "HO-02",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Timer callback loses `this` binding",
+      "description": "Timer in src/timer.js uses setInterval with a regular function, so this.seconds++ does not update the instance. Fix the binding (arrow function or .bind) so that after ~50ms of ticking, instance.seconds > 0. Do not change the class public API.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/timer.js": "class Timer {\n  constructor() {\n    this.seconds = 0;\n    this.interval = setInterval(function () {\n      this.seconds++;\n    }, 10);\n  }\n  stop() { clearInterval(this.interval); }\n}\nmodule.exports = { Timer };\n",
+        "test.js": "const assert = require('node:assert');\nconst { Timer } = require('./src/timer.js');\n(async () => {\n  const t = new Timer();\n  await new Promise((r) => setTimeout(r, 60));\n  t.stop();\n  assert.ok(Number.isFinite(t.seconds), 'seconds must be a finite number, got ' + t.seconds);\n  assert.ok(t.seconds > 0, 'timer should have ticked, got ' + t.seconds);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "timer updates instance.seconds via correct this" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "closure / this binding"
+    },
+    {
+      "id": "HO-03",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Lost update in async account transfer",
+      "description": "transfer(from, to, amount) in src/bank.js reads both balances, awaits, then writes both — so concurrent transfers lose updates. Serialize per-account so that running three concurrent 10-unit transfers from A to B preserves the total and leaves A.balance === 70. Do not change the Account class API.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/bank.js": "class Account {\n  constructor(balance) { this._b = balance; }\n  async balance() { await new Promise((r) => setImmediate(r)); return this._b; }\n  async setBalance(b) { await new Promise((r) => setImmediate(r)); this._b = b; }\n}\nasync function transfer(from, to, amount) {\n  const a = await from.balance();\n  const b = await to.balance();\n  if (a < amount) throw new Error('insufficient');\n  await from.setBalance(a - amount);\n  await to.setBalance(b + amount);\n}\nmodule.exports = { Account, transfer };\n",
+        "test.js": "const assert = require('node:assert');\nconst { Account, transfer } = require('./src/bank.js');\n(async () => {\n  const A = new Account(100);\n  const B = new Account(100);\n  await Promise.all([transfer(A, B, 10), transfer(A, B, 10), transfer(A, B, 10)]);\n  assert.strictEqual(A._b + B._b, 200, 'total must be preserved');\n  assert.strictEqual(A._b, 70);\n  assert.strictEqual(B._b, 130);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "concurrent transfers serialized; no lost updates" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EXPERT",
+      "risk": "LOW",
+      "timeoutMs": 180000,
+      "heldOut": true,
+      "heldOutAxis": "async race / locking"
+    },
+    {
+      "id": "HO-04",
+      "version": 1,
+      "category": "SECURITY",
+      "title": "Path traversal in a file reader",
+      "description": "readData(name) in src/fs.js joins user input to a base directory and reads it, allowing '../' traversal. Fix it to reject any resolved path that escapes DATA_DIR. Legitimate names like 'public.txt' must still work. Throw on traversal.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/fs.js": "const fs = require('node:fs');\nconst path = require('node:path');\nconst DATA_DIR = path.join(__dirname, 'data');\nfunction readData(name) {\n  return fs.readFileSync(path.join(DATA_DIR, name), 'utf8');\n}\nmodule.exports = { readData, DATA_DIR };\n",
+        "src/data/public.txt": "public\n",
+        "secret.txt": "TOP_SECRET\n",
+        "test.js": "const assert = require('node:assert');\nconst { readData } = require('./src/fs.js');\nassert.strictEqual(readData('public.txt').trim(), 'public');\nassert.throws(() => readData('../secret.txt'));\nassert.throws(() => readData('..\\\\secret.txt'));\nassert.throws(() => readData('/etc/passwd'));\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "traversal blocked; legit file readable" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "MEDIUM",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "injection / path traversal"
+    },
+    {
+      "id": "HO-05",
+      "version": 1,
+      "category": "SECURITY",
+      "title": "Prototype pollution via deep merge",
+      "description": "merge(target, source) in src/merge.js recursively copies keys, including '__proto__', which pollutes Object.prototype. Harden it so a malicious payload like '{\"__proto__\":{\"polluted\":true}}' cannot set Object.prototype.polluted. Reject '__proto__', 'constructor', and 'prototype' keys. Normal merges must still work.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/merge.js": "function merge(target, source) {\n  for (const k of Object.keys(source)) {\n    if (source[k] && typeof source[k] === 'object') {\n      target[k] = merge(target[k] || {}, source[k]);\n    } else {\n      target[k] = source[k];\n    }\n  }\n  return target;\n}\nmodule.exports = { merge };\n",
+        "test.js": "const assert = require('node:assert');\nconst { merge } = require('./src/merge.js');\ndelete Object.prototype.polluted;\nconst out = merge({ a: 1 }, { b: 2, nested: { c: 3 } });\nassert.deepStrictEqual(out, { a: 1, b: 2, nested: { c: 3 } });\nmerge({}, JSON.parse('{\"__proto__\": {\"polluted\": true}}'));\nassert.strictEqual(({}).polluted, undefined, 'Object.prototype was polluted');\nmerge({}, JSON.parse('{\"constructor\": {\"prototype\": {\"polluted2\": true}}}'));\nassert.strictEqual(({}).polluted2, undefined);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "no prototype pollution; normal merge works" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "HARD",
+      "risk": "MEDIUM",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "injection / prototype pollution"
+    },
+    {
+      "id": "HO-06",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Epsilon comparison for floating-point amounts",
+      "description": "approxEqual(a, b) in src/float.js uses ===, so 0.1 + 0.2 is 'not equal' to 0.3. Fix it to compare within a sensible epsilon. Non-close values like 1 vs 2 must still be unequal.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/float.js": "function approxEqual(a, b) {\n  return a === b;\n}\nmodule.exports = { approxEqual };\n",
+        "test.js": "const assert = require('node:assert');\nconst { approxEqual } = require('./src/float.js');\nassert.strictEqual(approxEqual(0.1 + 0.2, 0.3), true);\nassert.strictEqual(approxEqual(1, 1), true);\nassert.strictEqual(approxEqual(1, 1 + 1e-15), true);\nassert.strictEqual(approxEqual(1, 2), false);\nassert.strictEqual(approxEqual(-1, 1), false);\nassert.strictEqual(approxEqual(1e10, 1e10 + 1e-4), true);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "epsilon comparison: close yes, distant no" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "numeric precision / float"
+    },
+    {
+      "id": "HO-07",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Unicode normalization mismatch",
+      "description": "normalizeName(s) in src/name.js uses toLowerCase()+trim() but does not normalize Unicode composition. As a result, NFC 'café' (\\u00e9) and NFD 'café' (e\\u0301) are treated as different. Fix it so both forms normalize to the same output.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/name.js": "function normalizeName(s) {\n  return s.toLowerCase().trim();\n}\nmodule.exports = { normalizeName };\n",
+        "test.js": "const assert = require('node:assert');\nconst { normalizeName } = require('./src/name.js');\nconst nfc = 'caf\\u00e9';\nconst nfd = 'cafe\\u0301';\nassert.notStrictEqual(nfc, nfd);\nassert.strictEqual(normalizeName(nfc), normalizeName(nfd));\nassert.strictEqual(normalizeName('  ABC '), normalizeName('abc'));\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "NFC and NFD produce identical normalized output" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "unicode / normalization"
+    },
+    {
+      "id": "HO-08",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Sliding-window rate limiter never prunes",
+      "description": "RateLimiter in src/rate.js records every timestamp but never prunes old ones, so once the limit is hit it stays hit forever. Fix allow(now) to prune timestamps older than windowMs and admit requests correctly. Constructor signature (limit, windowMs) must stay.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/rate.js": "class RateLimiter {\n  constructor(limit, windowMs) {\n    this.limit = limit;\n    this.windowMs = windowMs;\n    this.requests = [];\n  }\n  allow(now = Date.now()) {\n    this.requests.push(now);\n    return this.requests.length <= this.limit;\n  }\n}\nmodule.exports = { RateLimiter };\n",
+        "test.js": "const assert = require('node:assert');\nconst { RateLimiter } = require('./src/rate.js');\nconst rl = new RateLimiter(3, 100);\nassert.strictEqual(rl.allow(0), true);\nassert.strictEqual(rl.allow(10), true);\nassert.strictEqual(rl.allow(20), true);\nassert.strictEqual(rl.allow(30), false);\nassert.strictEqual(rl.allow(105), true);\nassert.strictEqual(rl.allow(115), true);\nassert.strictEqual(rl.allow(125), false);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "sliding window prunes old timestamps" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "cache / eviction by time window"
+    },
+    {
+      "id": "HO-09",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Compositional: closure bug AND off-by-one in one function",
+      "description": "makeIndexers(arr) in src/idx.js should return exactly arr.length functions, each closing over its own index i and returning arr[i]. It currently has TWO bugs: loop bound uses <= (off-by-one) and closures share the final i. Fix both.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/idx.js": "function makeIndexers(arr) {\n  const result = [];\n  for (var i = 0; i <= arr.length; i++) {\n    result.push(function () { return arr[i]; });\n  }\n  return result;\n}\nmodule.exports = { makeIndexers };\n",
+        "test.js": "const assert = require('node:assert');\nconst { makeIndexers } = require('./src/idx.js');\nconst idx = makeIndexers([10, 20, 30]);\nassert.strictEqual(idx.length, 3);\nassert.strictEqual(idx[0](), 10);\nassert.strictEqual(idx[1](), 20);\nassert.strictEqual(idx[2](), 30);\nassert.strictEqual(makeIndexers([]).length, 0);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "both closure and bound fixed" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "compositional: closure + off-by-one"
+    },
+    {
+      "id": "HO-10",
+      "version": 1,
+      "category": "SECURITY",
+      "title": "Compositional: fix injection AND add strict validation",
+      "description": "findUser(db, email) in src/repo.js is vulnerable to SQL injection. Fix it to (a) use parameterized queries AND (b) throw TypeError before touching db if email is not a string or does not contain exactly one '@'. Both the SQL string must not contain the payload, and invalid inputs must throw without calling db.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/repo.js": "function findUser(db, email) {\n  const sql = \"SELECT * FROM users WHERE email = '\" + email + \"'\";\n  return db.query(sql);\n}\nmodule.exports = { findUser };\n",
+        "test.js": "const assert = require('node:assert');\nconst { findUser } = require('./src/repo.js');\nlet calls = 0;\nconst db = { query: (sql, params) => { calls++; return { rows: [], sql, params }; } };\nconst payload = \"a@b.com' OR '1'='1\";\nconst out = findUser(db, payload);\nif (out.sql.includes(payload)) throw new Error('injection: payload in SQL');\nif (!Array.isArray(out.params) || !out.params.includes(payload)) throw new Error('payload must be in params');\nassert.throws(() => findUser(db, 'nope'), TypeError);\nassert.throws(() => findUser(db, ''), TypeError);\nassert.throws(() => findUser(db, null), TypeError);\nassert.throws(() => findUser(db, 42), TypeError);\nassert.strictEqual(calls, 1, 'invalid input must not reach db');\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "parameterized + strict validation; db untouched on invalid" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "HARD",
+      "risk": "MEDIUM",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "compositional: injection + validation"
+    },
+    {
+      "id": "HO-11",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Adversarial: insertAt relies on splice's permissive edges",
+      "description": "insertAt(arr, idx, val) in src/insert.js returns a copy with val inserted at idx. Splice handles out-of-range by appending, negative by wrapping, and fractional by truncating — all wrong here. Fix insertAt to throw RangeError on idx < 0, idx > arr.length, or non-integer idx. Valid idx 0..arr.length must still work, and the original array must remain unmutated.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/insert.js": "function insertAt(arr, idx, val) {\n  const copy = arr.slice();\n  copy.splice(idx, 0, val);\n  return copy;\n}\nmodule.exports = { insertAt };\n",
+        "test.js": "const assert = require('node:assert');\nconst { insertAt } = require('./src/insert.js');\nconst arr = [1, 2, 3];\nassert.deepStrictEqual(insertAt(arr, 0, 0), [0, 1, 2, 3]);\nassert.deepStrictEqual(insertAt(arr, 3, 4), [1, 2, 3, 4]);\nassert.deepStrictEqual(insertAt(arr, 1, 9), [1, 9, 2, 3]);\nassert.deepStrictEqual(arr, [1, 2, 3], 'input must not be mutated');\nassert.throws(() => insertAt(arr, -1, 0), RangeError);\nassert.throws(() => insertAt(arr, 4, 0), RangeError);\nassert.throws(() => insertAt(arr, 1.5, 0), RangeError);\nconsole.log('ok');\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "splice semantics overridden to spec; boundaries validated" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "adversarial: naive splice is wrong"
+    },
+    {
+      "id": "HO-12",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Collect async task results and errors in order",
+      "description": "runAll(tasks) in src/run.js uses await in a loop, so the first rejection aborts the batch. Fix it to run every task sequentially and return an array of {ok:true,value} or {ok:false,error} in the original order. Rejections must be captured, not thrown.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ho\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/run.js": "async function runAll(tasks) {\n  const results = [];\n  for (const t of tasks) {\n    results.push(await t());\n  }\n  return results;\n}\nmodule.exports = { runAll };\n",
+        "test.js": "const assert = require('node:assert');\nconst { runAll } = require('./src/run.js');\n(async () => {\n  const out = await runAll([\n    async () => 'a',\n    async () => { throw new Error('boom'); },\n    async () => 'c',\n  ]);\n  assert.strictEqual(out.length, 3);\n  assert.deepStrictEqual(out[0], { ok: true, value: 'a' });\n  assert.strictEqual(out[1].ok, false);\n  assert.strictEqual(out[1].error.message, 'boom');\n  assert.deepStrictEqual(out[2], { ok: true, value: 'c' });\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [{ "kind": "command", "target": "node", "args": ["test.js"], "description": "all tasks run; errors captured in order" }],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "async rejection collection"
+    },
+    {
+      "id": "HO-13",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "C#: off-by-one in an inclusive sum (language transfer)",
+      "description": "SumToN(int n) in Calc.cs should return 1+2+...+n inclusive but stops one short. Fix it. This is a C# project; compile and run with dotnet. Do not change the method signature.",
+      "seedFiles": {
+        "Calc.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <ImplicitUsings>disable</ImplicitUsings>\n    <Nullable>disable</Nullable>\n  </PropertyGroup>\n</Project>\n",
+        "Calc.cs": "using System;\npublic class Calc {\n    public static int SumToN(int n) {\n        int total = 0;\n        for (int i = 1; i < n; i++) total += i;\n        return total;\n    }\n    public static void Main() {\n        if (SumToN(5) != 15) Environment.Exit(1);\n        if (SumToN(1) != 1) Environment.Exit(1);\n        if (SumToN(0) != 0) Environment.Exit(1);\n        Console.WriteLine(\"ok\");\n    }\n}\n"
+      },
+      "verification": [{ "kind": "command", "target": "dotnet", "args": ["run", "--project", "Calc.csproj", "-v", "q"], "description": "C# sum inclusive compiles and passes" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 300000,
+      "heldOut": true,
+      "heldOutAxis": "language transfer: C#"
+    },
+    {
+      "id": "HO-14",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Ruby: closure captures the shared counter",
+      "description": "make_adders(n) in lib/adders.rb returns n lambdas; the i-th should add i. Currently all lambdas see the final value of i. Fix it so fns[1].call(10) == 11. This is a Ruby project; use Ruby.",
+      "seedFiles": {
+        "lib/adders.rb": "def make_adders(n)\n  result = []\n  i = 0\n  n.times do\n    result << ->(x) { x + i }\n    i += 1\n  end\n  result\nend\n",
+        "test.rb": "require_relative 'lib/adders'\nfns = make_adders(3)\nraise 'length' unless fns.length == 3\nraise \"f0: #{fns[0].call(10)}\" unless fns[0].call(10) == 10\nraise \"f1: #{fns[1].call(10)}\" unless fns[1].call(10) == 11\nraise \"f2: #{fns[2].call(10)}\" unless fns[2].call(10) == 12\nputs 'ok'\n"
+      },
+      "verification": [{ "kind": "command", "target": "ruby", "args": ["test.rb"], "description": "each lambda captures its own index" }],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000,
+      "heldOut": true,
+      "heldOutAxis": "language transfer: Ruby closure",
+      "skip": "ruby not available on this machine"
+    },
+    {
+      "id": "HO-15",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Swift: force-unwrap crashes on optional input",
+      "description": "parsePort(_:) in Sources/main.swift force-unwraps the optional, crashing on nil and on non-numeric strings. Fix it to return 3000 when the argument is nil, empty, or non-numeric; return the parsed Int otherwise. This is a Swift project; compile with swiftc.",
+      "seedFiles": {
+        "Sources/main.swift": "import Foundation\n\nfunc parsePort(_ s: String?) -> Int {\n    return Int(s!)!\n}\n\nfunc assertEq(_ a: Int, _ b: Int, _ msg: String) {\n    if a != b { FileHandle.standardError.write((msg + \"\\n\").data(using: .utf8)!); exit(1) }\n}\n\nassertEq(parsePort(nil), 3000, \"nil\")\nassertEq(parsePort(\"\"), 3000, \"empty\")\nassertEq(parsePort(\"8080\"), 8080, \"valid\")\nassertEq(parsePort(\"abc\"), 3000, \"non-numeric\")\nassertEq(parsePort(\"-1\"), 3000, \"negative\")\nprint(\"ok\")\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "swiftc", "args": ["-o", "app", "Sources/main.swift"], "description": "Swift source compiles", "timeoutMs": 180000 },
+        { "kind": "command", "target": "./app", "args": [], "description": "parsePort returns correct values", "timeoutMs": 60000 }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000,
+      "heldOut": true,
+      "heldOutAxis": "language transfer: Swift optionals",
+      "skip": "swift not available on this machine"
     }
   ]
 }

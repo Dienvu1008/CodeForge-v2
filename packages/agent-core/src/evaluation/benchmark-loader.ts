@@ -130,6 +130,9 @@ export function validateBenchmarkTask(raw: unknown, path = 'task'): BenchmarkLoa
     timeoutMs: raw.timeoutMs as number,
     ...(isObject(raw.expected) ? { expected: raw.expected as NonNullable<BenchmarkTask['expected']> } : {}),
     ...(isObject(raw.resourceLimits) ? { resourceLimits: raw.resourceLimits as NonNullable<BenchmarkTask['resourceLimits']> } : {}),
+    ...(raw.heldOut === true ? { heldOut: true } : {}),
+    ...(typeof raw.heldOutAxis === 'string' ? { heldOutAxis: raw.heldOutAxis as string } : {}),
+    ...(typeof raw.skip === 'string' ? { skip: raw.skip as string } : {}),
   };
   return { ok: true, value: task };
 }
