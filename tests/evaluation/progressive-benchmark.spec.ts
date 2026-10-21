@@ -39,6 +39,17 @@ describe('codeforge-progressive dataset', () => {
     }
   });
 
+  it('covers diverse categories including security, performance and documentation (P12.31)', () => {
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const cats = new Set(result.value.tasks.map((t) => t.category));
+    expect(cats.has('SECURITY'), 'SECURITY category present').toBe(true);
+    expect(cats.has('PERFORMANCE'), 'PERFORMANCE category present').toBe(true);
+    expect(cats.has('DOCUMENTATION'), 'DOCUMENTATION category present').toBe(true);
+    expect(cats.has('TESTING'), 'TESTING category present').toBe(true);
+    expect(cats.has('ARCHITECTURE'), 'ARCHITECTURE category present').toBe(true);
+  });
+
   it('every task has a deterministic command/build check (external verdict authority)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -72,12 +83,24 @@ describe('codeforge-progressive dataset', () => {
   it('each per-language family is itself ordered easy→harder', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    for (const prefix of ['PG-D', 'PG-R', 'PG-G', 'PG-P', 'PG-C', 'PG-M']) {
+    // Use exact patterns to avoid prefix collisions (e.g. PG-D matches PG-DEP1, PG-D1, PG-DOC1).
+    const families: Array<{ label: string; pattern: RegExp }> = [
+      { label: 'PG-D (Dart)',   pattern: /^PG-D\d+$/ },
+      { label: 'PG-R (Rust)',   pattern: /^PG-R\d+$/ },
+      { label: 'PG-G (Go)',     pattern: /^PG-G\d+$/ },
+      { label: 'PG-P (Python)', pattern: /^PG-P\d+$/ },
+      { label: 'PG-C (C++)',    pattern: /^PG-C\d+$/ },
+      { label: 'PG-M (MQL5)',   pattern: /^PG-M\d+$/ },
+      // PG-TS cases are all MEDIUM — trivially non-decreasing.
+      { label: 'PG-TS (TS)',    pattern: /^PG-TS\d+$/ },
+      // PG-Y is a flat thematic set (not a difficulty curve) — skip ordering for it.
+    ];
+    for (const { label, pattern } of families) {
       const ranks = result.value.tasks
-        .filter((t) => t.id.startsWith(prefix))
+        .filter((t) => pattern.test(t.id))
         .map((t) => RANK[t.difficulty]);
       for (let i = 1; i < ranks.length; i++) {
-        expect(ranks[i], `${prefix} family must be non-decreasing in difficulty`).toBeGreaterThanOrEqual(ranks[i - 1]!);
+        expect(ranks[i], `${label} family must be non-decreasing in difficulty`).toBeGreaterThanOrEqual(ranks[i - 1]!);
       }
     }
   });

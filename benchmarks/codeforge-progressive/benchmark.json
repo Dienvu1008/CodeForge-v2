@@ -450,6 +450,536 @@
       "difficulty": "EASY",
       "risk": "LOW",
       "timeoutMs": 300000
+    },
+
+    {
+      "id": "PG-Y01",
+      "version": 1,
+      "category": "SECURITY",
+      "title": "SQL injection: switch to parameterized queries",
+      "description": "findUser(db, email) in src/repo.js interpolates email directly into the SQL string. Rewrite it to use parameterized queries: call db.query(sql, params) where sql uses a placeholder and email is in the params array. The test asserts the injected payload never appears in the SQL string and IS passed via params.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/repo.js": "function findUser(db, email) {\n  const sql = \"SELECT * FROM users WHERE email = '\" + email + \"'\";\n  return db.query(sql);\n}\nmodule.exports = { findUser };\n",
+        "test.js": "const assert = require('node:assert');\nconst { findUser } = require('./src/repo.js');\nlet captured;\nconst db = {\n  query(sql, params) {\n    captured = { sql, params };\n    return { rows: [{ id: 1, email: 'a@b.com' }] };\n  },\n};\nconst payload = \"a@b.com' OR '1'='1\";\nconst out = findUser(db, payload);\nassert.deepStrictEqual(out.rows[0].email, 'a@b.com');\nif (captured.sql.includes(payload)) throw new Error('injection: payload present in SQL string');\nif (!captured.params || !Array.isArray(captured.params) || !captured.params.includes(payload)) throw new Error('payload must be passed via params');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "payload parameterized; SQL string clean" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "MEDIUM",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y02",
+      "version": 1,
+      "category": "PERFORMANCE",
+      "title": "Fix an N+1 query in a user loader",
+      "description": "loadUsers(db, ids) in src/loader.js runs one query per id (N+1). Rewrite it to fetch all users in at most 2 queries regardless of ids.length. Handle both ANY($1) with params=[ids] and IN(...) with params=ids forms — either is accepted by the mock.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/loader.js": "async function loadUsers(db, ids) {\n  const users = [];\n  for (const id of ids) {\n    const r = await db.query('SELECT * FROM users WHERE id = $1', [id]);\n    users.push(r.rows[0]);\n  }\n  return users;\n}\nmodule.exports = { loadUsers };\n",
+        "test.js": "const assert = require('node:assert');\nconst { loadUsers } = require('./src/loader.js');\n(async () => {\n  let calls = 0;\n  const db = {\n    query: async (sql, params) => {\n      calls++;\n      let idList;\n      if (Array.isArray(params) && params.length > 0 && Array.isArray(params[0])) idList = params[0];\n      else if (Array.isArray(params)) idList = params;\n      else idList = [params];\n      return { rows: idList.map((id) => ({ id, name: 'u' + id })) };\n    },\n  };\n  const ids = Array.from({ length: 20 }, (_, i) => i + 1);\n  const out = await loadUsers(db, ids);\n  assert.strictEqual(out.length, 20);\n  assert.strictEqual(out[0].id, 1);\n  if (calls > 2) throw new Error('N+1: ' + calls + ' queries for 20 ids');\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "at most 2 queries for 20 ids; correct result" }
+      ],
+      "expected": { "missionType": "REFACTOR", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y03",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Fix off-by-one month in a date formatter",
+      "description": "formatMonthYear(iso) in src/date.js returns the wrong month (e.g. '2/2024' instead of '3/2024' for March) because getUTCMonth() is 0-indexed. Fix it. Use UTC methods to stay timezone-independent.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/date.js": "function formatMonthYear(iso) {\n  const d = new Date(iso);\n  return `${d.getUTCMonth()}/${d.getUTCFullYear()}`;\n}\nmodule.exports = { formatMonthYear };\n",
+        "test.js": "const assert = require('node:assert');\nconst { formatMonthYear } = require('./src/date.js');\nassert.strictEqual(formatMonthYear('2024-01-01T00:00:00Z'), '1/2024');\nassert.strictEqual(formatMonthYear('2024-03-15T00:00:00Z'), '3/2024');\nassert.strictEqual(formatMonthYear('2024-12-31T00:00:00Z'), '12/2024');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "month displayed 1-based" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y04",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Preserve large ID precision with BigInt",
+      "description": "parseId(s) in src/parse.js loses precision for IDs above 2^53 (returns 9007199254740992 for '9007199254740993'). Rewrite it to return a BigInt so the exact value is preserved.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/parse.js": "function parseId(s) {\n  return parseInt(s, 10);\n}\nmodule.exports = { parseId };\n",
+        "test.js": "const assert = require('node:assert');\nconst { parseId } = require('./src/parse.js');\nassert.strictEqual(typeof parseId('1'), 'bigint');\nassert.strictEqual(parseId('1').toString(), '1');\nassert.strictEqual(parseId('9007199254740993').toString(), '9007199254740993');\nassert.strictEqual(parseId('9007199254740995').toString(), '9007199254740995');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "BigInt preserves values above 2^53" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y05",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Count Unicode code points, not UTF-16 units",
+      "description": "charCount(s) in src/str.js returns s.length, which counts surrogate pairs as 2. Fix it to return the number of Unicode code points (so emoji count as 1) without using any external library.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/str.js": "function charCount(s) {\n  return s.length;\n}\nmodule.exports = { charCount };\n",
+        "test.js": "const assert = require('node:assert');\nconst { charCount } = require('./src/str.js');\nassert.strictEqual(charCount('abc'), 3);\nassert.strictEqual(charCount(''), 0);\nassert.strictEqual(charCount('\\u{1F44D}'), 1);\nassert.strictEqual(charCount('a\\u{1F44D}b'), 3);\nassert.strictEqual(charCount('\\u{1F44D}\\u{1F44D}'), 2);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "emoji counted as 1 code point" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y06",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Validate input instead of silently returning NaN",
+      "description": "toNumber(s) in src/validate.js currently returns NaN for invalid strings. Add strict validation: throw TypeError for non-string input, empty/whitespace-only input, or non-numeric strings. Accept numeric strings (with optional sign and decimal).",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/validate.js": "function toNumber(s) {\n  return Number(s);\n}\nmodule.exports = { toNumber };\n",
+        "test.js": "const assert = require('node:assert');\nconst { toNumber } = require('./src/validate.js');\nassert.strictEqual(toNumber('42'), 42);\nassert.strictEqual(toNumber('-3.14'), -3.14);\nassert.strictEqual(toNumber('0'), 0);\nassert.throws(() => toNumber('abc'), TypeError);\nassert.throws(() => toNumber(''), TypeError);\nassert.throws(() => toNumber('   '), TypeError);\nassert.throws(() => toNumber(null), TypeError);\nassert.throws(() => toNumber(42), TypeError);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "invalid inputs throw TypeError; valid inputs parse" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y07",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Implement an LRU cache with access-order eviction",
+      "description": "The LRU class in src/lru.js has get/set but no eviction. Complete it: when size exceeds capacity, evict the least-recently-used key. Both get() and set() must update recency (get refreshes the key's position).",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/lru.js": "class LRU {\n  constructor(cap) {\n    this.cap = cap;\n    this.map = new Map();\n  }\n  get(k) {\n    return this.map.get(k);\n  }\n  set(k, v) {\n    this.map.set(k, v);\n  }\n}\nmodule.exports = { LRU };\n",
+        "test.js": "const assert = require('node:assert');\nconst { LRU } = require('./src/lru.js');\nconst c = new LRU(2);\nc.set('a', 1); c.set('b', 2);\nassert.strictEqual(c.get('a'), 1);\nc.set('c', 3);\nassert.strictEqual(c.get('a'), 1);\nassert.strictEqual(c.get('b'), undefined);\nassert.strictEqual(c.get('c'), 3);\nc.get('a');\nc.set('d', 4);\nassert.strictEqual(c.get('c'), undefined);\nassert.strictEqual(c.get('a'), 1);\nassert.strictEqual(c.get('d'), 4);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "LRU evicts correctly with get-refresh" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y08",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Fix an event-listener memory leak",
+      "description": "Widget in src/widget.js adds a click listener in mount() but never removes it in unmount(), leaking listeners across mount/unmount cycles. Fix unmount() to remove the listener. Use a bound handler stored on the instance.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/widget.js": "class Widget {\n  constructor(el) {\n    this.el = el;\n    this.onClick = this.onClick.bind(this);\n  }\n  mount() {\n    this.el.addEventListener('click', this.onClick);\n  }\n  unmount() {\n    // BUG: forgot to remove the listener\n  }\n  onClick() {}\n}\nmodule.exports = { Widget };\n",
+        "test.js": "const assert = require('node:assert');\nconst { Widget } = require('./src/widget.js');\nconst listeners = new Set();\nconst el = {\n  addEventListener: (t, fn) => listeners.add(fn),\n  removeEventListener: (t, fn) => listeners.delete(fn),\n};\nconst w = new Widget(el);\nw.mount();\nassert.strictEqual(listeners.size, 1);\nw.unmount();\nassert.strictEqual(listeners.size, 0);\nw.mount(); w.unmount();\nassert.strictEqual(listeners.size, 0);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "listener removed on unmount" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y09",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Fix BFS shortest-path distance tracking",
+      "description": "bfs(graph, start, end) in src/bfs.js returns wrong distances because dist++ runs per node instead of per level. Fix it so shortest-path distances are correct.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/bfs.js": "function bfs(graph, start, end) {\n  const visited = new Set([start]);\n  const queue = [start];\n  let dist = 0;\n  while (queue.length) {\n    const n = queue.shift();\n    if (n === end) return dist;\n    for (const nb of graph[n] || []) {\n      if (!visited.has(nb)) {\n        visited.add(nb);\n        queue.push(nb);\n      }\n    }\n    dist++;\n  }\n  return -1;\n}\nmodule.exports = { bfs };\n",
+        "test.js": "const assert = require('node:assert');\nconst { bfs } = require('./src/bfs.js');\nassert.strictEqual(bfs({ A: ['B'], B: ['C'], C: [] }, 'A', 'C'), 2);\nconst diamond = { A: ['B', 'C'], B: ['D'], C: ['D'], D: [] };\nassert.strictEqual(bfs(diamond, 'A', 'D'), 2);\nassert.strictEqual(bfs({ A: [] }, 'A', 'A'), 0);\nassert.strictEqual(bfs({ A: [], B: [] }, 'A', 'B'), -1);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "BFS returns correct level-based distances" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y10",
+      "version": 1,
+      "category": "SECURITY",
+      "title": "Fix a ReDoS (catastrophic backtracking) regex",
+      "description": "isAllA(s) in src/valid.js uses /^(a+)+$/ which hangs on inputs like 'aaaa...!' due to exponential backtracking. Rewrite it with an equivalent linear regex. Verify basic behavior AND that a 25-character adversarial input completes in under 2 seconds.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/valid.js": "function isAllA(s) {\n  return /^(a+)+$/.test(s);\n}\nmodule.exports = { isAllA };\n",
+        "test.js": "const assert = require('node:assert');\nconst { isAllA } = require('./src/valid.js');\nassert.strictEqual(isAllA('a'), true);\nassert.strictEqual(isAllA('aaaa'), true);\nassert.strictEqual(isAllA(''), false);\nassert.strictEqual(isAllA('aab'), false);\nassert.strictEqual(isAllA('baaa'), false);\nconst evil = 'a'.repeat(25) + '!';\nconst t0 = Date.now();\nisAllA(evil);\nconst elapsed = Date.now() - t0;\nassert.ok(elapsed < 2000, 'ReDoS: ' + elapsed + 'ms for 26 chars');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "no exponential backtracking; semantics preserved" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y11",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Fix async-iterable consumption",
+      "description": "sumAsync(iterable) in src/sum.js uses for-of, which throws on async iterables. Rewrite it with for-await-of so async generators and async iterables work.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/sum.js": "async function sumAsync(iterable) {\n  let total = 0;\n  for (const x of iterable) {\n    total += x;\n  }\n  return total;\n}\nmodule.exports = { sumAsync };\n",
+        "test.js": "const assert = require('node:assert');\nconst { sumAsync } = require('./src/sum.js');\n(async () => {\n  async function* gen() { yield 1; yield 2; yield 3; }\n  assert.strictEqual(await sumAsync(gen()), 6);\n  const asyncIter = { [Symbol.asyncIterator]() { let i = 0; return { next: async () => i < 3 ? { value: ++i, done: false } : { value: undefined, done: true } }; } };\n  assert.strictEqual(await sumAsync(asyncIter), 6);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "async iterables and async generators both summed" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y12",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Memoize async results to dedupe concurrent calls",
+      "description": "fetchData(id) in src/fetch.js caches resolved values, so concurrent calls for the same id fire the API multiple times. Fix it to cache the in-flight promise so concurrent calls share one request.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/fetch.js": "const cache = new Map();\nlet apiCalls = 0;\nconst api = { call: async (id) => { apiCalls++; return { id, name: 'u' + id }; } };\nasync function fetchData(id) {\n  if (cache.has(id)) return cache.get(id);\n  const result = await api.call(id);\n  cache.set(id, result);\n  return result;\n}\nmodule.exports = { fetchData, _stats: () => ({ apiCalls }) };\n",
+        "test.js": "const assert = require('node:assert');\nconst { fetchData, _stats } = require('./src/fetch.js');\n(async () => {\n  const [a, b, c] = await Promise.all([fetchData(1), fetchData(1), fetchData(1)]);\n  assert.deepStrictEqual(a, { id: 1, name: 'u1' });\n  assert.strictEqual(a, b);\n  assert.strictEqual(b, c);\n  const s1 = _stats();\n  assert.strictEqual(s1.apiCalls, 1, 'expected 1 API call, got ' + s1.apiCalls);\n  await fetchData(1);\n  assert.strictEqual(_stats().apiCalls, 1);\n  await fetchData(2);\n  assert.strictEqual(_stats().apiCalls, 2);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "concurrent calls deduped; different ids not deduped" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y13",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Return correct HTTP status codes from a handler",
+      "description": "handle(req) in src/handler.js returns 200 for unknown routes and wrong methods. Fix it: GET /users -> 200, POST /users -> 201, unknown path -> 404, known path but wrong method -> 405.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/handler.js": "function handle(req) {\n  if (req.method === 'GET' && req.path === '/users') return { status: 200, body: [] };\n  if (req.method === 'POST' && req.path === '/users') return { status: 201, body: { id: 1 } };\n  return { status: 200, body: { error: 'not found' } };\n}\nmodule.exports = { handle };\n",
+        "test.js": "const assert = require('node:assert');\nconst { handle } = require('./src/handler.js');\nassert.strictEqual(handle({ method: 'GET', path: '/users' }).status, 200);\nassert.strictEqual(handle({ method: 'POST', path: '/users' }).status, 201);\nassert.strictEqual(handle({ method: 'GET', path: '/nope' }).status, 404);\nassert.strictEqual(handle({ method: 'DELETE', path: '/users' }).status, 405);\nassert.strictEqual(handle({ method: 'PUT', path: '/users' }).status, 405);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "200/201/404/405 all correct" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y14",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Parse environment config with correct types",
+      "description": "loadConfig(env) in src/config.js returns raw env strings for PORT and DEBUG: '0' becomes truthy and '8080' stays a string. Fix it: PORT is a number (default 3000 when unset), DEBUG is a boolean (true only for 'true' or '1').",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/config.js": "function loadConfig(env) {\n  return {\n    port: env.PORT || 3000,\n    debug: env.DEBUG || false,\n  };\n}\nmodule.exports = { loadConfig };\n",
+        "test.js": "const assert = require('node:assert');\nconst { loadConfig } = require('./src/config.js');\nassert.strictEqual(loadConfig({}).port, 3000);\nassert.strictEqual(loadConfig({}).debug, false);\nassert.strictEqual(loadConfig({ PORT: '8080' }).port, 8080);\nassert.strictEqual(loadConfig({ PORT: '0' }).port, 0);\nassert.strictEqual(loadConfig({ DEBUG: 'false' }).debug, false);\nassert.strictEqual(loadConfig({ DEBUG: 'true' }).debug, true);\nassert.strictEqual(loadConfig({ DEBUG: '1' }).debug, true);\nassert.strictEqual(loadConfig({ DEBUG: '0' }).debug, false);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "PORT numeric, DEBUG boolean with correct truthiness" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-Y15",
+      "version": 1,
+      "category": "BUGFIX",
+      "title": "Fix an inverted multi-key sort comparator",
+      "description": "sortUsers(users) in src/sort.js sorts by age ascending, then by name ascending — but the name tie-breaker is inverted (descending). Fix the comparator so both keys sort ascending.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/sort.js": "function sortUsers(users) {\n  return users.slice().sort((a, b) => {\n    if (a.age !== b.age) return a.age - b.age;\n    return a.name > b.name ? -1 : 1;\n  });\n}\nmodule.exports = { sortUsers };\n",
+        "test.js": "const assert = require('node:assert');\nconst { sortUsers } = require('./src/sort.js');\nconst users = [\n  { name: 'bob', age: 30 },\n  { name: 'alice', age: 30 },\n  { name: 'carol', age: 25 },\n  { name: 'dave', age: 30 },\n];\nconst sorted = sortUsers(users);\nassert.deepStrictEqual(sorted.map((u) => u.name), ['carol', 'alice', 'bob', 'dave']);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "age asc then name asc; multi-key correct" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-TS1",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "TypeScript: implement area() via discriminated union narrowing",
+      "description": "In src/shape.ts, implement exported function area(s: Shape): number for the discriminated union Shape. Return PI*r^2 for circles, w*h for rectangles. Must type-check under strict mode.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg-ts\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"tsx test.ts\"},\"devDependencies\":{\"typescript\":\"^5.4.0\",\"tsx\":\"^4.7.0\"}}\n",
+        "tsconfig.json": "{\"compilerOptions\":{\"strict\":true,\"target\":\"ES2022\",\"module\":\"ES2022\",\"moduleResolution\":\"bundler\",\"noEmit\":true,\"esModuleInterop\":true,\"skipLibCheck\":true},\"include\":[\"src/**/*.ts\",\"test.ts\"]}\n",
+        "src/shape.ts": "export type Shape =\n  | { kind: 'circle'; r: number }\n  | { kind: 'rect'; w: number; h: number };\n\nexport function area(s: Shape): number {\n  return 0;\n}\n",
+        "test.ts": "import { area, Shape } from './src/shape';\nimport assert from 'node:assert';\nconst shapes: Shape[] = [\n  { kind: 'circle', r: 2 },\n  { kind: 'rect', w: 3, h: 4 },\n];\nassert.ok(Math.abs(area(shapes[0]) - Math.PI * 4) < 1e-9);\nassert.strictEqual(area(shapes[1]), 12);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "npm", "args": ["install", "--silent"], "description": "install tsx + typescript", "timeoutMs": 180000 },
+        { "kind": "command", "target": "npx", "args": ["tsc", "--noEmit"], "description": "type-checks under strict mode" },
+        { "kind": "command", "target": "npx", "args": ["tsx", "test.ts"], "description": "area() correct for both shapes" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "PG-TS2",
+      "version": 1,
+      "category": "REFACTOR",
+      "title": "TypeScript: type-safe pluck with keyof and @ts-expect-error",
+      "description": "Rewrite pluck in src/pluck.ts so it is generic over T and K extends keyof T and returns T[K][]. The test uses @ts-expect-error to assert that invalid keys are rejected at compile time.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg-ts\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"tsx test.ts\"},\"devDependencies\":{\"typescript\":\"^5.4.0\",\"tsx\":\"^4.7.0\"}}\n",
+        "tsconfig.json": "{\"compilerOptions\":{\"strict\":true,\"target\":\"ES2022\",\"module\":\"ES2022\",\"moduleResolution\":\"bundler\",\"noEmit\":true,\"esModuleInterop\":true,\"skipLibCheck\":true},\"include\":[\"src/**/*.ts\",\"test.ts\"]}\n",
+        "src/pluck.ts": "export function pluck(items: any[], key: string): any[] {\n  return items.map((x) => x[key]);\n}\n",
+        "test.ts": "import { pluck } from './src/pluck';\nimport assert from 'node:assert';\nconst users = [{ id: 1, name: 'a' }, { id: 2, name: 'b' }];\nconst names = pluck(users, 'name');\nassert.deepStrictEqual(names, ['a', 'b']);\n// @ts-expect-error - 'nonexistent' is not a key of typeof users[0]\npluck(users, 'nonexistent');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "npm", "args": ["install", "--silent"], "description": "install tsx + typescript", "timeoutMs": 180000 },
+        { "kind": "command", "target": "npx", "args": ["tsc", "--noEmit"], "description": "strict type-check + @ts-expect-error honored" },
+        { "kind": "command", "target": "npx", "args": ["tsx", "test.ts"], "description": "pluck returns correct values" }
+      ],
+      "expected": { "missionType": "REFACTOR", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "PG-T1",
+      "version": 1,
+      "category": "TESTING",
+      "title": "Write a test that catches a floating-point rounding bug",
+      "description": "(1) Fix roundCents in src/round.js so roundCents(1.005) returns 1.01 (not 1). (2) Extend test/round.test.js so it fails on the original buggy implementation. The verification first runs your tests (must pass), then swaps in the buggy implementation and requires your tests to fail.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node --test test/round.test.js\"}}\n",
+        "src/round.js": "function roundCents(n) {\n  return Math.round(n * 100) / 100;\n}\nmodule.exports = { roundCents };\n",
+        "test/round.test.js": "const { test } = require('node:test');\nconst assert = require('node:assert');\nconst { roundCents } = require('../src/round.js');\n\ntest('roundCents basic', () => {\n  assert.strictEqual(roundCents(1.234), 1.23);\n});\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["--test", "test/round.test.js"], "description": "tests pass on your fixed implementation" },
+        { "kind": "command", "target": "node", "args": ["-e", "const fs=require('fs'),cp=require('child_process'),p='src/round.js',orig=fs.readFileSync(p,'utf8'),buggy='function roundCents(n){return Math.round(n*100)/100;}\\nmodule.exports={roundCents};\\n';fs.writeFileSync(p,buggy);const r=cp.spawnSync(process.execPath,['--test','test/round.test.js'],{stdio:'pipe'});fs.writeFileSync(p,orig);if(r.status===0){console.error('tests did not catch the mutation');process.exit(1);}console.log('mutation caught');"], "description": "tests must fail on the buggy roundCents" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 2 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-PERF1",
+      "version": 1,
+      "category": "PERFORMANCE",
+      "title": "Optimize O(n^2) deduplication to O(n)",
+      "description": "uniqueIds(ids) in src/dedupe.js uses an inner indexOf, giving O(n^2). Rewrite it so a 100k-element input completes in under 500ms. Behavior must remain order-preserving: first occurrence wins.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/dedupe.js": "function uniqueIds(ids) {\n  const out = [];\n  for (const id of ids) {\n    if (out.indexOf(id) === -1) out.push(id);\n  }\n  return out;\n}\nmodule.exports = { uniqueIds };\n",
+        "test.js": "const assert = require('node:assert');\nconst { uniqueIds } = require('./src/dedupe.js');\nassert.deepStrictEqual(uniqueIds([3,1,3,2,1]), [3,1,2]);\nconst ids = [];\nfor (let i = 0; i < 100000; i++) ids.push(i % 1000);\nconst t0 = Date.now();\nconst out = uniqueIds(ids);\nconst elapsed = Date.now() - t0;\nassert.strictEqual(out.length, 1000);\nassert.deepStrictEqual(out.slice(0,3), [0,1,2]);\nassert.ok(elapsed < 500, 'too slow: ' + elapsed + 'ms');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "correct + <500ms for 100k elements" }
+      ],
+      "expected": { "missionType": "REFACTOR", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-SEC1",
+      "version": 1,
+      "category": "SECURITY",
+      "title": "Fix command injection in a shell wrapper",
+      "description": "runEcho(arg) in src/run.js interpolates user input into execSync, allowing shell injection. Rewrite it using execFileSync or spawnSync with shell:false so arg is passed as a literal argument. Note: on Windows, 'echo' is a shell built-in; use 'cmd /c echo <arg>' or equivalent. The test asserts that '; echo pwned' is echoed literally, not executed as a shell command.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/run.js": "const { execSync } = require('node:child_process');\nfunction runEcho(arg) {\n  return execSync('echo ' + arg).toString().trim();\n}\nmodule.exports = { runEcho };\n",
+        "test.js": "const assert = require('node:assert');\nconst { runEcho } = require('./src/run.js');\nassert.strictEqual(runEcho('hello'), 'hello');\nassert.strictEqual(runEcho('a; echo pwned'), 'a; echo pwned');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "no shell injection; argument passed literally" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "MEDIUM",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-SEC2",
+      "version": 1,
+      "category": "SECURITY",
+      "title": "Replace naive token comparison with timing-safe compare",
+      "description": "checkToken in src/auth.js uses ===, which leaks timing. Replace it with crypto.timingSafeEqual (after an equal-length check) so the function is constant-time. Semantics stay: true iff equal.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/auth.js": "function checkToken(input, expected) {\n  return input === expected;\n}\nmodule.exports = { checkToken };\n",
+        "test.js": "const assert = require('node:assert');\nconst { checkToken } = require('./src/auth.js');\nassert.strictEqual(checkToken('abc', 'abc'), true);\nassert.strictEqual(checkToken('abc', 'abd'), false);\nassert.strictEqual(checkToken('ab', 'abc'), false);\nassert.strictEqual(checkToken('', ''), true);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "semantics unchanged" },
+        { "kind": "file_contains", "target": "src/auth.js", "expect": "timingSafeEqual", "description": "uses crypto.timingSafeEqual" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-EH1",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Add retry with exponential backoff",
+      "description": "retry(fn, attempts) in src/retry.js currently just calls fn() once. Implement exponential backoff: call fn; on throw, wait 10ms, 20ms, 40ms... (doubling each retry) up to attempts total calls; return the first success; rethrow the last error after all attempts exhausted.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/retry.js": "async function retry(fn, attempts) {\n  return fn();\n}\nmodule.exports = { retry };\n",
+        "test.js": "const assert = require('node:assert');\nconst { retry } = require('./src/retry.js');\n(async () => {\n  let calls = 0;\n  const flaky = async () => { calls++; if (calls < 3) throw new Error('flaky'); return 'ok'; };\n  const t0 = Date.now();\n  const r = await retry(flaky, 5);\n  const elapsed = Date.now() - t0;\n  assert.strictEqual(r, 'ok');\n  assert.strictEqual(calls, 3);\n  assert.ok(elapsed >= 20, 'expected backoff delays, got ' + elapsed + 'ms');\n  let always = 0;\n  await assert.rejects(() => retry(async () => { always++; throw new Error('nope'); }, 3));\n  assert.strictEqual(always, 3);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "retries with exponential backoff; preserves final error" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 1 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-CONC1",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Fix a lost-update race in an async counter",
+      "description": "Counter.increment in src/counter.js reads this.count, awaits setImmediate, then writes back — so concurrent increments lose updates. Make concurrent increments safe: three concurrent increments must produce count === 3.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/counter.js": "class Counter {\n  constructor() { this.count = 0; }\n  async increment() {\n    const c = this.count;\n    await new Promise((r) => setImmediate(r));\n    this.count = c + 1;\n  }\n}\nmodule.exports = { Counter };\n",
+        "test.js": "const assert = require('node:assert');\nconst { Counter } = require('./src/counter.js');\n(async () => {\n  const c = new Counter();\n  await Promise.all([c.increment(), c.increment(), c.increment()]);\n  assert.strictEqual(c.count, 3, 'expected 3, got ' + c.count);\n  console.log('ok');\n})().catch((e) => { console.error(e); process.exit(1); });\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "no lost updates under concurrency" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "EXPERT",
+      "risk": "LOW",
+      "timeoutMs": 120000
+    },
+    {
+      "id": "PG-NAV1",
+      "version": 1,
+      "category": "DEBUGGING",
+      "title": "Trace a bug through a layered codebase",
+      "description": "handler.handleGetByEmail returns 404 for an existing user. Trace the call path handler -> userService -> userRepo -> db.client and fix the root cause (wrong SQL column name in the repo). Do not change the handler or the service layer.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/db/client.js": "const DATA = [{ id: 1, email: 'a@b.com', name: 'Alice' }];\nfunction query(sql) {\n  const m = sql.match(/WHERE\\s+(\\w+)\\s*=\\s*'(.*)'/); if (!m) return { rows: [] };\n  const [, col, val] = m;\n  return { rows: DATA.filter((r) => String(r[col]) === val) };\n}\nmodule.exports = { query };\n",
+        "src/repos/userRepo.js": "const { query } = require('../db/client.js');\nfunction findByEmail(email) {\n  return query(\"SELECT * FROM users WHERE user_email = '\" + email + \"'\").rows[0];\n}\nmodule.exports = { findByEmail };\n",
+        "src/services/userService.js": "const { findByEmail } = require('../repos/userRepo.js');\nfunction getUserByEmail(email) { const u = findByEmail(email); if (!u) throw new Error('not found'); return u; }\nmodule.exports = { getUserByEmail };\n",
+        "src/api/handler.js": "const { getUserByEmail } = require('../services/userService.js');\nfunction handleGetByEmail(req) {\n  try { return { status: 200, body: getUserByEmail(req.email) }; }\n  catch (e) { return { status: 404, body: { error: e.message } }; }\n}\nmodule.exports = { handleGetByEmail };\n",
+        "test.js": "const assert = require('node:assert');\nconst { handleGetByEmail } = require('./src/api/handler.js');\nconst r = handleGetByEmail({ email: 'a@b.com' });\nassert.strictEqual(r.status, 200);\nassert.strictEqual(r.body.email, 'a@b.com');\nconst r2 = handleGetByEmail({ email: 'missing@x.y' });\nassert.strictEqual(r2.status, 404);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "existing user found; missing user still 404s" }
+      ],
+      "expected": { "missionType": "BUG_FIX", "maxFilesChanged": 1 },
+      "difficulty": "HARD",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-DEP1",
+      "version": 1,
+      "category": "ARCHITECTURE",
+      "title": "Break a circular dependency by extracting shared logic",
+      "description": "src/a.js and src/b.js require each other, forming a cycle. Extract the shared helper into src/shared.js so the dependency graph is acyclic and both modules still work. Keep the public API of a() and b()/bViaA() unchanged.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/a.js": "const { b } = require('./b.js');\nfunction a() { return 'a' + b(); }\nmodule.exports = { a };\n",
+        "src/b.js": "const { a } = require('./a.js');\nfunction b() { return 'b'; }\nfunction bViaA() { return 'b+' + a(); }\nmodule.exports = { b, bViaA };\n",
+        "test.js": "const assert = require('node:assert');\nconst { a } = require('./src/a.js');\nconst { b, bViaA } = require('./src/b.js');\nassert.strictEqual(b(), 'b');\nassert.strictEqual(a(), 'ab');\nassert.strictEqual(bViaA(), 'b+ab');\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "both modules still work" },
+        { "kind": "command", "target": "npx", "args": ["-y", "madge", "--circular", "src/"], "description": "no circular dependencies remain", "timeoutMs": 120000 }
+      ],
+      "expected": { "missionType": "ARCHITECTURE", "maxFilesChanged": 3 },
+      "difficulty": "HARD",
+      "risk": "MEDIUM",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "PG-MS1",
+      "version": 1,
+      "category": "MULTI_FILE",
+      "title": "Three-step refactor: export, compose, wire up",
+      "description": "Complete three dependent steps: (1) export the existing add() from src/calc.js (currently missing from module.exports). (2) In src/main.js, add and export addReversed(a,b) = add(b,a), importing add from calc.js. (3) The test passes only when all three work.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
+        "src/calc.js": "function add(a, b) { return a + b; }\nfunction sub(a, b) { return a - b; }\nmodule.exports = { sub };\n",
+        "src/main.js": "const { sub } = require('./calc.js');\nfunction diff(a, b) { return sub(a, b); }\nmodule.exports = { diff };\n",
+        "test.js": "const assert = require('node:assert');\nconst { add } = require('./src/calc.js');\nconst { diff, addReversed } = require('./src/main.js');\nassert.strictEqual(add(2, 3), 5);\nassert.strictEqual(diff(5, 2), 3);\nassert.strictEqual(addReversed(2, 3), 5);\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["test.js"], "description": "all three steps wired" },
+        { "kind": "file_contains", "target": "src/calc.js", "expect": "add", "description": "add is exported from calc.js" },
+        { "kind": "file_contains", "target": "src/main.js", "expect": "addReversed", "description": "addReversed added to main.js" }
+      ],
+      "expected": { "missionType": "FEATURE", "maxFilesChanged": 2 },
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 180000
+    },
+    {
+      "id": "PG-DOC1",
+      "version": 1,
+      "category": "DOCUMENTATION",
+      "title": "Document the public API with JSDoc",
+      "description": "Add JSDoc blocks with @param, @returns, and at least one @example to every exported function in src/api.js. The verifier counts JSDoc blocks containing both @param and @returns and requires at least 2.",
+      "seedFiles": {
+        "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node verify.js\"}}\n",
+        "src/api.js": "function fetchUser(id) { return { id, name: 'u' + id }; }\nfunction createUser(email) { return { id: 1, email }; }\nmodule.exports = { fetchUser, createUser };\n",
+        "verify.js": "const fs = require('node:fs');\nconst src = fs.readFileSync('src/api.js', 'utf8');\nconst blocks = src.match(/\\/\\*\\*[\\s\\S]*?\\*\\//g) || [];\nconst documented = blocks.filter((b) => b.includes('@param') && b.includes('@returns'));\nif (documented.length < 2) { console.error('need >=2 documented exports, got ' + documented.length); process.exit(1); }\nconsole.log('ok');\n"
+      },
+      "verification": [
+        { "kind": "command", "target": "node", "args": ["verify.js"], "description": "at least 2 exports fully documented" }
+      ],
+      "expected": { "missionType": "MIGRATION", "maxFilesChanged": 1 },
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 120000
     }
   ]
 }
