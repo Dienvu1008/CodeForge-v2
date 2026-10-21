@@ -10,3 +10,6 @@ export * from './tool-call-schema.js';
 export * from './artifact-capture-port.js';
 // Phase 4 — P4-IK1: IdempotencyEngine
 export * from './idempotency-engine.js';
+
+// P12.30: cross-file wiring hint (import-reminder in executor prompt)
+export { computeWiringHints, type WiringHint, type WiringHintOptions } from './import-wiring-hint.js';

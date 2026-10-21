@@ -39,6 +39,7 @@ import type { ExecutionCoordinator }    from './execution-coordinator.js';
 import type { ContextBuilder }          from '../context/context-builder.js';
 import type { RetrievedSymbol }         from '../context/retriever.js';
 import type { ContextItem }             from '../domain/context.js';
+import { computeWiringHints } from './import-wiring-hint.js';
 import { policyFromContextPlan, type ContextPlan } from '../mission/mission-context-strategy.js';
 import { resolveFewShotExample, type PromptPlan } from '../mission/prompt-composer.js';
 import { countPromptTokens }           from '../context/token-counter.js';
@@ -644,7 +645,7 @@ export class TaskExecutor {
       }
 
       // ── 3a. Build model request ─────────────────────────────────────────────
-      const taskPrompt = this.buildTaskPrompt(req.task, transcript, req.priorFailureEvidence, contextSection, req.goalAssumptions, req.promptPlan);
+      const taskPrompt = this.buildTaskPrompt(req.task, transcript, req.priorFailureEvidence, contextSection, req.goalAssumptions, req.promptPlan, signals?.workspaceFiles, signals?.changedPaths);
       const modelReq = modelRequest(
         'execute',
         BOUNDARY_SYSTEM_PREAMBLE + '\n\n' + TASK_EXECUTOR_SYSTEM_PROMPT + verbosityAddendum(req.promptPlan?.verbosity),
@@ -1069,6 +1070,8 @@ export class TaskExecutor {
     contextSection?: { trustedBlock: string; untrustedBlock: string },
     goalAssumptions?: readonly string[],
     promptPlan?: PromptPlan,
+    workspaceFiles?: ReadonlyMap<string, string>,
+    changedPaths?: readonly string[],
   ): string {
     const acLines = task.acceptanceCriteria.length > 0
       ? task.acceptanceCriteria.map((ac) => `  - ${ac.description}`).join('\n')
@@ -1175,6 +1178,17 @@ export class TaskExecutor {
         ].join('\n'),
         trust: 'untrusted',
       });
+    }
+    // P12.30: cross-file wiring hint. Deterministic scan of the files written/changed in this run
+    // — identifies symbols used in one file but defined in another without an import. The dominant
+    // failure mode for 7-9B models is writing each file correctly in isolation but forgetting to
+    // add the import statement (e.g. Todo class in models/ used in services/ without import).
+    // TRUSTED (runtime-computed, not from user/workspace content). Empty when nothing is missing.
+    if (workspaceFiles !== undefined && changedPaths !== undefined && changedPaths.length > 0) {
+      const wiringHint = computeWiringHints({ workspaceFiles, changedPaths });
+      if (wiringHint.length > 0) {
+        sections.push({ label: 'IMPORT_REMINDER', content: wiringHint, trust: 'trusted' });
+      }
     }
     sections.push({
       label:   'TASK',
