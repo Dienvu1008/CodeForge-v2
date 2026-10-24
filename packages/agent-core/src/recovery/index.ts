@@ -15,3 +15,9 @@ export * from './recovery-policy.js';
 export * from './no-progress-detector.js';
 // Phase 5 — P5-RE1: RecoveryEngine
 export * from './recovery-engine.js';
+
+// P12.33 — recovery ablation (pure policy transforms for diagnostic ablation studies)
+export {
+  removeRecoveryAction, withoutReplan, withoutRollback, withoutFix, withoutRetry,
+  applyAblations, type AblationName,
+} from './recovery-ablation.js';

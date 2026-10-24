@@ -26,6 +26,7 @@ import {
   ToolGateway, ContextBuilder, VerificationEngine, CompletionGate,
   FailureAnalyzer, RecoveryEngine,
   buildToolPolicy, buildVerificationPolicy,
+  DEFAULT_RECOVERY_POLICY, applyAblations,
 } from '../packages/agent-core/dist/index.js';
 
 // Expose the repo root so benchmark command checks can reference repo scripts portably via the
@@ -147,7 +148,18 @@ function makeRealAgentRunner() {
         const sid = 'S';
         await sessionSvc.create({ session: { sessionId: sid, workspaceId: 'W', workspaceRoot, goalId: 'G', graphVersion: 1, state: 'CREATED', createdAt: c.now(), updatedAt: c.now(), runtimeVersion: '0.12.0', schemaVersion: 1, budgetId: 'B', lockId: 'L', metadata: { hostname: 'h', processId: 1, ollamaEndpoint: endpoint, ollamaModels: { planner: model, critic: model, executor: model, analyzer: model } } }, hostname: 'h', processId: 1 });
         await graphs.commit({ graphId: 'GR', sessionId: sid, version: 1, nodes: [], edges: [], createdAt: 't', createdBy: 'planner', canonicalHash: 'seed', schemaVersion: 1, canonicalFormVersion: 'v1' }, { mutationId: 'M0', sessionId: sid, baseVersion: 0, operations: [], proposedBy: 'planner', reason: 'seed', provenance: { provenanceId: 'P', source: { kind: 'runtime', id: 'init' }, inputs: [], reason: 'seed', at: 't' }, createdAt: 't', status: 'COMMITTED' });
-        const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, taskRunRepository: taskRuns, failureAnalyzer, recoveryEngine, failureRepository: failures, recoveryActionRepository: recoveryActions, verificationEvidenceProvider, workspaceRollback, now: c.now, nextId: c.nextId });
+        // P12.33 ablation: --no-recovery omits the whole recovery stack (failureAnalyzer +
+        // recoveryEngine), so a failed task aborts instead of being retried/fixed/replanned —
+        // isolating what the model alone can do. Finer ablations pass an ablated recoveryPolicy.
+        const recoveryWiring = ablNoRecovery
+          ? {}
+          : {
+              failureAnalyzer, recoveryEngine, failureRepository: failures,
+              recoveryActionRepository: recoveryActions, verificationEvidenceProvider,
+              workspaceRollback,
+              ...(ablatedPolicy !== undefined ? { recoveryPolicy: ablatedPolicy } : {}),
+            };
+        const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, taskRunRepository: taskRuns, ...recoveryWiring, now: c.now, nextId: c.nextId });
         const goal = { goalId: 'G', version: 1, description: task.description, constraints: [], acceptanceCriteria: [{ criterionId: 'a', description: 'done', mandatory: true }], createdAt: c.now(), createdBy: 'user' };
         try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal */ }
         try { await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 }); }
@@ -168,6 +180,27 @@ if (!['train', 'holdout', 'all'].includes(splitArg)) {
   console.error(`--split must be train, holdout, or all (got: ${splitArg})`); process.exit(1);
 }
 
+// P12.33: ablation flags for diagnosis (.agents/failure-taxonomy.md ablation protocol).
+//   --no-recovery  — wire NO recovery stack at all (one-shot: fail → abort, no retry/fix/replan)
+//   --no-replan    — recovery on, but REPLAN removed from the policy
+//   --no-rollback  — recovery on, but ROLLBACK removed (+ rollbackAllowed cleared)
+//   --no-fix       — recovery on, but FIX removed
+//   --no-retry     — recovery on, but RETRY removed
+// Flags compose; --no-recovery dominates (it disables the whole stack).
+const ablNoRecovery = argv.includes('--no-recovery');
+const policyAblations = [];
+if (argv.includes('--no-replan'))   policyAblations.push('no-replan');
+if (argv.includes('--no-rollback')) policyAblations.push('no-rollback');
+if (argv.includes('--no-fix'))      policyAblations.push('no-fix');
+if (argv.includes('--no-retry'))    policyAblations.push('no-retry');
+const ablationLabel = ablNoRecovery
+  ? 'no-recovery'
+  : (policyAblations.length > 0 ? policyAblations.join('+') : 'full');
+// The ablated recovery policy (identity when no policy ablations requested).
+const ablatedPolicy = policyAblations.length > 0
+  ? applyAblations(DEFAULT_RECOVERY_POLICY, policyAblations)
+  : undefined;
+
 if (onlyArg) {
   const want = new Set(onlyArg.split(',').map((s) => s.trim().toUpperCase()));
   benchmark.tasks = benchmark.tasks.filter((t) => want.has(String(t.id).toUpperCase()));
@@ -180,7 +213,7 @@ if (splitArg === 'train') {
   benchmark.tasks = benchmark.tasks.filter((t) => t.heldOut === true);
 }
 // splitArg === 'all' keeps everything.
-console.log(`\nCapability curve: ${provider} '${model}' @ ${endpoint}  (${benchmark.tasks.length} tasks)\n`);
+console.log(`\nCapability curve: ${provider} '${model}' @ ${endpoint}  (${benchmark.tasks.length} tasks, split=${splitArg}, ablation=${ablationLabel})\n`);
 const runner = new BenchmarkRunner({
   agent: makeRealAgentRunner(),
   makeCheckSupervisor: (root) => new WorkspaceProcessSupervisor({ workspaceRoot: root }),
