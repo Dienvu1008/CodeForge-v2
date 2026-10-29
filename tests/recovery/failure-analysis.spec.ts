@@ -89,6 +89,29 @@ describe('FailureClassifier (P5-FA1)', () => {
     expect(classifyFailure({ taskRunState: 'FAILED' })).toBe('UNKNOWN');
   });
 
+  // P12.34: a lint check that reports compile errors (flutter analyze "error -") must classify
+  // as SYNTAX, not TOOL — the recovery policy difference (3 vs 2 attempts + ROLLBACK) matters.
+  it('FAILED + lint check with "error -" in stderr → SYNTAX (not TOOL)', () => {
+    const base = makeReport('FAIL', 'FAIL');
+    const lintReport = { ...base, checks: [{ ...base.checks[0]!, kind: 'lint' as const }] };
+    const stderr = "error - Target of URI doesn't exist: 'package:hive/hive.dart'";
+    expect(classifyFailure({ taskRunState: 'FAILED', verificationReport: lintReport, lastStderr: stderr })).toBe('SYNTAX');
+  });
+
+  it('FAILED + lint check with "uri_does_not_exist" in stderr → SYNTAX', () => {
+    const base = makeReport('FAIL', 'FAIL');
+    const lintReport = { ...base, checks: [{ ...base.checks[0]!, kind: 'lint' as const }] };
+    const stderr = 'lib/database/todo_database.dart:1:8 - uri_does_not_exist';
+    expect(classifyFailure({ taskRunState: 'FAILED', verificationReport: lintReport, lastStderr: stderr })).toBe('SYNTAX');
+  });
+
+  it('FAILED + lint check with pure style warning → TOOL (unchanged)', () => {
+    const base = makeReport('FAIL', 'FAIL');
+    const lintReport = { ...base, checks: [{ ...base.checks[0]!, kind: 'lint' as const }] };
+    const stderr = 'warning - unused import';
+    expect(classifyFailure({ taskRunState: 'FAILED', verificationReport: lintReport, lastStderr: stderr })).toBe('TOOL');
+  });
+
   it('classifyFailure is deterministic — same input → same output (RC-003)', () => {
     const input: ClassifierInput = { taskRunState: 'FAILED', lastStderr: 'error TS1234' };
     expect(classifyFailure(input)).toBe(classifyFailure(input));

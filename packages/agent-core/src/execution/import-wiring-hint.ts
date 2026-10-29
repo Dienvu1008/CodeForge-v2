@@ -229,6 +229,34 @@ export function computeWiringHints(opts: WiringHintOptions): string {
     }
   }
 
+  // P12.34: Dart/Flutter package dependency check. If a changed .dart file imports
+  // `package:X/...` but `X` is not listed in pubspec.yaml dependencies, the import will fail to
+  // resolve (uri_does_not_exist). This catches the common "model uses hive/sqflite/etc. without
+  // adding it to pubspec.yaml" failure. Pure + deterministic.
+  const pubspec = opts.workspaceFiles.get('pubspec.yaml') ?? opts.workspaceFiles.get('pubspec.yml');
+  if (pubspec !== undefined) {
+    const declaredDeps = extractPubspecDeps(pubspec);
+    if (declaredDeps.size > 0) {
+      for (const changedPath of changed) {
+        if (hints.length >= maxHints) break;
+        if (langOf(changedPath) !== 'dart') continue;
+        const content = opts.workspaceFiles.get(changedPath);
+        if (content === undefined) continue;
+        for (const pkg of extractDartPackageImports(content)) {
+          if (hints.length >= maxHints) break;
+          if (!declaredDeps.has(pkg)) {
+            hints.push({
+              file: changedPath,
+              symbol: pkg,
+              definedIn: 'pubspec.yaml',
+              suggestion: `add '${pkg}' under dependencies: in pubspec.yaml and run 'flutter pub get'`,
+            });
+          }
+        }
+      }
+    }
+  }
+
   if (hints.length === 0) return '';
 
   const lines = [
@@ -238,4 +266,29 @@ export function computeWiringHints(opts: WiringHintOptions): string {
     ),
   ];
   return lines.join('\n');
+}
+
+/** Extract declared dependency names from a pubspec.yaml content (dependencies + dev_dependencies). */
+function extractPubspecDeps(content: string): Set<string> {
+  const deps = new Set<string>();
+  const sections = content.match(/(?:dependencies|dev_dependencies):\s*\n([\s\S]*?)(?=\n\S|\n$|$)/g);
+  if (sections === null) return deps;
+  for (const sec of sections) {
+    const lines = sec.split('\n').slice(1); // skip the header line
+    for (const line of lines) {
+      const m = line.match(/^\s+([a-z_][a-z0-9_]*):/i);
+      if (m) deps.add(m[1]!.toLowerCase());
+    }
+  }
+  return deps;
+}
+
+/** Extract package names from `package:X/...` import directives in Dart source. */
+function extractDartPackageImports(content: string): string[] {
+  const out: string[] = [];
+  for (const line of content.split('\n')) {
+    const m = line.match(/import\s+['"]package:([a-z_][a-z0-9_]*)\//i);
+    if (m) out.push(m[1]!.toLowerCase());
+  }
+  return [...new Set(out)];
 }

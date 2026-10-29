@@ -35,6 +35,18 @@ const BUILD_PATTERNS: readonly RegExp[] = [
   /build failed/i,
   /compilation error/i,
   /Cannot find module/i,
+  // P12.34: flutter analyze / dart analyze compile-time errors look like lint output but are
+  // actually SYNTAX (broken build). Match the "error -" prefix Dart analyzers use for errors
+  // (vs "warning -" / "info -" for actual lint). Also match common Dart compile error codes.
+  /\berror\s+-\s/i,
+  /uri_does_not_exist/i,
+  /undefined_class/i,
+  /undefined_name/i,
+  /undefined_annotation/i,
+  /extends_non_class/i,
+  /non_type_as_type_argument/i,
+  /type_not_found/i,
+  /not_a_type/i,
 ];
 
 const TEST_PATTERNS: readonly RegExp[] = [
@@ -70,7 +82,15 @@ export function classifyFailure(input: ClassifierInput): FailureClass {
       const kind = check.kind;
       if (kind === 'build' || kind === 'typecheck') return 'SYNTAX';
       if (kind === 'test') return 'LOGIC';
-      if (kind === 'lint' || kind === 'format') return 'TOOL';
+      // P12.34: a lint/format check can still report COMPILE errors (e.g. `flutter analyze`
+      // emits "error -" for undefined classes, missing imports). Check the stderr before falling
+      // back to TOOL — if it matches build patterns, the failure is structural (SYNTAX), not
+      // style (TOOL). This gives the model more recovery attempts (SYNTAX = 3 vs TOOL = 2) and
+      // access to ROLLBACK, which is the right policy for a broken build.
+      if (kind === 'lint' || kind === 'format') {
+        if (matchesAny(lastStderr, BUILD_PATTERNS)) return 'SYNTAX';
+        return 'TOOL';
+      }
     }
 
     // 3. status == INVALID → workspace drifted during verification → ENVIRONMENT.

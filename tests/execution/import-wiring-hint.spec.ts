@@ -115,4 +115,24 @@ describe('computeWiringHints — edge cases', () => {
     const hint = computeWiringHints({ workspaceFiles: ws, changedPaths: ['lib/main.dart'] });
     expect(hint).toBe('');
   });
+
+  it('P12.34: detects a Dart package import not declared in pubspec.yaml', () => {
+    const ws = files({
+      'pubspec.yaml': 'name: myapp\ndependencies:\n  flutter:\n    sdk: flutter\n  cupertino_icons: ^1.0.0\n',
+      'lib/database/db.dart': "import 'package:hive/hive.dart';\nclass TodoDatabase {}\n",
+    });
+    const hint = computeWiringHints({ workspaceFiles: ws, changedPaths: ['lib/database/db.dart'] });
+    expect(hint).not.toBe('');
+    expect(hint).toContain('hive');
+    expect(hint).toContain('pubspec.yaml');
+  });
+
+  it('P12.34: does not report a Dart package import that IS in pubspec.yaml', () => {
+    const ws = files({
+      'pubspec.yaml': 'name: myapp\ndependencies:\n  flutter:\n    sdk: flutter\n  hive: ^2.0.0\n',
+      'lib/database/db.dart': "import 'package:hive/hive.dart';\nclass TodoDatabase {}\n",
+    });
+    const hint = computeWiringHints({ workspaceFiles: ws, changedPaths: ['lib/database/db.dart'] });
+    expect(hint).toBe('');
+  });
 });

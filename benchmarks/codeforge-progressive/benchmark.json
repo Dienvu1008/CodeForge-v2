@@ -829,7 +829,7 @@
       "seedFiles": {
         "package.json": "{\"name\":\"pg\",\"private\":true,\"scripts\":{\"test\":\"node test.js\"}}\n",
         "src/run.js": "const { execSync } = require('node:child_process');\nfunction runEcho(arg) {\n  return execSync('echo ' + arg).toString().trim();\n}\nmodule.exports = { runEcho };\n",
-        "test.js": "const assert = require('node:assert');\nconst { runEcho } = require('./src/run.js');\nassert.strictEqual(runEcho('hello'), 'hello');\nassert.strictEqual(runEcho('a; echo pwned'), 'a; echo pwned');\nconsole.log('ok');\n"
+        "test.js": "const assert = require('node:assert');\nconst { runEcho } = require('./src/run.js');\n// On Windows 'echo' is a shell built-in (not an executable), so the model may use cmd /c echo\n// or a different approach. The key security invariant: the injected string must NOT be\n// executed as a shell command — it must appear literally in the output.\nconst out1 = runEcho('hello');\nassert.ok(typeof out1 === 'string', 'must return a string');\nassert.ok(out1.includes('hello'), 'hello echoed: ' + out1);\nconst out2 = runEcho('a; echo pwned');\nassert.ok(out2.includes('a; echo pwned'), 'injection literal: ' + out2);\n// Must NOT contain 'pwned' as a standalone word (shell would execute it)\nassert.ok(!/^pwned$/m.test(out2), 'shell injection detected: ' + out2);\nconsole.log('ok');\n"
       },
       "verification": [
         { "kind": "command", "target": "node", "args": ["test.js"], "description": "no shell injection; argument passed literally" }
