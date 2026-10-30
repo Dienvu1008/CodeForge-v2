@@ -33,6 +33,7 @@
       { "command": "codeforge.stopRuntime", "title": "CodeForge: Stop Runtime", "icon": "$(debug-stop)" },
       { "command": "codeforge.goals",       "title": "CodeForge: Goals", "icon": "$(comment-discussion)" },
       { "command": "codeforge.pickModel",   "title": "CodeForge: Select Model" },
+      { "command": "codeforge.pickProvider","title": "CodeForge: Select Provider", "icon": "$(plug)" },
       { "command": "codeforge.dashboard",  "title": "CodeForge: Open Dashboard", "icon": "$(browser)" },
       { "command": "codeforge.refresh",    "title": "CodeForge: Refresh", "icon": "$(refresh)" },
       { "command": "codeforge.attachSession", "title": "CodeForge: Attach to Session" },
@@ -47,8 +48,9 @@
       "view/title": [
         { "command": "codeforge.goals",      "when": "view == codeforge.sessions",  "group": "navigation@1" },
         { "command": "codeforge.startRuntime","when": "view == codeforge.sessions", "group": "navigation@2" },
-        { "command": "codeforge.refresh",   "when": "view == codeforge.sessions",  "group": "navigation@3" },
-        { "command": "codeforge.dashboard", "when": "view == codeforge.sessions",  "group": "navigation@4" },
+        { "command": "codeforge.pickProvider","when": "view == codeforge.sessions", "group": "navigation@3" },
+        { "command": "codeforge.refresh",   "when": "view == codeforge.sessions",  "group": "navigation@4" },
+        { "command": "codeforge.dashboard", "when": "view == codeforge.sessions",  "group": "navigation@5" },
         { "command": "codeforge.pause",     "when": "view == codeforge.taskGraph", "group": "navigation@1" },
         { "command": "codeforge.resume",    "when": "view == codeforge.taskGraph", "group": "navigation@2" },
         { "command": "codeforge.cancel",    "when": "view == codeforge.taskGraph", "group": "navigation@3" }
@@ -73,7 +75,67 @@
         "codeforge.model": {
           "type": "string",
           "default": "qwen2.5-coder:latest",
-          "description": "Default model id the runtime runs when started here."
+          "description": "Default model id the runtime runs when started here. For cloud providers use their model id (e.g. 'llama-3.3-70b-versatile' for Groq, 'deepseek-chat' for DeepSeek)."
+        },
+        "codeforge.provider": {
+          "type": "string",
+          "default": "ollama",
+          "enum": [
+            "ollama",
+            "openai-compatible",
+            "gemini"
+          ],
+          "enumDescriptions": [
+            "Local Ollama server (default). No API key needed.",
+            "Any OpenAI-compatible API: OpenRouter, Groq, Cerebras, DeepSeek, Together, SambaNova, Mistral, xAI, LM Studio, and many more.",
+            "Google Gemini (AI Studio native API). Requires a Google AI Studio API key."
+          ],
+          "description": "LLM provider to use when starting the runtime. 'ollama' for local models, 'openai-compatible' for cloud APIs (OpenRouter, Groq, DeepSeek, etc.), 'gemini' for Google Generative Language API."
+        },
+        "codeforge.providerPreset": {
+          "type": "string",
+          "default": "",
+          "enum": [
+            "",
+            "groq",
+            "cerebras",
+            "openrouter",
+            "deepseek",
+            "sambanova",
+            "together",
+            "mistral",
+            "xai",
+            "qwen",
+            "gemini",
+            "lmstudio",
+            "ollama"
+          ],
+          "enumDescriptions": [
+            "Custom — use codeforge.endpoint directly.",
+            "Groq (LPU inference, very fast, free tier) — https://api.groq.com/openai/v1",
+            "Cerebras (fast inference, free tier) — https://api.cerebras.ai/v1",
+            "OpenRouter (200+ models, free models available) — https://openrouter.ai/api/v1",
+            "DeepSeek (cheap, high quality) — https://api.deepseek.com/v1",
+            "SambaNova (free tier, Llama 405B) — https://api.sambanova.ai/v1",
+            "Together AI (open models) — https://api.together.xyz/v1",
+            "Mistral AI — https://api.mistral.ai/v1",
+            "xAI / Grok — https://api.x.ai/v1",
+            "Qwen / Alibaba DashScope — https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "Google Gemini (AI Studio native) — uses gemini provider, not openai-compatible",
+            "LM Studio (local) — http://localhost:1234/v1",
+            "Ollama (local) — http://localhost:11434"
+          ],
+          "description": "Choose a well-known provider to auto-fill the endpoint. Set to '' to use codeforge.endpoint directly. After selecting a preset, copy your API key into codeforge.apiKey."
+        },
+        "codeforge.endpoint": {
+          "type": "string",
+          "default": "",
+          "description": "API endpoint URL for the selected provider. Leave empty to use the provider default (Ollama: http://localhost:11434; Gemini: official endpoint). For openai-compatible providers this must be the base URL ending in /v1, e.g. https://api.groq.com/openai/v1. Auto-filled when codeforge.providerPreset is set."
+        },
+        "codeforge.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for cloud providers (openai-compatible / gemini). Leave empty for local providers (Ollama, LM Studio). Stored in VS Code workspace or user settings — consider using a secrets manager for sensitive keys. Passed to the runtime as --api-key."
         },
         "codeforge.port": {
           "type": "number",

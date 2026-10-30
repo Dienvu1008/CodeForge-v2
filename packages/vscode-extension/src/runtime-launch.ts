@@ -26,6 +26,17 @@ export interface RuntimeLaunchSpec {
   readonly endpoint?: string;
   /** Autonomy mode. */
   readonly autonomy?: 'readonly' | 'edits' | 'full';
+  /**
+   * Provider type (P12.35). Default 'ollama'. 'openai-compatible' targets any OpenAI Chat
+   * Completions API (OpenRouter, Groq, Cerebras, DeepSeek, Together, etc.). 'gemini' targets
+   * Google Generative Language API.
+   */
+  readonly provider?: 'ollama' | 'openai-compatible' | 'gemini';
+  /**
+   * API key for cloud providers (openai-compatible / gemini). Passed via --api-key to the
+   * runtime CLI (which then uses it for Authorization: Bearer). Never logged.
+   */
+  readonly apiKey?: string;
 }
 
 /** Inputs we resolve the runtime entry path from. */
@@ -69,6 +80,9 @@ export function buildRuntimeArgv(spec: RuntimeLaunchSpec): string[] {
   ];
   if (spec.endpoint !== undefined && spec.endpoint !== '') argv.push('--endpoint', spec.endpoint);
   if (spec.autonomy !== undefined) argv.push('--autonomy', spec.autonomy);
+  // P12.35: cloud provider support — pass --provider and --api-key when specified.
+  if (spec.provider !== undefined && spec.provider !== 'ollama') argv.push('--provider', spec.provider);
+  if (spec.apiKey !== undefined && spec.apiKey !== '') argv.push('--api-key', spec.apiKey);
   return argv;
 }
 

@@ -327,6 +327,97 @@ function activateInner(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // ── Provider picker (A+B: preset list + manual entry) ───────────────────────
+  // Preset map: known provider id → { providerType, defaultEndpoint, hint }
+  type ProviderPresetInfo = { provider: 'ollama' | 'openai-compatible' | 'gemini'; endpoint: string; hint: string };
+  const PROVIDER_PRESETS: Record<string, ProviderPresetInfo> = {
+    groq:       { provider: 'openai-compatible', endpoint: 'https://api.groq.com/openai/v1',                       hint: 'Groq — LPU inference, very fast, free tier. Get key: https://console.groq.com' },
+    cerebras:   { provider: 'openai-compatible', endpoint: 'https://api.cerebras.ai/v1',                           hint: 'Cerebras — fast inference, free tier. Get key: https://cloud.cerebras.ai' },
+    openrouter: { provider: 'openai-compatible', endpoint: 'https://openrouter.ai/api/v1',                         hint: 'OpenRouter — 200+ models, many free. Get key: https://openrouter.ai' },
+    deepseek:   { provider: 'openai-compatible', endpoint: 'https://api.deepseek.com/v1',                          hint: 'DeepSeek — cheap ($0.14/1M), high quality. Get key: https://platform.deepseek.com' },
+    sambanova:  { provider: 'openai-compatible', endpoint: 'https://api.sambanova.ai/v1',                          hint: 'SambaNova — free tier, Llama 3.1/3.3. Get key: https://cloud.sambanova.ai' },
+    together:   { provider: 'openai-compatible', endpoint: 'https://api.together.xyz/v1',                          hint: 'Together AI — open models. Get key: https://api.together.ai' },
+    mistral:    { provider: 'openai-compatible', endpoint: 'https://api.mistral.ai/v1',                            hint: 'Mistral AI. Get key: https://console.mistral.ai' },
+    xai:        { provider: 'openai-compatible', endpoint: 'https://api.x.ai/v1',                                  hint: 'xAI / Grok. Get key: https://console.x.ai' },
+    qwen:       { provider: 'openai-compatible', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',   hint: 'Qwen/Alibaba DashScope. Get key: https://dashscope.aliyun.com' },
+    gemini:     { provider: 'gemini',            endpoint: '',                                                      hint: 'Google Gemini — free tier. Get key: https://aistudio.google.com' },
+    lmstudio:   { provider: 'openai-compatible', endpoint: 'http://localhost:1234/v1',                             hint: 'LM Studio local server. No API key needed.' },
+    ollama:     { provider: 'ollama',            endpoint: 'http://localhost:11434',                               hint: 'Ollama local server. No API key needed.' },
+  };
+
+  /** Read current provider config from settings, resolving preset → endpoint. */
+  const resolveProviderSettings = (): { provider: 'ollama' | 'openai-compatible' | 'gemini'; endpoint: string; apiKey: string } => {
+    const cfg = vscode.workspace.getConfiguration('codeforge');
+    const preset = cfg.get<string>('providerPreset', '').trim();
+    const info = preset !== '' ? PROVIDER_PRESETS[preset] : undefined;
+    const provider = (info?.provider ?? cfg.get<string>('provider', 'ollama')) as 'ollama' | 'openai-compatible' | 'gemini';
+    const endpoint = info?.endpoint ?? cfg.get<string>('endpoint', '').trim();
+    const apiKey = cfg.get<string>('apiKey', '').trim();
+    return { provider, endpoint, apiKey };
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeforge.pickProvider', async () => {
+      const cfg = vscode.workspace.getConfiguration('codeforge');
+      // Step 1: pick a preset
+      const presetItems = [
+        { label: '$(gear) Custom', description: 'Enter provider/endpoint/apiKey manually via Settings', id: '' },
+        ...Object.entries(PROVIDER_PRESETS).map(([id, info]) => ({
+          label: id.charAt(0).toUpperCase() + id.slice(1),
+          description: info.hint,
+          id,
+        })),
+      ];
+      const picked = await vscode.window.showQuickPick(presetItems, { placeHolder: 'Select a provider preset' });
+      if (picked === undefined) return;
+
+      await cfg.update('providerPreset', picked.id, vscode.ConfigurationTarget.Workspace);
+
+      const info = PROVIDER_PRESETS[picked.id];
+      if (info === undefined) {
+        // Custom — open settings
+        await vscode.commands.executeCommand('workbench.action.openWorkspaceSettings', { query: 'codeforge.provider' });
+        return;
+      }
+
+      // Step 2: if cloud provider, prompt for API key
+      const needsKey = info.provider !== 'ollama' && info.endpoint !== 'http://localhost:1234/v1';
+      if (needsKey) {
+        const existingKey = cfg.get<string>('apiKey', '');
+        const key = await vscode.window.showInputBox({
+          prompt: `API key for ${picked.label}`,
+          placeHolder: existingKey ? '(keep existing key — leave empty)' : 'Paste your API key here',
+          password: true,
+          value: '',
+        });
+        if (key !== undefined && key.trim() !== '') {
+          await cfg.update('apiKey', key.trim(), vscode.ConfigurationTarget.Workspace);
+        }
+      }
+
+      // Step 3: suggest a default model for the preset
+      const defaultModels: Record<string, string> = {
+        groq: 'llama-3.3-70b-versatile', cerebras: 'llama3.1-70b', openrouter: 'meta-llama/llama-3.1-8b-instruct:free',
+        deepseek: 'deepseek-chat', sambanova: 'Meta-Llama-3.1-70B-Instruct', together: 'meta-llama/Llama-3-70b-chat-hf',
+        mistral: 'codestral-latest', xai: 'grok-3-mini-beta', qwen: 'qwen-plus',
+        gemini: 'gemini-2.0-flash-exp', lmstudio: 'local-model', ollama: 'qwen2.5-coder:latest',
+      };
+      const suggestedModel = defaultModels[picked.id] ?? '';
+      if (suggestedModel !== '') {
+        const useDefault = await vscode.window.showInformationMessage(
+          `Set model to "${suggestedModel}" for ${picked.label}?`,
+          'Yes', 'Keep current',
+        );
+        if (useDefault === 'Yes') await cfg.update('model', suggestedModel, vscode.ConfigurationTarget.Workspace);
+      }
+
+      const { provider, endpoint } = resolveProviderSettings();
+      vscode.window.showInformationMessage(
+        `CodeForge: provider set to ${picked.label} (${provider}${endpoint ? ' · ' + endpoint : ''}). Start the runtime to use it.`,
+      );
+    }),
+  );
+
   // ── Start / Stop Runtime Here (spawn a SEPARATE runtime process in the open workspace) ──
   context.subscriptions.push(
     vscode.commands.registerCommand('codeforge.startRuntime', async () => {
@@ -348,7 +439,14 @@ function activateInner(context: vscode.ExtensionContext): void {
       if (model === undefined || model === '') return;
 
       const port = cfg.get<number>('port', 9500);
-      const argv = buildRuntimeArgv({ entryPath: entry, workspace: folder, model, port, autonomy: 'edits' });
+      // P12.35: read provider/endpoint/apiKey from settings (preset or manual).
+      const { provider, endpoint, apiKey } = resolveProviderSettings();
+      const argv = buildRuntimeArgv({
+        entryPath: entry, workspace: folder, model, port, autonomy: 'edits',
+        ...(provider !== 'ollama' ? { provider } : {}),
+        ...(endpoint !== '' ? { endpoint } : {}),
+        ...(apiKey !== '' ? { apiKey } : {}),
+      });
       // Use the SYSTEM node (not process.execPath, which is VS Code's Electron) so native modules
       // like better-sqlite3 load against the ABI they were built for.
       const nodeCmd = resolveNodeCommand(cfg.get<string>('nodePath', ''));

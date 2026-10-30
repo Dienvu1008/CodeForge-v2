@@ -49,6 +49,37 @@ describe('buildRuntimeArgv', () => {
     expect(argv).toContain('--autonomy');
     expect(argv).toContain('edits');
   });
+
+  it('P12.35: passes --provider and --api-key for cloud providers', () => {
+    const argv = buildRuntimeArgv({
+      entryPath: 'c', workspace: 'w', model: 'llama-3.3-70b-versatile', port: 1,
+      provider: 'openai-compatible',
+      endpoint: 'https://api.groq.com/openai/v1',
+      apiKey: 'gsk_test',
+    });
+    expect(argv).toContain('--provider');
+    expect(argv).toContain('openai-compatible');
+    expect(argv).toContain('--api-key');
+    expect(argv).toContain('gsk_test');
+  });
+
+  it('P12.35: does NOT pass --provider for ollama (default, no noise)', () => {
+    const argv = buildRuntimeArgv({
+      entryPath: 'c', workspace: 'w', model: 'qwen2.5-coder:latest', port: 1,
+      provider: 'ollama',
+    });
+    expect(argv).not.toContain('--provider');
+    expect(argv).not.toContain('--api-key');
+  });
+
+  it('P12.35: passes --provider gemini with api-key', () => {
+    const argv = buildRuntimeArgv({
+      entryPath: 'c', workspace: 'w', model: 'gemini-2.0-flash-exp', port: 1,
+      provider: 'gemini', apiKey: 'AIza_test',
+    });
+    expect(argv).toContain('gemini');
+    expect(argv).toContain('AIza_test');
+  });
 });
 
 describe('runtimeUrlForPort', () => {
