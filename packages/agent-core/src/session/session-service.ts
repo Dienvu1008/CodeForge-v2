@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SessionService (P1-S1) — DOMAIN_CONTRACTS §2.5, §24 (Session aggregate operations).
 //
 // Orchestrates the Session lifecycle over injected CONTRACTS (SessionRepository,

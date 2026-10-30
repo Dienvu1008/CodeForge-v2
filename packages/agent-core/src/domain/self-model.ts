@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SelfModel — Phase 11 (P11.1). A read-only, DETERMINISTIC projection of a session's (or
 // a set of sessions') run history, used by the Intelligence Plane as ADVISORY evidence
 // only. It holds no authority (LE-001) and is a total function of its inputs (LE-004):

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // LspAdapter — P7-LX1 (P12.16: generalized to a server registry). Code intelligence via a
 // Language Server (LSP over stdio).
 //

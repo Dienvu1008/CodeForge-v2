@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Memory — Phase 7 (P7-MS1). Long-term memory records (project/outcomes/patterns).
 //
 // Memory is EVIDENCE, never authority (ME-001). Records are append-only (ME-003)

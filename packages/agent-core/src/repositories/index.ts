@@ -1,4 +1,9 @@
-﻿// Repository interfaces (C7) — DOMAIN_CONTRACTS §23. RI-1..RI-8.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// Repository interfaces (C7) — DOMAIN_CONTRACTS §23. RI-1..RI-8.
 //
 // Immutable entities have NO update() (RI-7). Every repo has getById() (RI-8).
 // These are CONTRACTS only; concrete SQLite adapters live in infrastructure (Phase 1).

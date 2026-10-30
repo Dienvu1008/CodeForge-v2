@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // view-model (P12.22) — PURE transforms from runtime read-models into plain tree-node data the
 // extension's TreeDataProviders render. No `vscode` import: the shapes are generic (label +
 // description + iconId + children + a contextValue for menus), so extension.ts just maps each

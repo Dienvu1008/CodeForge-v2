@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // BranchIsolation (P8-BI1) — deterministic workspace isolation + no-orphan cancellation
 // for parallel branches. Enforces AU-005 (isolation) and AU-006 (no orphan on cancel).
 //

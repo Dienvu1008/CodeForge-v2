@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ObservabilityService (P9.3) — PROTOCOL-AGNOSTIC facade that assembles the read-models
 // and routes control, so any transport (HTTP, Telegram, VS Code, CLI) is a thin shell
 // over the same logic. No HTTP here.

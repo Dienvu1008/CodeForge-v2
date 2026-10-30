@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SessionStateControlGate (P9-I1) — bridges the SessionOrchestrator's cooperative
 // ControlGate to admitted controls WITHOUT a second channel: it derives the pause/cancel
 // signal from the AUTHORITATIVE session state (SessionRepository). Enforces OB-006 — the

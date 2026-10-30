@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // FakeProcessSupervisor — deterministic test double for ProcessSupervisor (P1.5-PS1).
 //
 // Allows tests to configure exact outcomes (exitCode, stdout, stderr, timedOut) per

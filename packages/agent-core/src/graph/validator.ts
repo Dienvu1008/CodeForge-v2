@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // GraphValidator (P1-G2) — GRAPH_PROTOCOL §5. Enforces GI-002/004/005/006/007/009.
 //
 // PURE + DETERMINISTIC: validateMutation(graph, mutation, ctx) runs the 7 staged checks

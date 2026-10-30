@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteTaskRepository — DOMAIN_CONTRACTS §23.2, RI-2/RI-7.
 //
 // Task is IMMUTABLE: there is no update(). Change is expressed by creating a NEW task

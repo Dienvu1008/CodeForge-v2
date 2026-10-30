@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TaskService (P1-T1) — DOMAIN_CONTRACTS §4, TI-001..TI-004.
 //
 // Task is intent, immutable after commit. This service enforces:

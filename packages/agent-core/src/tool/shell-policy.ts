@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ShellPolicy — P3-SH1. Allowlist contract for the run_command tool.
 //
 // SE-003/SE-007: subprocesses are only allowed when the command is in an

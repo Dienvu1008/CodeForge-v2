@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RuntimeProjection (P9.2) — pure, deterministic read-model of "what is the agent
 // doing now", derived from already-fetched authoritative snapshots. Enforces OB-005.
 //

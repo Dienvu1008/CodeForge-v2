@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ProcessReconciler contract (P1-T3) — enforces EX-005 (no finalize before reconcile).
 //
 // Before a TaskRun may be finalized, the process tree it spawned MUST be reconciled

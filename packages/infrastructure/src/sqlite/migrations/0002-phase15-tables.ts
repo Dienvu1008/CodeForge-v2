@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration 0002 -- Phase 1.5 tables (v2). MIGRATION_SPEC §5.2, P1.5-DB2.
 //
 // Additive-only: migration v1 is NOT touched. New tables:

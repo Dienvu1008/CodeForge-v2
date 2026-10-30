@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // extension.ts (P9.11 + P12.22 native UI) — the thin VS Code API edge. ONLY compiled by the
 // extension's esbuild (never root tsc), because it imports `vscode`. All decision logic lives in
 // the PURE modules (runtime-client, view-model, vscode-control-mapper), which ARE unit-tested

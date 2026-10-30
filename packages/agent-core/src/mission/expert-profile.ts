@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ExpertProfile registry + selection — Phase 12 (P12.5). §17: instead of scattering
 // "You are a master of Flutter..." strings through the code, profiles are declared data that
 // the mission selects and the prompt layer renders.

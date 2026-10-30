@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Evaluation / Benchmark domain model — the "Task Correctness" axis (EVALUATION_MODEL §2.2).
 //
 // This is a SEPARATE domain from the runtime Task model. A BenchmarkTask describes a goal + an

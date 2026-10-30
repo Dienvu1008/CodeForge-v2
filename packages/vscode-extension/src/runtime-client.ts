@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RuntimeClient (P12.22) — PURE, OFFLINE-TESTABLE HTTP client for the CodeForge runtime's
 // observability server. No `vscode` import: it takes an injectable `fetch` so it can be unit
 // tested with a fake (and so the extension host can pass the global fetch). It only READS

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Artifact — DOMAIN_CONTRACTS §20. Immutable; provenance required; no unredacted secrets.
 import type { Provenance } from './provenance.js';
 

@@ -338,8 +338,20 @@ distinction the two-axis model exists to make.
 | `PHASE_*` | Per-phase roadmaps and sign-offs. |
 ```
 
-## License
+## Copyright & Attribution
 
-Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify, and
-distribute this software under its terms. Contributions are accepted under the same
-license (Apache-2.0 §5).
+CodeForge-v2 is an original software project by [DienVu](https://github.com/Dienvu1008),
+licensed under the [Apache License, Version 2.0](LICENSE).
+
+- **Original repository:** https://github.com/Dienvu1008/CodeForge-v2
+- **Copyright:** © 2026 DienVu (Dienvu1008)
+- **License:** Apache-2.0
+
+You are welcome to use, modify, fork, redistribute, and build upon this project under
+the terms of the Apache License 2.0. When redistributing, please preserve the
+applicable copyright notice, a copy of the license, and (if present) the NOTICE file.
+
+Third-party dependencies remain subject to their own licenses.
+
+See [ATTRIBUTION.md](ATTRIBUTION.md) for detailed attribution information and
+[CITATION.cff](CITATION.cff) for citation metadata.

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ULID — DOMAIN_CONTRACTS §1.2 (IDs are ULID: sortable, timestamp-prefixed).
 //
 // Minimal, dependency-free ULID. Time and randomness are INJECTABLE so tests can be

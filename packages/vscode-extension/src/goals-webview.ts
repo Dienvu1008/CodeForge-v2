@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // goals-webview.ts (P12.23) — PURE HTML/JS for the Goals webview panel. No `vscode` import; the
 // extension edge creates the WebviewPanel and relays messages. The webview is a thin VIEW: it
 // renders the goal history it is given (postMessage {type:'history', entries}) and sends a

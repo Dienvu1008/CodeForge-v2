@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ContextTelemetry (P9.2) — pure, deterministic rollup of a ContextSnapshot into
 // observable context-usage telemetry. Enforces OB-010.
 //

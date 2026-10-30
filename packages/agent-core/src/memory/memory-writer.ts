@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // MemoryWriter — P7-MW1. Writes memory records with provenance (ME-003) and
 // enforces a bounded retention policy (ME-006).
 //

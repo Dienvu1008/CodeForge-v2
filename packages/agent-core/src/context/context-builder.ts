@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ContextBuilder — CONTEXT_SPEC §3/§13, P2-CX1.
 //
 // Orchestrates the full context pipeline → ContextSnapshot.

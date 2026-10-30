@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // PlanCritic — P2-PL1. Advisory-only LLM critique of a plan.
 //
 // MG-001: all LLM calls go through ModelGateway.

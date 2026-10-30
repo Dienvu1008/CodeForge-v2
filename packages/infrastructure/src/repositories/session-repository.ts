@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteSessionRepository — DOMAIN_CONTRACTS §23.1, RI-1.
 //
 // Session is a MUTABLE-state aggregate, so update() is allowed (unlike immutable

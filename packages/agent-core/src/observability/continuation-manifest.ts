@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ContinuationManifest (P9.6) — a NON-AUTHORITATIVE hand-off for session rollover.
 // Enforces OB-008.
 //

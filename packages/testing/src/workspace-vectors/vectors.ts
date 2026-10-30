@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // The 20 canonical workspace vectors (A3) — WORKSPACE_SPEC §7.1, §7.4.
 import type { WorkspaceVector } from './types.js';
 

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Graph types — GRAPH_PROTOCOL §2, §4 (canonical source). GR-1..GR-5.
 import type { Task } from '../domain/task.js';
 import type { Provenance } from '../domain/provenance.js';

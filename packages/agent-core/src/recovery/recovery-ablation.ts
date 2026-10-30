@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // recovery-ablation.ts (P12.33) — PURE, DETERMINISTIC policy transforms for ablation studies.
 //
 // Ablation is the diagnostic tool from .agents/failure-taxonomy.md: run the SAME benchmark case

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ArtifactCapturePort — P4-AP1. Domain contract for artifact recording.
 //
 // agent-core owns the CONTRACT; infrastructure owns the implementation.

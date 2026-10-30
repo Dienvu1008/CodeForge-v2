@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Domain entity types (C4) — DOMAIN_CONTRACTS §2-§20. All readonly (DT-20).
 export * from './common.js';
 export * from './provenance.js';

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ProvenanceTracker — CONTEXT_SPEC §10, P2-CX1.
 //
 // Builds a Provenance record for each ContextItem so the chain

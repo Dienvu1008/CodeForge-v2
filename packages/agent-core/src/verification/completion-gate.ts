@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // CompletionGate — VERIFICATION_PROTOCOL §10, P1.5-VR2.
 //
 // THE northstar enforcement point for TI-005:

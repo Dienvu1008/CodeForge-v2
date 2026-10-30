@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // WorkspaceSnapshotRollback — P12.14. Node implementation of the agent-core `WorkspaceRollback`
 // port, backed by a per-session content snapshot of the workspace tree.
 //

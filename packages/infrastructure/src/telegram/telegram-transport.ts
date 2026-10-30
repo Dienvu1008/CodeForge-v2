@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TelegramTransport (P9.8) — THIN network edge for the Telegram adapter. It long-polls
 // getUpdates, routes each message through TelegramCommandRouter, and sends the reply via
 // sendMessage. All business logic is in the router (and ultimately ObservabilityService);

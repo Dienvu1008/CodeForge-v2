@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ContextCollector (P10.3) — the "last mile" that turns a real workspace on disk into
 // the plain-data context signals the (pure) agent-core Retriever/ContextBuilder consume:
 //   workspaceFiles, symbols (RetrievedSymbol[]), importReverseEdges, changedPaths.

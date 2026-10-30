@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Checkpoint — DOMAIN_CONTRACTS §16 + WORKSPACE_SPEC §10.
 //
 // Metadata is atomic in SQLite (CP-002). workspaceRevision.hash is a CLAIM about the

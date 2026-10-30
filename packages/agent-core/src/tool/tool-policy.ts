@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ToolPolicy — SECURITY_MODEL §5, P1.5-TG1.
 //
 // Deterministic, pure policy engine for tool calls. Enforces:

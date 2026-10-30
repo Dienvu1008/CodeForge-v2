@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SQLite error mapping — INFRASTRUCTURE_SPEC §3.11.
 // Native SQLITE_* codes are mapped to stable domain error codes so the rest of
 // the runtime never depends on the driver's error shape (DC-002 spirit).

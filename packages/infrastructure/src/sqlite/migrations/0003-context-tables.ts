@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration 0003 -- Phase 2 context tables (v3). P2-DB3, CONTEXT_SPEC §12.
 //
 // Additive-only: migrations v1/v2 are NOT touched.

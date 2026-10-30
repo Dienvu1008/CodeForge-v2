@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SwitchableModelGateway — a ModelGateway whose ACTIVE model AND provider can be changed at
 // runtime, so the user can pick a different model (a stronger local Ollama model, or a commercial
 // / free cloud provider over the OpenAI-compatible protocol) from the dashboard without restarting.

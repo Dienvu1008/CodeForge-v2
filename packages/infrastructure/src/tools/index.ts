@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Phase 3 tool executors.
 // P3-FS1: Filesystem tool executor.
 export { FilesystemExecutor, type FilesystemExecutorDeps } from './filesystem-executor.js';

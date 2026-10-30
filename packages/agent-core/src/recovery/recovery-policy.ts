@@ -1,4 +1,9 @@
-﻿// RecoveryPolicy — P5-RP1. Deterministic action selection for a given FailureClass.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// RecoveryPolicy — P5-RP1. Deterministic action selection for a given FailureClass.
 //
 // Enforces:
 //   RC-001: action must be in the allowed set for the failure class.

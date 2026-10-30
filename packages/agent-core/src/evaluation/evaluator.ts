@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Deterministic evaluator — pure (agent-core). It decides a case's verdict from DETERMINISTIC
 // evidence only (the check outcomes), never from anything the agent said about itself (§11). It
 // also attributes a failure class from the trace so the roadmap can be re-ranked by evidence

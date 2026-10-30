@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // VerificationPolicyBuilder (P10.1) — pure, deterministic construction of a real
 // VerificationPolicy from plain-data ProjectSignals. This is what turns "task PASSED
 // without running anything" into "task PASSED only when build/test/lint are green"

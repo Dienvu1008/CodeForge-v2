@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // GraphService (P1-G1) — GRAPH_PROTOCOL §2, §7.1; GI-001, GI-003.
 //
 // Builds versioned TaskGraph snapshots. Responsibilities in P1-G1 (structure + versioning

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RepoRetriever — P7-RAG1. Local repository code retrieval (RAG, read-only).
 //
 // Surfaces code chunks relevant to a seed set (e.g. changed files) using the

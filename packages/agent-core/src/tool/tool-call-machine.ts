@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ToolCallStateMachine — STATE_MACHINE_SPEC SM-TOOLCALL §7, P1.5-TG1.
 //
 // PURE + DETERMINISTIC: transitionToolCall(state, event) is a total function of its

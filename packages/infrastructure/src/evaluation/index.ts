@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // CodeForge Evaluation adapters (infrastructure) — the I/O side of the eval system: isolated
 // workspaces, deterministic check running, driving the runtime per case, baseline persistence,
 // and dataset file loading. All pure decision logic lives in agent-core/src/evaluation.

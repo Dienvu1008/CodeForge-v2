@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // MissionSignals — Phase 12 (P12.2). Objective, deterministic signals extracted from a Goal
 // (and optionally the workspace) that the analyzers consume. Keeping extraction separate from
 // classification makes both pure and independently testable (MI-005: same signals → same

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // CrashRecoveryService (P1-CR1) — DOMAIN_CONTRACTS §recovery, CP-004/005/006.
 //
 // On restart, the runtime does NOT assume in-flight work failed. It:

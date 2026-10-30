@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SweBenchWorkspaceSetup (infrastructure) — prepares an isolated workspace for a SWE-bench case
 // and applies the judging test patch, over an injected ProcessSupervisor (so it is fully testable
 // with a fake supervisor and never shells out directly).

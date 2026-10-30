@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Dataset loader (infrastructure I/O) — reads a benchmark definition JSON file from disk and
 // validates it through the pure agent-core loader. Keeps all parsing/validation deterministic in
 // agent-core; this adapter only does the file read.

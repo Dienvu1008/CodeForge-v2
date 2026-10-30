@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // HttpTransport (P9.3) — a THIN node:http adapter over ObservabilityService. Zero new
 // dependencies. It only: parses the request, calls the protocol-agnostic service, and
 // serializes JSON or SSE. No business logic lives here — swapping to another server

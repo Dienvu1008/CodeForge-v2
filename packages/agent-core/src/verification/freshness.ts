@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Freshness utilities — VERIFICATION_PROTOCOL §5, P1.5-VR1.
 //
 // Two distinct concepts (§5.1):

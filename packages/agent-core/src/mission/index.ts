@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Mission Intelligence module — Phase 12.
 //
 // Everything here is ADVISORY (MI-001): it analyzes a Goal into a Mission and produces

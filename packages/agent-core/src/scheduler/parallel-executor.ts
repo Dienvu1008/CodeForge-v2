@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ParallelExecutor (P8-PX1) — deterministic parallel-batch planner. Enforces AU-001/003/004.
 //
 // This is a PLANNER, not an executor: planParallelBatch() is a pure function of

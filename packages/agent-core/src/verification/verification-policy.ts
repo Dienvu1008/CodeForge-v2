@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // VerificationPolicy — VERIFICATION_PROTOCOL §9, P1.5-VR1.
 //
 // Deterministic struct and default values for verification configuration.

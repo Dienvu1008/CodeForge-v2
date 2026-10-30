@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Mission — Phase 12 (P12.1). The strategic projection of a Goal, computed BEFORE planning.
 //
 // A Mission is NOT a Task and NOT a Goal. It is an advisory analysis of a user's Goal that

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // NodeWorkspaceManager — P3-WM1. Node.js implementation of WorkspaceManager.
 //
 // All paths are canonicalized + boundary-checked before any fs operation.

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // DocRetriever — P7-RAG1. Local documentation retrieval (RAG, read-only).
 //
 // Indexes local docs (e.g. *.md in the workspace) and returns the most relevant

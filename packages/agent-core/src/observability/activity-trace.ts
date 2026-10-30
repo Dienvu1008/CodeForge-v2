@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ActivityTrace (P9.4) — pure, deterministic derivation of a STRUCTURED activity trace
 // from the (already-redacted) event stream. Enforces OB-007.
 //

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Workspace vectors (A3) — WORKSPACE_SPEC §7.
 export { VECTORS, VECTORS_BY_ID, repeatContent } from './vectors.js';
 export { buildVector } from './builder.js';

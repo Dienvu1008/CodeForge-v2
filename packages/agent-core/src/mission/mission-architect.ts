@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // MissionArchitect — Phase 12 (P12.6). §16. For complex missions (HIGH/SYSTEM or architecture
 // REQUIRED), ask the model for an architecture blueprint via the structured-output pipeline.
 //

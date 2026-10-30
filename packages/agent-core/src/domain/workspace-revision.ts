@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // WorkspaceRevision domain type — WORKSPACE_SPEC §5.2, DOMAIN_CONTRACTS.
 //
 // Immutable snapshot of the workspace at a point in time, with a canonical hash.

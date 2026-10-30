@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ImportGraphBuilder — P6-IG1. Build an import dependency graph via Tree-sitter.
 //
 // Parses import/export/require statements per file and resolves RELATIVE specifiers

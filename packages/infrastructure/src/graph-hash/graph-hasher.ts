@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Blake3GraphHasher (P1-G1) — GRAPH_PROTOCOL §2.3.
 //
 // Binds the pure canonical-graph form (agent-core) to blake3 (same algorithm as the

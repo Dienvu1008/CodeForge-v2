@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // AffectedSetComputer — VERIFICATION_PROTOCOL §4, P1.5-VR1.
 //
 // Phase 1.5 baseline: diff-based affected set (§4.3). No LSP/Tree-sitter.

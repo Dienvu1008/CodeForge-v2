@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SWE-bench dataset loader (infrastructure I/O) — reads a SWE-bench dataset file (JSON array or
 // JSONL, one record per line) from disk and runs it through the PURE agent-core adapter to get
 // validated BenchmarkTask + SweBenchSetup bundles. All parsing/validation logic lives in

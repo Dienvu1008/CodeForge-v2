@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // NodeApprovalCoordinator (P10.5) — the human-in-the-loop bridge for tool approval.
 //
 // When the ToolPolicy flags a tool call as APPROVAL_PENDING (e.g. run_command under

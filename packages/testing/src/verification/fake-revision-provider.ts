@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // FakeRevisionProvider — deterministic test double for RevisionProvider (P1.5-VR1).
 // Returns a pre-configured WorkspaceRevision without touching the filesystem.
 import type { RevisionProvider } from '@codeforge/agent-core';

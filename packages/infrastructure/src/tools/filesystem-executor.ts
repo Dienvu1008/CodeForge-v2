@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // FilesystemExecutor — P3-FS1. Real filesystem tool execution.
 //
 // Implements ToolExecutor for the standard filesystem tools:

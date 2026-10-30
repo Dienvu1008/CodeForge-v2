@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migrations (P1-F3 + P1.5-DB2) — MIGRATION_SPEC §4-§5.
 export * from './types.js';
 export {

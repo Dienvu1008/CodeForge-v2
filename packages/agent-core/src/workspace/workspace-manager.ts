@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // WorkspaceManager contract — WORKSPACE_SPEC §3-§6, SECURITY_MODEL §6, P3-WM1.
 //
 // The single boundary through which ALL filesystem mutations and reads are routed.

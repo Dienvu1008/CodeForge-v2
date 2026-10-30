@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // GeminiModelGateway — a ModelGateway adapter for Google's Gemini models via the Generative
 // Language API (`POST <baseUrl>/models/<model>:generateContent`). Gemini does NOT speak the OpenAI
 // Chat Completions wire protocol for every key type (its OpenAI-compat endpoint 404s for AI Studio

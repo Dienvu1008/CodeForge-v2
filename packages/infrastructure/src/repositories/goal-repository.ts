@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteGoalRepository — DOMAIN_CONTRACTS §3, GL-001/GL-004.
 //
 // Goal is immutable + versioned: rows are keyed by (goal_id, version). `getById`

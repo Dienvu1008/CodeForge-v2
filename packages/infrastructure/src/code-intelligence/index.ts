@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Phase 6 — P6-TS1/SX1: Tree-sitter AST adapter + symbol extractor.
 export { TreeSitterAdapter, TreeSitterError } from './tree-sitter-adapter.js';
 export type { SyntaxNode, SyntaxTree, SyntaxMatch } from './tree-sitter-adapter.js';

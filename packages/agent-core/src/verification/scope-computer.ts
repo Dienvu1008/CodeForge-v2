@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ScopeComputer — VERIFICATION_PROTOCOL §3, §4.7, P1.5-VR1.
 //
 // Pure + deterministic scope computation (VR-010). No LLM, no I/O.

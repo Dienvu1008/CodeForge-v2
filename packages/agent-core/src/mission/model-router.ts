@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Model Registry + Requirement Analyzer + Router — Phase 12 (P12.4).
 //
 // MI-006: the router selects ONLY from models that are actually registered (real, available).

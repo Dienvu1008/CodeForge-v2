@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // CrashInjector interface (C10) — PHASE_0_ACCEPTANCE §4.5, EVALUATION_MODEL §8.
 //
 // Phase 0 delivers only the INTERFACE (so crash-recovery tests can be written against it).

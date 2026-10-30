@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SessionOrchestrator — P4-SO1. Full autonomous session loop.
 // GI-009: Planner returns GraphMutation; handed to GraphCommitService.
 // SC-003: task only READY when every dependency is PASSED.

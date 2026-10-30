@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Path canonicalizer (C3) — WORKSPACE_SPEC §3, PLATFORM_SUPPORT §5.
 export { PathError } from './errors.js';
 export type { PathErrorCode } from './errors.js';

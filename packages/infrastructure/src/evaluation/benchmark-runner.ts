@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // BenchmarkRunner — orchestrates one benchmark run (infrastructure). For each task it:
 //   1. creates an isolated throwaway workspace and seeds it (never the dev repo — §12),
 //   2. invokes the injected AgentRunner (the REAL CodeForge runtime, or FakeModel in CI),

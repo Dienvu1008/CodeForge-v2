@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Budget — DOMAIN_CONTRACTS §15. Hierarchical, child <= parent remaining (BU-*).
 //
 // Parent tree (Coding Agent Architecture Target §35, VERIFICATION_PROTOCOL §14.1):

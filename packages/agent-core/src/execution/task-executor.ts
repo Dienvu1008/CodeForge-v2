@@ -1,4 +1,9 @@
-﻿// TaskExecutor — P3-TE1 + P4-AP1 + P4-IK1. Orchestrates one TaskRun end-to-end.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// TaskExecutor — P3-TE1 + P4-AP1 + P4-IK1. Orchestrates one TaskRun end-to-end.
 //
 // Flow for a single TaskRun:
 //   1. Start TaskRun via TaskRunService (EX-004: anchor required).

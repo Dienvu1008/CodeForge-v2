@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TrustMarker — CONTEXT_SPEC §9, P2-CX1.
 //
 // Deterministic assignment of TrustLevel per ContextSource.kind.

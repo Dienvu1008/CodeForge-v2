@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // OllamaModelAdmin — Ollama MODEL MANAGEMENT client (list + pull). This is deliberately SEPARATE
 // from OllamaModelGateway: MG-001 keeps the gateway the single boundary for LLM *generation*
 // calls, while model administration (listing installed models, downloading new ones) is an

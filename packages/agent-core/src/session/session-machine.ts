@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SessionStateMachine (P1-S1) — STATE_MACHINE_SPEC SM-SESSION §3, DOMAIN_CONTRACTS §25.1.
 //
 // PURE + DETERMINISTIC (SM-001): transition() is a total function of

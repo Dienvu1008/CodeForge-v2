@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration 0006 -- Phase 11 learning table (v6). P11.2.
 // Additive-only: migrations v1-v5 are NOT touched.
 // Single learning_lessons table keyed by scope + kind (PHASE_11_ROADMAP §3.2).

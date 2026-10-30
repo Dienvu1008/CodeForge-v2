@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SQLite adapter contract — INFRASTRUCTURE_SPEC §3.2, §3.3.
 //
 // Driver-agnostic types. The concrete impl (better-sqlite3) lives in database.ts;

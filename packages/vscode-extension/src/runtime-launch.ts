@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // runtime-launch.ts (P12.23) — PURE, OFFLINE-TESTABLE helpers for the "Start Runtime Here"
 // command. It builds the `node runtime-cli.js ...` argv and resolves the runtime entry path
 // WITHOUT importing `vscode` or `child_process`, so the decision logic (which path, which flags)

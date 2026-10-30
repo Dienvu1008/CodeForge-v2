@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Learning — Phase 11 (P11.2). Distilled "lessons" derived from run history.
 //
 // A Lesson is a STRUCTURED, append-only fact about how past runs behaved — e.g. "for

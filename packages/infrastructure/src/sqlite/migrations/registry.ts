@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration registry + engine — MIGRATION_SPEC §4, §5.4.
 //
 // Engine flow (§4.1, simplified for v1 single-user/local): DETECT current version

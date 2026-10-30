@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TokenBudgeter — CONTEXT_SPEC §8, P2-CX1.
 //
 // Fits ContextItems into the available token budget.

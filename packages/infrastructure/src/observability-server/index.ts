@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Observability server (Phase 9, P9.3) — protocol-agnostic service + node:http transport
 // + static dashboard client. Reads projections/trace, submits control via ControlPlane.
 export * from './observability-service.js';

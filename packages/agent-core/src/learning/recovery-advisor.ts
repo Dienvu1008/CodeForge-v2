@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RecoveryAdvisor — Phase 11 (P11.4). Reads a SelfModel and PROPOSES a recovery try-order for
 // a failure class, ranking actions this class has historically succeeded with first.
 //

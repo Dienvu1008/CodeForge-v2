@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Repository errors — DOMAIN_CONTRACTS §23.
 // Distinct from DbError (driver-level): these are domain-repository semantics.
 

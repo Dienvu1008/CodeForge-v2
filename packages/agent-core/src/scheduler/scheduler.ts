@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Scheduler (P1-SC1) — GRAPH_PROTOCOL §3, STATE_MACHINE_SPEC §4. Enforces SC-001..006.
 //
 // PURE + DETERMINISTIC (SC-001/SC-006): computeReady() and selectNext() are total

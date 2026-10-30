@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // VerificationReport — DOMAIN_CONTRACTS §9 + VERIFICATION_PROTOCOL §2. Append-only (VR-006).
 import type { WorkspaceRevision } from './workspace-revision.js';
 

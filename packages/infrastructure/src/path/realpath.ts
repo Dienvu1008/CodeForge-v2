@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Realpath resolution (filesystem-touching) — WORKSPACE_SPEC §3.1, §3.4.
 //
 // Resolves symlinks and enforces:

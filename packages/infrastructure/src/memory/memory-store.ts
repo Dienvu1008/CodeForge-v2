@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteMemoryStore — P7-MS1. Persistence for memory records (schema v5).
 //
 // Append-only (ME-003): insert only, no update/delete in the contract. Query

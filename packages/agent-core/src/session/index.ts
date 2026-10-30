@@ -1,4 +1,9 @@
-﻿// Session lifecycle (P1-S1) — STATE_MACHINE_SPEC SM-SESSION, DOMAIN_CONTRACTS §2.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// Session lifecycle (P1-S1) — STATE_MACHINE_SPEC SM-SESSION, DOMAIN_CONTRACTS §2.
 export * from './session-machine.js';
 export * from './workspace-lock.js';
 export * from './session-service.js';

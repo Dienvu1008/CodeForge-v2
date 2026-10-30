@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // DomainEvent — DOMAIN_CONTRACTS §18. Append-only, per-session monotonic sequence (OB-*, CP-008).
 import type { Provenance } from './provenance.js';
 

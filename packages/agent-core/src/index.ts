@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // @codeforge/agent-core
 //
 // Domain layer (Layer 2). MUST NOT import from infrastructure, models, or tools.

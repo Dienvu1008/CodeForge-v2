@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Security boundary — P1.5-SE1.
 // Enforces SE-001/002 (prompt injection), SE-003/010 (model output untrusted),
 // SE-004 (env allowlist). SE-005/PR-004 secret redaction lives in infrastructure/redaction.

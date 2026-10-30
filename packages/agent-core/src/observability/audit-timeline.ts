@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // AuditTimeline (P9.10) — pure, deterministic REPLAY/AUDIT view over the event log.
 // Enforces OB-004/OB-007.
 //

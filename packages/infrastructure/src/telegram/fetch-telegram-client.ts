@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // FetchTelegramClient (P9.8) — the real TelegramApiClient over the Bot API using global
 // fetch. Small and isolated at the network edge; NOT exercised in CI (needs a bot token).
 // All logic lives in TelegramCommandRouter; this only translates the two calls the

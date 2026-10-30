@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteTaskRunRepository — DOMAIN_CONTRACTS §23.4, RI-4/RI-7.
 //
 // TaskRun is immutable AFTER finalize. `create` inserts a RUNNING run; `finalize`

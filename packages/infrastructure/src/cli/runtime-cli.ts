@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // runtime-cli.ts — CodeForge v2 runtime entrypoint. Wires the deterministic kernel with
 // a real Ollama model and starts the ObservabilityServer so dashboard/Telegram/VS Code
 // can connect. This is a BOOTSTRAP — it assembles the library pieces; all logic lives in

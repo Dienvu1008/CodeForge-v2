@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Provenance — DOMAIN_CONTRACTS §19. Append-only; no unredacted secrets (PR-*).
 
 export type ProvenanceSourceKind = 'model' | 'user' | 'runtime' | 'tool' | 'workspace';

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // PromptBoundary — SECURITY_MODEL §3, P1.5-SE1.
 //
 // Enforces SE-001 (untrusted workspace content must not become runtime authority)

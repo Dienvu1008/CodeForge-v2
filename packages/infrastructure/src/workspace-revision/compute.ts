@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // WorkspaceRevision factory (C2) — WORKSPACE_SPEC §5.
 //
 // Computes an immutable WorkspaceRevision by hashing the workspace (C1) and stamping

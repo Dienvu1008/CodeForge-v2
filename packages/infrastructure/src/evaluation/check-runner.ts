@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // BenchmarkCheckRunner — runs a BenchmarkTask's deterministic checks against the isolated
 // workspace and returns CheckOutcome[]. This is the EXTERNAL, deterministic authority on
 // success (master prompt §11): the agent never judges itself; these checks do.

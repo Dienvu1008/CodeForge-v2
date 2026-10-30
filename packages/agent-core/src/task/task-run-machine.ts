@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TaskRunStateMachine (P1-T3) — STATE_MACHINE_SPEC SM-TASK-RUN §5.
 //
 // PURE + DETERMINISTIC: transition() is a total function of (state, event). TaskRun

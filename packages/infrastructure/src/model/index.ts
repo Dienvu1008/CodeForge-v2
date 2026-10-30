@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Phase 2 — P2-MG1: Ollama ModelGateway adapter.
 export { OllamaModelGateway } from './ollama-gateway.js';
 export type { OllamaConfig } from './ollama-gateway.js';

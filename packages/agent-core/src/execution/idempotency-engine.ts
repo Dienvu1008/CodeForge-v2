@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // IdempotencyEngine — P4-IK1. TG-006: ToolCall idempotency key computation + deduplication.
 //
 // Enforces TG-006: every ToolCall for a MODIFY_WORKSPACE / DESTRUCTIVE / SYSTEM tool

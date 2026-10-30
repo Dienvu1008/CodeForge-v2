@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteDatabaseAdapter — INFRASTRUCTURE_SPEC §3, backed by better-sqlite3.
 //
 // Deviation from spec §3.2 (documented): the interface is SYNCHRONOUS, not

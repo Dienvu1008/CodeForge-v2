@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Failure & RecoveryAction — DOMAIN_CONTRACTS §10, §11.
 
 export type FailureClass =

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ComplexityAnalyzer — Phase 12 (P12.2). Deterministic, multi-dimensional complexity scoring.
 //
 // Explicitly NOT "short prompt = simple, long prompt = complex" (§5). We score several objective

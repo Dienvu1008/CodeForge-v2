@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Secret redaction — SECURITY_MODEL §7.2, §7.3. Enforces PR-003 / SE-005 / PR-004.
 //
 // Pure string/JSON transform applied BEFORE anything is persisted to the event log,

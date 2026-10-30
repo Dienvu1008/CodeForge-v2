@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Path errors — WORKSPACE_SPEC §14.2, SECURITY_MODEL §6, PLATFORM_SUPPORT §5.3.
 // Enforce WS-003 (path traversal), WS-004 (symlink escape / loop).
 

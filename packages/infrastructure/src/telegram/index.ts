@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Telegram adapter (Phase 9, P9.8) — remote control + notification over the SAME
 // ObservabilityService / ControlPlane as the dashboard (OB-006). Offline-testable router
 // + thin network transport + a fetch-based default client (not exercised in CI).

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Retriever — CONTEXT_SPEC §4, P2-CX1 / P6-CR1.
 //
 // Phase 2 baseline: diff-based workspace files + direct-inject for task/goal/graph.

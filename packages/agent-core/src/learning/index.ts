@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Learning module — Phase 11 (Intelligence Plane / self-model / learning).
 //
 // Everything here is ADVISORY and holds NO runtime authority (LE-001). The SelfModel is a

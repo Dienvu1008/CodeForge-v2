@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ExecutionCoordinator (P1-T2) — DOMAIN_CONTRACTS §5, EX-002/EX-003.
 //
 // TaskExecution is a PROJECTION of a Task's run history, NOT an authority (EX-003):

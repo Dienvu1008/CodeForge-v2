@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ChangeRecord — DOMAIN_CONTRACTS §17 + WORKSPACE_SPEC §9. Append-only (WS-L1).
 export interface ChangeRecord {
   readonly changeId: string; // ULID

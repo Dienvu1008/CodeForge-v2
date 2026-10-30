@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteCheckpointRepository — DOMAIN_CONTRACTS §16, CP-002/CP-009.
 //
 // CP-002: all checkpoint metadata is written in ONE statement (a single INSERT is atomic),

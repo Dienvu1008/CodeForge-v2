@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // NodeToolExecutor — P3-TE1. Composite ToolExecutor that routes by toolName.
 //
 // Wraps the real tool executors (FilesystemExecutor, GitExecutor, ShellExecutor)

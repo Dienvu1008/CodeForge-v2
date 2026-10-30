@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // PlanningModeRouter — Phase 12 (P12.5). Deterministic decision table that maps a mission to a
 // PlanningMode (§15). Advisory (MI-001): it recommends HOW to plan; the Planner/kernel still
 // own the actual planning + commit (GI-009). Pure: same mission → same mode.

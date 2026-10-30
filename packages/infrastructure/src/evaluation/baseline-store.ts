@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // BaselineStore — filesystem persistence for evaluation baselines + machine-readable run results
 // (§13, §16). JSON files under a baselines directory. Deterministic layout; append-only in spirit
 // (a baseline is identified by label; re-recording the same label overwrites intentionally).

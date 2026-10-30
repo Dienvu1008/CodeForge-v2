@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Context module — P2-CX1 (CX-001..006, PR-002).
 export { countTokens, countPromptTokens } from './token-counter.js';
 export { assignTrust, isUntrustedSource } from './trust-marker.js';

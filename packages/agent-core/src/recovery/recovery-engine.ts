@@ -1,4 +1,9 @@
-﻿// RecoveryEngine — P5-RE1. Executes a chosen recovery action and records provenance.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// RecoveryEngine — P5-RE1. Executes a chosen recovery action and records provenance.
 //
 // Enforces:
 //   RC-004: ROLLBACK only when explicitly passed — engine does not re-check policy.

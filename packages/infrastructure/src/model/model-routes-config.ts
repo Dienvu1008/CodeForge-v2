@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // model-routes-config — load + validate a per-purpose model-routing config from a JSON file, and
 // resolve it into a RoutingGatewayConfig the RoutingModelGateway consumes.
 //

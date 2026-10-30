@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RiskAnalyzer — Phase 12 (P12.2). Deterministic risk assessment over objective keyword
 // dimensions (§6). This component only RECOMMENDS what should be required — the existing
 // approval/policy system (ToolPolicy, ApprovalCoordinator) stays authoritative (MI-001).

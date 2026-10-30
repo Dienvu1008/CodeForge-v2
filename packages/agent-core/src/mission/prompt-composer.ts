@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // PromptComposer — Phase 12 (P12.8). §17. Deterministic, PURE assembly of prompt-shaping hints
 // from a Mission, so the executor/planner prompt ADAPTS to the task type, complexity, and the
 // model's strength instead of being one static string for every task and every model.

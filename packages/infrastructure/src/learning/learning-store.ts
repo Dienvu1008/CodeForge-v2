@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteLearningStore — P11.2. Persistence for lessons (schema v6).
 //
 // Append-only (LE-005): insert only, no update/delete in the contract. Query ordering is

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Metrics computation — pure (agent-core). Derives Metric readings from the evidence a runner
 // collects for a case: the check outcomes, the runtime trace (DomainEvents), the set of changed
 // files, and timing. The metric SET is open (§15): add a producer here without touching the

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ToolGateway — SECURITY_MODEL §5, DOMAIN_CONTRACTS §12, P1.5-TG1.
 //
 // The single boundary through which the runtime executes any tool (TG-001).

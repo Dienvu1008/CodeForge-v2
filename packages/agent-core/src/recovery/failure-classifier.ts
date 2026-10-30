@@ -1,4 +1,9 @@
-﻿// FailureClassifier — P5-FA1. Deterministic mapping from VerificationReport/TaskRun signals
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// FailureClassifier — P5-FA1. Deterministic mapping from VerificationReport/TaskRun signals
 // to a FailureClass. Pure + deterministic — same input → same output (RC-003 spirit).
 //
 // Classification priority (checked in order):

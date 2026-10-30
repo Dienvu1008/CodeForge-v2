@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Cycle detection (P1-G2) — GRAPH_PROTOCOL §5.6, GI-004.
 //
 // Pure DFS 3-color cycle detection over a directed edge set. Implements the Phase 0

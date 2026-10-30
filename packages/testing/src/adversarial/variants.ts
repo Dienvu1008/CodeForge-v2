@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // The 7 adversarial variants (C8) — AM-2..AM-8. Each maps to invariants from INVARIANTS §7.
 import { FakeModel } from '../fake-model/fake-model.js';
 import type { AdversarialModel, AdversaryId, AttackVector } from './types.js';

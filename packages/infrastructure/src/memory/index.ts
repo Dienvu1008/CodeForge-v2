@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Phase 7 — P7-MS1: Memory store (SQLite); P7-RAG1: RAG retrievers.
 export { SqliteMemoryStore } from './memory-store.js';
 export { DocRetriever, type DocQuery } from './doc-retriever.js';

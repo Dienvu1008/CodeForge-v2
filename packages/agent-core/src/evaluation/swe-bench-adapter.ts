@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SWE-bench adapter (agent-core, PURE) — EVALUATION_MODEL §external benchmarks.
 //
 // Maps an official SWE-bench task record into CodeForge's own BenchmarkTask so a SWE-bench

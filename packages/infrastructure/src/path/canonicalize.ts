@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Lexical path canonicalization — WORKSPACE_SPEC §3, PLATFORM_SUPPORT §5.
 //
 // "Lexical" = string-level only, no filesystem access. Deterministic.

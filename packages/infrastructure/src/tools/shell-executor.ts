@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ShellExecutor — P3-SH1. Allowlisted run_command via NodeProcessSupervisor.
 //
 // Implements ToolExecutor for the `run_command` tool.

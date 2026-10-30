@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SwitchableRuntimeModelSelector — the infrastructure side of P12.9 mission-driven routing.
 //
 // agent-core's orchestrator hands this a MODEL ID the mission router chose (it never knows the

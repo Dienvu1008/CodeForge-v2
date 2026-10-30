@@ -1,4 +1,9 @@
-﻿// NoProgressDetector — P5-NPD1 / P7-NPD2. Deterministic detection of "stuck" loops.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// NoProgressDetector — P5-NPD1 / P7-NPD2. Deterministic detection of "stuck" loops.
 //
 // Enforces RC-002 (bounded) and RC-003 (deterministic):
 //   - Same input signals → same output (RC-003).

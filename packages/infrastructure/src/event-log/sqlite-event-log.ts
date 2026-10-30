@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteEventLog (P1-F4) — DOMAIN_CONTRACTS §18, implements agent-core EventLog.
 //
 // Enforces:

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // UncertaintyAnalyzer — Phase 12 / Tier A (goal clarification groundwork). Deterministic
 // assessment of HOW UNDER-SPECIFIED a goal is, from objective signals only (MI-005 spirit:
 // same signals → same assessment). This fills the `uncertainty` field of a Mission with a real

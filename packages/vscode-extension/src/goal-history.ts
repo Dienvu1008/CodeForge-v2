@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // goal-history.ts (P12.23) — PURE, OFFLINE-TESTABLE model for the Goals panel's conversational
 // history. This is NOT a chatbot: each entry is ONE goal the user submitted, shown as a message,
 // and the runtime "replies" with REAL progress (a session is created, tasks run, verification

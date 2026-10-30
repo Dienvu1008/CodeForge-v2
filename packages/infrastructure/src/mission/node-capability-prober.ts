@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // NodeCapabilityProber — P12.3 (infrastructure). Runs a capability probe via the
 // ProcessSupervisor and maps the SpawnResult/SpawnError to a ProbeOutcome. This is the I/O
 // side of capability verification (MI-003): the pure core (verdictFromOutcome) decides the

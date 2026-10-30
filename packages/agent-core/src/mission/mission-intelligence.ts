@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // MissionIntelligence — Phase 12 (P12.7). The optional pre-planning stage that assembles a
 // Mission from the deterministic analyzers, (for complex missions) proposes an architecture and
 // runs the deterministic ArchitectureGate, emits MISSION_* audit events, and returns an ADVISORY

@@ -1,4 +1,9 @@
-﻿// SqliteFailureRepository + SqliteRecoveryActionRepository — P5-FA1/RE1.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// SqliteFailureRepository + SqliteRecoveryActionRepository — P5-FA1/RE1.
 // failures and recovery_actions tables (schema migration v2).
 import type { Failure, RecoveryAction } from '@codeforge/agent-core';
 import type { FailureRepository, RecoveryActionRepository } from '@codeforge/agent-core';

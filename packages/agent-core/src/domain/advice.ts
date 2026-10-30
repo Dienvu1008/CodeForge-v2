@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Advice — Phase 11 (P11.3). The ONLY shape in which the learning layer may influence a
 // runtime decision. Advice is produced by advisors (P11.4+), but a consumer never reads an
 // advisor's raw output: it reads a SafeAdvice that an AdviceGate has clamped into the

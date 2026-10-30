@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Graph canonical form (P1-G1) — GRAPH_PROTOCOL §2.3.
 //
 // canonicalHash = hash( sort(nodes by taskId), sort(edges by (fromTaskId, toTaskId, kind)) ).

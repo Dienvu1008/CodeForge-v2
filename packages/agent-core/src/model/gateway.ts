@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ModelGateway contract — Coding Agent Architecture Target §19-20, CONTEXT_SPEC §14,
 // SECURITY_MODEL §4, §10. All LLM calls go through this (MG-001). Output is UNTRUSTED
 // (SE-010) and must pass structured validation before becoming a proposal (MG-002).

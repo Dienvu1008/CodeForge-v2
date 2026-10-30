@@ -1,4 +1,9 @@
-﻿// FailureAnalyzer — P5-FA1. Builds a Failure record from observable signals.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// FailureAnalyzer — P5-FA1. Builds a Failure record from observable signals.
 //
 // Orchestrates:
 //   1. classifyFailure() → FailureClass (deterministic, RC-001).

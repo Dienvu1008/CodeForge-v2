@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TreeSitterAdapter — P6-TS1. AST parsing via web-tree-sitter (cross-platform WASM).
 //
 // Uses web-tree-sitter (WASM) — no native addon, works on Windows/Linux/macOS.

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Workspace walk — WORKSPACE_SPEC §6.2.
 //
 // Produces a deterministic list of entries (FILE | SYMLINK | DIR) with canonical

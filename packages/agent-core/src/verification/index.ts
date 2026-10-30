@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Verification module — P1.5-VR1/VR2.
 // VerificationPolicy, AffectedSet, Freshness, ScopeComputer,
 // VerificationEngine, CompletionGate (TI-005 northstar).

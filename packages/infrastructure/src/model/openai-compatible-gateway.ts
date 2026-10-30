@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // OpenAiCompatibleModelGateway — a ModelGateway adapter for any server speaking the OpenAI
 // Chat Completions API (`POST <baseUrl>/chat/completions`). This one adapter covers a large set
 // of providers — OpenAI itself, OpenRouter, Groq, Together, DeepSeek, Mistral, and local servers

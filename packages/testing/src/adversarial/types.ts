@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // AdversarialModel (C8) — EVALUATION_MODEL §5.5/§6, PHASE_0_ACCEPTANCE §3.11, INVARIANTS §7.
 //
 // An AdversarialModel is a ModelGateway double that deliberately emits MALICIOUS proposals,

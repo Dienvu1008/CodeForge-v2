@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // StructuredOutputValidator — SECURITY_MODEL §4, P1.5-SE1.
 //
 // Enforces SE-010 (model output is untrusted input) and SE-003 (LLM cannot bypass

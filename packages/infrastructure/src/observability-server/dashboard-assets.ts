@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Dashboard assets (P9.3) — a minimal, framework-free static client served by
 // HttpTransport. It is a pure CONSUMER: it renders the RuntimeProjection + ActivityTrace
 // and sends ControlRequests to POST /control. It holds no authoritative state (OB-005)

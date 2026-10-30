@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // AssumptionAdvisor — Phase 12 / Tier B1 (goal clarification, option (ii): assume + state).
 //
 // When a goal is under-specified (Mission.uncertainty ≥ INFERRED), instead of stopping to ask the

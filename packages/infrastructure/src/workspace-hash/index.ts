@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Canonical workspace hash (C1) — WORKSPACE_SPEC §6.
 export {
   computeWorkspaceHash,

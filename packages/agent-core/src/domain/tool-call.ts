@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ToolCall & Approval — DOMAIN_CONTRACTS §12, §13.
 import type { ToolCallState } from '../state-machine/states.js';
 import type { Provenance } from './provenance.js';

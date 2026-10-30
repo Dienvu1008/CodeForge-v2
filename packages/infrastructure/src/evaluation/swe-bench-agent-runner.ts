@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SweBenchAgentRunner (infrastructure) — the AgentRunner the BenchmarkRunner invokes for a
 // SWE-bench case. It threads the SWE-bench harness phases around the real CodeForge runtime, all
 // INSIDE the single AgentRunner.run() call so the BenchmarkRunner's existing order holds:

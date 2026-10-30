@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // InterventionRecord (P9.9) — a unified, auditable record of a human/control
 // intervention (pause/resume/cancel/approve/deny/retry/checkpoint). Enforces OB-006.
 //

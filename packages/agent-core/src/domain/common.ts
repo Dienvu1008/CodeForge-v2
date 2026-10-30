@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Shared value objects — DOMAIN_CONTRACTS §3, §4.
 // All domain types are readonly (DT-20: immutable types have `readonly`).
 

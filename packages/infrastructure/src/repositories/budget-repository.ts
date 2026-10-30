@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteBudgetRepository — DOMAIN_CONTRACTS §15, BU-001/003/005.
 //
 // `consume` is the atomic decrement (BU-003): read → check overrun → write, all in ONE

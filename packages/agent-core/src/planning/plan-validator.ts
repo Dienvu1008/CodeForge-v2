@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // PlanValidator — P2-PL1. Thin deterministic wrapper over GraphValidator.
 //
 // Validates a GraphMutation before it is committed. Pure + deterministic (no LLM).

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteGraphCommitter (P1-G3) — GRAPH_PROTOCOL §7, GI-008 (atomic commit).
 //
 // Executes a CommitPlan in ONE SQLite transaction: graph version header + nodes + edges,

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteVerificationRepository — DOMAIN_CONTRACTS §23.5, RI-5.
 //
 // VerificationReport is append-only (VR-006): create + read only, no update/delete.

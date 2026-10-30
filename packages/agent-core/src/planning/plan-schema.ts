@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // PlanSchema — P2-PL1. JSON schema for structured Planner output.
 //
 // The Planner asks the model to return a JSON object matching this shape.

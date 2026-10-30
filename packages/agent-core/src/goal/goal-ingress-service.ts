@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // GoalIngressService (P10.9) — the runtime entry point for NEW goals submitted while the
 // agent is already running (e.g. a dashboard/Telegram/API "do X" request), as opposed to
 // the single --goal supplied at process start.

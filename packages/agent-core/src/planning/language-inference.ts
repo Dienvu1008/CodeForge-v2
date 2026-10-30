@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // language-inference.ts (P12.24) — PURE, DETERMINISTIC inference of the target language/framework
 // for a planning goal, so the Planner stops defaulting to TypeScript. No I/O, no randomness: it
 // looks at (1) the EXISTING workspace (manifest files + source extensions — strong evidence) and

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ContextReranker — Phase 11 (P11.5). Applies gated learning advice to re-rank context items
 // WITHIN the existing deterministic candidate list. It is a pure, standalone post-step: it
 // never calls the Retriever, never changes the candidate SET, and never touches pinned items.

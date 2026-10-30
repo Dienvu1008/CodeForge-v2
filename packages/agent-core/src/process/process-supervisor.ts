@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ProcessSupervisor — SECURITY_MODEL §9, PHASE_1_5_ROADMAP §4.1.
 //
 // Contract for supervised process execution. Enforces:

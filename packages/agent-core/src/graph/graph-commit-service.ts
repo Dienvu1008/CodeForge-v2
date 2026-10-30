@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // GraphCommitService (P1-G3) — GRAPH_PROTOCOL §7. Enforces GI-002, GI-007, GI-008.
 //
 // Orchestrates the deterministic commit decision:

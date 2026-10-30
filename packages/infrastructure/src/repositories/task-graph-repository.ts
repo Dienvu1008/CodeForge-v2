@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteTaskGraphRepository — DOMAIN_CONTRACTS §23.3, GRAPH_PROTOCOL §4, RI-3.
 //
 // A TaskGraph version is stored across three tables (header/nodes/edges). `commit`

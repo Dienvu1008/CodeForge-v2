@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // OllamaModelGateway — P2-MG1. SECURITY_MODEL §10, Coding Agent Architecture §19.
 //
 // The Ollama HTTP adapter. Implements the ModelGateway contract so the domain never

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // FakeModel (C9) — EVALUATION_MODEL §5, PHASE_0_ACCEPTANCE §3.12 (FM-1..FM-8).
 //
 // A deterministic ModelGateway double so the runtime can be tested WITHOUT a real LLM.

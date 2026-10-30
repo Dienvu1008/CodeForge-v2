@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ControlPlane (P9.7) — the single admission point for every external control action
 // (dashboard button, Telegram command, VS Code, CLI). Enforces OB-006.
 //

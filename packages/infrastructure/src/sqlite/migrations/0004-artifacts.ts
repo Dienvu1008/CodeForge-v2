@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration 0004 -- Phase 3 artifacts table (v4). P3-AS1.
 // Additive-only: migrations v1-v3 are NOT touched.
 // The artifacts table stores metadata only; binary content lives on disk.

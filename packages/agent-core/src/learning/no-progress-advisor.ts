@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // NoProgressAdvisor — Phase 11 (P11.5). Proposes an EARLY "likely stuck" nudge from history,
 // so a session that keeps hitting a recurring failure signature can be flagged sooner.
 //

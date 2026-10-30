@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Benchmark loader + validator — pure (agent-core). Turns untrusted plain objects (parsed from
 // JSON dataset files by an infrastructure adapter) into validated BenchmarkTask / Benchmark
 // values, or a list of structured errors. No I/O here: the caller reads files; this validates.

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // model-registry-config — load a multi-model registry from a JSON file so mission-driven routing
 // (P12.9) has more than one model to choose from. Each entry describes a model BOTH to the router
 // (id + tier + capabilities, consumed by agent-core's ModelRegistry/routeModel) AND to the runtime

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Task service (P1-T1) — DOMAIN_CONTRACTS §4, TI-001..TI-004.
 // TaskStateMachine (P1-SM1) — SM-TASK §4, SM-001..003/005.
 // TaskRun (P1-T3) — SM-TASK-RUN §5, EX-001/004/005.

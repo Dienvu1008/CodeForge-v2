@@ -1,4 +1,9 @@
-﻿// Recovery module — P1-CR1 crash recovery + P5-FA1/RP1/NPD1 failure analysis.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// Recovery module — P1-CR1 crash recovery + P5-FA1/RP1/NPD1 failure analysis.
 // DOMAIN_CONTRACTS §10, §11.
 
 // Phase 1 — P1-CR1: CrashRecoveryService

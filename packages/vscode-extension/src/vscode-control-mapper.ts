@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // VscodeControlMapper (P9.11) — PURE, OFFLINE-TESTABLE mapping layer between VS Code
 // commands / webview messages and the ControlRequest shape the ObservabilityService
 // expects. No `vscode` import here — this file uses only @codeforge/agent-core types, so

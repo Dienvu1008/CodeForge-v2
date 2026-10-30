@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteTaskExecutionRepository — DOMAIN_CONTRACTS §5, EX-003.
 //
 // TaskExecution is a projection (EX-003: not authority). `upsert` replaces the row

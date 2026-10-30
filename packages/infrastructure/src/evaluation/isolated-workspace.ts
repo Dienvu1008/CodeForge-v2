@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // IsolatedWorkspace — materializes a BenchmarkTask's seed files into a throwaway temp directory,
 // tracks which files changed after the agent runs, and cleans up. Benchmark execution must NEVER
 // touch the developer's real workspace (master prompt §12): every case gets its own directory

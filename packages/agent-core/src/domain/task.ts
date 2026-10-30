@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Task, TaskExecution, TaskRun — DOMAIN_CONTRACTS §4, §5, §6.
 import type { AcceptanceCriterion, Constraint, TaskStrategy } from './common.js';
 import type { TaskState, TaskRunState } from '../state-machine/states.js';

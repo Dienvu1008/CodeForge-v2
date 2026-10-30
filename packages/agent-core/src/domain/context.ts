@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ContextSnapshot — DOMAIN_CONTRACTS §14 + CONTEXT_SPEC §2. Immutable, versioned (CX-*).
 import type { WorkspaceRevision } from './workspace-revision.js';
 import type { Provenance } from './provenance.js';

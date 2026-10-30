@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TokenCounter — CONTEXT_SPEC §8, P2-CX1.
 //
 // Pure, deterministic heuristic token counter. No model tokenizer dependency.

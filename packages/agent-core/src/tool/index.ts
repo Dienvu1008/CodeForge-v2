@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Tool module — P1.5-TG1.
 // ToolCallStateMachine, ToolPolicy, ToolGateway (TG-001..005, TG-007, TG-009, TG-010).
 export {

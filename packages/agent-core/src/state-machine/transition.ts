@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Transition machinery types — STATE_MACHINE_SPEC §1, §16, §18. SM-5, SM-6, SM-8.
 //
 // Transition is a DETERMINISTIC, PURE function of (state, event, context) — no LLM, no I/O,

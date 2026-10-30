@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // import-wiring-hint.ts (P12.30) — PURE, DETERMINISTIC cross-file wiring hint for the executor
 // prompt. The dominant failure mode of 7-9B local models is writing each file correctly in
 // isolation but forgetting to wire imports/requires between them (e.g. a class defined in

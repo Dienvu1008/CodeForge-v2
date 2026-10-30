@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // provider-adapter — the shared ProviderSpec type + the deterministic factory that turns a spec
 // into a concrete ModelGateway adapter. Kept in its own module so BOTH the SwitchableModelGateway
 // (runtime model/provider switch) and the RoutingModelGateway (per-purpose routing) build adapters

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ProjectInspector (P10.1) — detects ProjectSignals from a workspace on disk, so the
 // pure buildVerificationPolicy() can derive real build/test/lint checks. This is the I/O
 // side (infrastructure); the policy logic stays pure in agent-core.

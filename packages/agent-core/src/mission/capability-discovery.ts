@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // CapabilityDiscovery — Phase 12 (P12.3). Orchestrates probing + inventory to produce VERIFIED
 // capabilities and a PreflightReport. Advisory: it reports facts verified by the prober; it
 // decides nothing about execution. Lives in agent-core; the prober (I/O) is injected (DC-002).

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ArchitectureGate — Phase 12 (P12.6). §16/§18. A PURE, deterministic gate that evaluates an
 // architecture blueprint (an UNTRUSTED LLM proposal, SE-010) against the mission facts and the
 // verified preflight report, and returns PASS or BLOCK.

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration 0001 — initial schema (v1). MIGRATION_SPEC §5.2, DOMAIN_CONTRACTS §2-§20.
 //
 // Design: queryable identity/reference/state fields are real columns (indexable,

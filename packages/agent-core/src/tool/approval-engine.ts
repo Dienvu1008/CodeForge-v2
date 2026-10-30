@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ApprovalEngine — SECURITY_MODEL §5.4, DOMAIN_CONTRACTS §13, P1.5-TG2.
 //
 // Dedicated service for all human-interaction approval lifecycle:

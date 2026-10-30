@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Case sensitivity — WORKSPACE_SPEC §3.3, PLATFORM_SUPPORT §7.1.
 //
 // Policy MUST NOT be hardcoded per-OS; detect at runtime for the actual workspace root

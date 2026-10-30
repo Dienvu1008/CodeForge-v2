@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // ToolRegistry — P3-TR1. Coding Agent Architecture §21/§22.
 //
 // Central registry of all available tools. Each tool has:

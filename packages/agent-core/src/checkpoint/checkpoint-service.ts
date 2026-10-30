@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // CheckpointService (P1-C1) — DOMAIN_CONTRACTS §16, WORKSPACE_SPEC §10.
 // Enforces CP-002/003/009/010/011/012.
 //

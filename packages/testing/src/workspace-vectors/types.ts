@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Workspace vector definitions (A3) — WORKSPACE_SPEC §7.
 //
 // A vector is a DECLARATIVE description of a workspace tree. The builder materializes it

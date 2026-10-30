@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // @codeforge/infrastructure
 //
 // Adapter layer (Layer 4). Implements domain interfaces from @codeforge/agent-core.

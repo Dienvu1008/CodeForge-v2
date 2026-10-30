@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // tool-call-schema — P3-TE1. JSON schema for the model's tool-call proposal.
 //
 // The model may respond with either:

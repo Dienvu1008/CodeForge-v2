@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // DogfoodMetrics (P9.12) — pure, deterministic measurement of a session's autonomous
 // behavior, derived from the (already-redacted) event log. This is the EMPIRICAL
 // substrate the master prompt asks for: once CodeForge runs real tasks, these metrics

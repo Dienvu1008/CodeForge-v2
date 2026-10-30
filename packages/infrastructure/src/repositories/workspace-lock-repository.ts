@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteWorkspaceLockService (P1-S1) — enforces SS-001 (one active session/workspace).
 //
 // acquire() checks-and-inserts inside a transaction; the partial unique index

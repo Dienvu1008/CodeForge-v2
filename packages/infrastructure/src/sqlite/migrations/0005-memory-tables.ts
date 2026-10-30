@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration 0005 -- Phase 7 memory table (v5). P7-MS1.
 // Additive-only: migrations v1-v4 are NOT touched.
 // Single memory_records table keyed by kind + scope (PHASE_7_ROADMAP Appendix A).

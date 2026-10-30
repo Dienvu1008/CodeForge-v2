@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Goal service (P1-S2) — DOMAIN_CONTRACTS §3, GL-001..GL-004.
 // NOTE: the Goal entity type is exported from domain/goal.ts (Phase 0).
 export * from './goal-service.js';

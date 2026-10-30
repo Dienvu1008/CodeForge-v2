@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Canonical line format — WORKSPACE_SPEC §6.3, §7.4 (v020).
 //
 // Format (unified for all entry types):

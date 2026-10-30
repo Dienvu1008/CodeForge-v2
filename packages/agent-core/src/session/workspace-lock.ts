@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // WorkspaceLock contract (P1-S1) — STATE_MACHINE_SPEC SM-LOCK §12, enforces SS-001.
 //
 // At most ONE active session per workspace (SS-001). The lock is the enforcement

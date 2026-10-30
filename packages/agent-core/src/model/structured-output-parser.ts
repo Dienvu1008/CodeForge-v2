@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // StructuredOutputParser — P2-MG2. SECURITY_MODEL §4, Coding Agent Architecture §20.
 //
 // Wraps validateModelOutput with a bounded retry loop (MG-003) and maps

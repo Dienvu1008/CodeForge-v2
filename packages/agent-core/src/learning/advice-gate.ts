@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // AdviceGate — Phase 11 (P11.3). The single deterministic chokepoint between the learning
 // layer and any runtime decision. No consumer may read an advisor's raw output; it must read
 // the result of AdviceGate.sanitize(), which clamps the proposal into the already-existing

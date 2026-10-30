@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Test harness (C10) — Phase0Harness runner + CrashInjector interface.
 export { Phase0Harness } from './harness.js';
 export type {

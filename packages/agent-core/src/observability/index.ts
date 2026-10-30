@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Observability (Phase 9) — pure, read-only derivations over authoritative state.
 // RuntimeProjection (P9.2) — dashboard read-model, not authority. OB-005.
 export * from './runtime-projection.js';

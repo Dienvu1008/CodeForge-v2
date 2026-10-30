@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // MissionContextStrategy — Phase 12 (P12.7). §19. Deterministic mapping from a Mission to a
 // recommended context scope for the ContextBuilder, so a trivial task does not load the whole
 // repository (CX-005: context is bounded; cost scales with the mission, §34).

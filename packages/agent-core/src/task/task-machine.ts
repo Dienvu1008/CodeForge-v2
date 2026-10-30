@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TaskStateMachine (P1-SM1) — STATE_MACHINE_SPEC SM-TASK §4. Enforces SM-001..003, SM-005.
 //
 // PURE + DETERMINISTIC (SM-001): transitionTask(state, event, ctx) is a total function of

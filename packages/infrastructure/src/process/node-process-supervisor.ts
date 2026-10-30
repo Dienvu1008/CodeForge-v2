@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // NodeProcessSupervisor — SECURITY_MODEL §9, P1.5-PS1.
 //
 // Node.js implementation of the ProcessSupervisor contract. Enforces SE-007 (timeout),

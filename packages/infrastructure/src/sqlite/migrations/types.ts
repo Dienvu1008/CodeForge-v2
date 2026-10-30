@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Migration types — MIGRATION_SPEC §2.2, §4, §5.
 import type { DatabaseAdapter } from '../types.js';
 

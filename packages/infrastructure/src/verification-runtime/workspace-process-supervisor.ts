@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // WorkspaceProcessSupervisor (P10.1) — a ProcessSupervisor adapter used for VERIFICATION
 // checks. The VerificationEngine (Phase 1.5, frozen) spawns checks with a hardcoded
 // cwd:'/' and env:{} and shell:false. Real tools (npm, npx, tsc) need (a) the workspace

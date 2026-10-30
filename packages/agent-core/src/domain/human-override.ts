@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // HumanOverride — DOMAIN_CONTRACTS §11 (implicit), VERIFICATION_PROTOCOL §11.
 //
 // A HUMAN_OVERRIDE_COMPLETED record marks that a user explicitly overrode the

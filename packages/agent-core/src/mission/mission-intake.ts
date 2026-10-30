@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // MissionIntake — Phase 12 (P12.2). Deterministic classification of a goal into a MissionType.
 //
 // Pure keyword taxonomy over the extracted signals (MI-005: same signals → same type). The

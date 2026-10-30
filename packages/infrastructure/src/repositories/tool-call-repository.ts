@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SqliteToolCallRepository + SqliteApprovalRepository — DOMAIN_CONTRACTS §12, §13.
 // schema v1 table: tool_calls (forward-designed in Phase 1).
 // schema v2 table: approvals (P1.5-DB2).

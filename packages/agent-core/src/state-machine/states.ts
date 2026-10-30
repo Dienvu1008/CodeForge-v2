@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // State enums for all 10 state machines — STATE_MACHINE_SPEC §2 registry.
 // String literal unions (not numeric) so states are readable/loggable/migratable (§23.1).
 // SM-1..SM-4, SM-7: enums + terminal sets.

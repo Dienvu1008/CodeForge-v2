@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Capability discovery contract + probe catalog + inventory — Phase 12 (P12.3).
 //
 // MI-003: a capability is only a usable execution prerequisite when VERIFIED, i.e. the runtime

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // RoutingModelGateway — a ModelGateway that routes each call to a provider/model chosen by the
 // call's PURPOSE (plan / execute / architect / critique / analyze_failure / summarize / replan).
 // This is the "shunt"-style idea: run reasoning-heavy purposes (plan, architect) on a strong

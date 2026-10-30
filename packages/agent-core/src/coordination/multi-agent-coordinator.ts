@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // MultiAgentCoordinator (P8-MA1) — deterministic merger of sub-agent output into
 // PROPOSALS. Enforces AU-002 (no new authority) and AU-007 (sub-agent output is a
 // proposal, never authority).

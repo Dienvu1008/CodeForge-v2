@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Execution — P1-T2 projection + P3-TE1 orchestrator + P4-AP1/IK1 wiring.
 // DOMAIN_CONTRACTS §5, EX-002/EX-003.
 export * from './execution-coordinator.js';

@@ -1,4 +1,9 @@
-﻿// Repository implementations (P1-F5) — DOMAIN_CONTRACTS §23.
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// Repository implementations (P1-F5) — DOMAIN_CONTRACTS §23.
 // EventLog impl lives in ../event-log (P1-F4).
 export * from './errors.js';
 export { SqliteSessionRepository } from './session-repository.js';

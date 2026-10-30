@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // TelegramCommandRouter (P9.8) — OFFLINE-TESTABLE translation of a chat command into a
 // read query or a ControlRequest, routed through the SAME ObservabilityService that the
 // dashboard uses. Enforces OB-006 (one control path): a Telegram "/pause" and a dashboard

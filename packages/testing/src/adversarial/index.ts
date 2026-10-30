@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // AdversarialModel (C8) — interface + 7 variants (AM-1..AM-8).
 export type { AdversarialModel, AdversaryId, AttackVector } from './types.js';
 export {

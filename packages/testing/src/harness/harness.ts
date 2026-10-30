@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Phase0Harness (C10) — PHASE_0_ACCEPTANCE §4.2.
 //
 // Loads the machine-readable registries (invariants.yaml, vectors manifest, scenarios.yaml)

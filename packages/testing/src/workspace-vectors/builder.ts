@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Vector builder (A3) — materializes a declarative vector into a real temp directory.
 import { mkdtemp, mkdir, writeFile, symlink, chmod, rm, realpath as fsRealpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

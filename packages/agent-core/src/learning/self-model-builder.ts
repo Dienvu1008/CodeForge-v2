@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SelfModelBuilder — Phase 11 (P11.1). Builds a read-only SelfModel from run history.
 //
 // Guarantees:

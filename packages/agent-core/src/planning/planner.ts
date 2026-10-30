@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Planner — P2-PL1. Coding Agent Architecture §14/§52, PHASE_2_ROADMAP §4.5.
 //
 // Translates Goal + Graph into a GraphMutation proposal via ModelGateway + ContextBuilder.

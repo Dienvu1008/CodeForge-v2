@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 DienVu (Dienvu1008)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Baseline comparison + regression detection + report rendering — pure (agent-core).
 //
 // Compares a current EvaluationResult against a baseline and classifies the delta (§30): a drop
