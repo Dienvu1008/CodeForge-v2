@@ -34,6 +34,7 @@
       { "command": "codeforge.goals",       "title": "CodeForge: Goals", "icon": "$(comment-discussion)" },
       { "command": "codeforge.pickModel",   "title": "CodeForge: Select Model" },
       { "command": "codeforge.pickProvider","title": "CodeForge: Select Provider", "icon": "$(plug)" },
+      { "command": "codeforge.clearApiKey", "title": "CodeForge: Clear Stored API Key" },
       { "command": "codeforge.dashboard",  "title": "CodeForge: Open Dashboard", "icon": "$(browser)" },
       { "command": "codeforge.refresh",    "title": "CodeForge: Refresh", "icon": "$(refresh)" },
       { "command": "codeforge.attachSession", "title": "CodeForge: Attach to Session" },
@@ -135,7 +136,7 @@
         "codeforge.apiKey": {
           "type": "string",
           "default": "",
-          "description": "API key for cloud providers (openai-compatible / gemini). Leave empty for local providers (Ollama, LM Studio). Stored in VS Code workspace or user settings — consider using a secrets manager for sensitive keys. Passed to the runtime as --api-key."
+          "description": "Legacy: API key stored in settings (plain text). Prefer using 'CodeForge: Select Provider' which stores the key in VS Code SecretStorage (encrypted, not visible in settings files or git). This field is still read as a fallback if no secret is stored."
         },
         "codeforge.port": {
           "type": "number",

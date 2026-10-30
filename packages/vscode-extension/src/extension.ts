@@ -327,32 +327,44 @@ function activateInner(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // ── Provider picker (A+B: preset list + manual entry) ───────────────────────
-  // Preset map: known provider id → { providerType, defaultEndpoint, hint }
-  type ProviderPresetInfo = { provider: 'ollama' | 'openai-compatible' | 'gemini'; endpoint: string; hint: string };
+  // ── Provider picker (P12.35 + P12.36: SecretStorage + deep links) ────────────
+  // Preset map: known provider id → { providerType, defaultEndpoint, hint, consoleUrl }
+  type ProviderPresetInfo = {
+    provider: 'ollama' | 'openai-compatible' | 'gemini';
+    endpoint: string;
+    hint: string;
+    /** URL to open when user needs to get a free API key. Undefined for local-only providers. */
+    consoleUrl?: string;
+  };
   const PROVIDER_PRESETS: Record<string, ProviderPresetInfo> = {
-    groq:       { provider: 'openai-compatible', endpoint: 'https://api.groq.com/openai/v1',                       hint: 'Groq — LPU inference, very fast, free tier. Get key: https://console.groq.com' },
-    cerebras:   { provider: 'openai-compatible', endpoint: 'https://api.cerebras.ai/v1',                           hint: 'Cerebras — fast inference, free tier. Get key: https://cloud.cerebras.ai' },
-    openrouter: { provider: 'openai-compatible', endpoint: 'https://openrouter.ai/api/v1',                         hint: 'OpenRouter — 200+ models, many free. Get key: https://openrouter.ai' },
-    deepseek:   { provider: 'openai-compatible', endpoint: 'https://api.deepseek.com/v1',                          hint: 'DeepSeek — cheap ($0.14/1M), high quality. Get key: https://platform.deepseek.com' },
-    sambanova:  { provider: 'openai-compatible', endpoint: 'https://api.sambanova.ai/v1',                          hint: 'SambaNova — free tier, Llama 3.1/3.3. Get key: https://cloud.sambanova.ai' },
-    together:   { provider: 'openai-compatible', endpoint: 'https://api.together.xyz/v1',                          hint: 'Together AI — open models. Get key: https://api.together.ai' },
-    mistral:    { provider: 'openai-compatible', endpoint: 'https://api.mistral.ai/v1',                            hint: 'Mistral AI. Get key: https://console.mistral.ai' },
-    xai:        { provider: 'openai-compatible', endpoint: 'https://api.x.ai/v1',                                  hint: 'xAI / Grok. Get key: https://console.x.ai' },
-    qwen:       { provider: 'openai-compatible', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',   hint: 'Qwen/Alibaba DashScope. Get key: https://dashscope.aliyun.com' },
-    gemini:     { provider: 'gemini',            endpoint: '',                                                      hint: 'Google Gemini — free tier. Get key: https://aistudio.google.com' },
-    lmstudio:   { provider: 'openai-compatible', endpoint: 'http://localhost:1234/v1',                             hint: 'LM Studio local server. No API key needed.' },
-    ollama:     { provider: 'ollama',            endpoint: 'http://localhost:11434',                               hint: 'Ollama local server. No API key needed.' },
+    groq:       { provider: 'openai-compatible', endpoint: 'https://api.groq.com/openai/v1',                     hint: 'Groq — LPU inference, very fast, free tier',        consoleUrl: 'https://console.groq.com/keys' },
+    cerebras:   { provider: 'openai-compatible', endpoint: 'https://api.cerebras.ai/v1',                         hint: 'Cerebras — fast inference, free tier',               consoleUrl: 'https://cloud.cerebras.ai' },
+    openrouter: { provider: 'openai-compatible', endpoint: 'https://openrouter.ai/api/v1',                       hint: 'OpenRouter — 200+ models, many free',               consoleUrl: 'https://openrouter.ai/settings/keys' },
+    deepseek:   { provider: 'openai-compatible', endpoint: 'https://api.deepseek.com/v1',                        hint: 'DeepSeek — cheap ($0.14/1M), high quality',         consoleUrl: 'https://platform.deepseek.com/api_keys' },
+    sambanova:  { provider: 'openai-compatible', endpoint: 'https://api.sambanova.ai/v1',                        hint: 'SambaNova — free tier, Llama 405B',                 consoleUrl: 'https://cloud.sambanova.ai/apis' },
+    together:   { provider: 'openai-compatible', endpoint: 'https://api.together.xyz/v1',                        hint: 'Together AI — open models',                         consoleUrl: 'https://api.together.ai/settings/api-keys' },
+    mistral:    { provider: 'openai-compatible', endpoint: 'https://api.mistral.ai/v1',                          hint: 'Mistral AI — Codestral for coding',                  consoleUrl: 'https://console.mistral.ai/api-keys/' },
+    xai:        { provider: 'openai-compatible', endpoint: 'https://api.x.ai/v1',                                hint: 'xAI / Grok models',                                 consoleUrl: 'https://console.x.ai' },
+    qwen:       { provider: 'openai-compatible', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', hint: 'Qwen / Alibaba DashScope',                           consoleUrl: 'https://dashscope.console.aliyun.com' },
+    gemini:     { provider: 'gemini',            endpoint: '',                                                    hint: 'Google Gemini — free tier (AI Studio)',              consoleUrl: 'https://aistudio.google.com/app/apikey' },
+    lmstudio:   { provider: 'openai-compatible', endpoint: 'http://localhost:1234/v1',                           hint: 'LM Studio local server — no API key needed' },
+    ollama:     { provider: 'ollama',            endpoint: 'http://localhost:11434',                             hint: 'Ollama local server — no API key needed' },
   };
 
-  /** Read current provider config from settings, resolving preset → endpoint. */
-  const resolveProviderSettings = (): { provider: 'ollama' | 'openai-compatible' | 'gemini'; endpoint: string; apiKey: string } => {
+  /** Secret key name for the stored API key (P12.36 SecretStorage). */
+  const SECRET_KEY = 'codeforge.apiKey';
+
+  /** Read current provider config from settings + SecretStorage, resolving preset → endpoint. */
+  const resolveProviderSettings = async (): Promise<{ provider: 'ollama' | 'openai-compatible' | 'gemini'; endpoint: string; apiKey: string }> => {
     const cfg = vscode.workspace.getConfiguration('codeforge');
     const preset = cfg.get<string>('providerPreset', '').trim();
     const info = preset !== '' ? PROVIDER_PRESETS[preset] : undefined;
     const provider = (info?.provider ?? cfg.get<string>('provider', 'ollama')) as 'ollama' | 'openai-compatible' | 'gemini';
     const endpoint = info?.endpoint ?? cfg.get<string>('endpoint', '').trim();
-    const apiKey = cfg.get<string>('apiKey', '').trim();
+    // P12.36: read from SecretStorage (preferred) or fall back to legacy settings field.
+    const secretKey = await context.secrets.get(SECRET_KEY) ?? '';
+    const legacyKey = cfg.get<string>('apiKey', '').trim();
+    const apiKey = secretKey !== '' ? secretKey : legacyKey;
     return { provider, endpoint, apiKey };
   };
 
@@ -380,18 +392,31 @@ function activateInner(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // Step 2: if cloud provider, prompt for API key
+      // Step 2: if cloud provider, prompt for API key with "Get free key" deep link
       const needsKey = info.provider !== 'ollama' && info.endpoint !== 'http://localhost:1234/v1';
       if (needsKey) {
-        const existingKey = cfg.get<string>('apiKey', '');
+        const existingKey = (await context.secrets.get(SECRET_KEY) ?? '').trim();
+        // B — offer "Open console" deep link if no key yet
+        if (existingKey === '' && info.consoleUrl !== undefined) {
+          const open = await vscode.window.showInformationMessage(
+            `No API key found for ${picked.label}. Get a free key from the provider console?`,
+            'Open console', 'I already have a key',
+          );
+          if (open === 'Open console') {
+            await vscode.env.openExternal(vscode.Uri.parse(info.consoleUrl));
+          }
+        }
         const key = await vscode.window.showInputBox({
           prompt: `API key for ${picked.label}`,
-          placeHolder: existingKey ? '(keep existing key — leave empty)' : 'Paste your API key here',
+          placeHolder: existingKey ? '(keep existing — leave empty to keep)' : 'Paste your API key here',
           password: true,
           value: '',
+          ignoreFocusOut: true, // keep prompt open while switching to browser
         });
         if (key !== undefined && key.trim() !== '') {
-          await cfg.update('apiKey', key.trim(), vscode.ConfigurationTarget.Workspace);
+          // A — store in SecretStorage, not in settings file
+          await context.secrets.store(SECRET_KEY, key.trim());
+          vscode.window.showInformationMessage(`CodeForge: API key saved securely (${picked.label}).`);
         }
       }
 
@@ -411,7 +436,7 @@ function activateInner(context: vscode.ExtensionContext): void {
         if (useDefault === 'Yes') await cfg.update('model', suggestedModel, vscode.ConfigurationTarget.Workspace);
       }
 
-      const { provider, endpoint } = resolveProviderSettings();
+      const { provider, endpoint } = await resolveProviderSettings();
       vscode.window.showInformationMessage(
         `CodeForge: provider set to ${picked.label} (${provider}${endpoint ? ' · ' + endpoint : ''}). Start the runtime to use it.`,
       );
@@ -440,7 +465,7 @@ function activateInner(context: vscode.ExtensionContext): void {
 
       const port = cfg.get<number>('port', 9500);
       // P12.35: read provider/endpoint/apiKey from settings (preset or manual).
-      const { provider, endpoint, apiKey } = resolveProviderSettings();
+      const { provider, endpoint, apiKey } = await resolveProviderSettings();
       const argv = buildRuntimeArgv({
         entryPath: entry, workspace: folder, model, port, autonomy: 'edits',
         ...(provider !== 'ollama' ? { provider } : {}),
@@ -486,6 +511,11 @@ function activateInner(context: vscode.ExtensionContext): void {
       runtimeProc.kill();
       runtimeProc = null;
       vscode.window.showInformationMessage('CodeForge: runtime stopped.');
+    }),
+    // A — clear the securely stored API key
+    vscode.commands.registerCommand('codeforge.clearApiKey', async () => {
+      await context.secrets.delete(SECRET_KEY);
+      vscode.window.showInformationMessage('CodeForge: stored API key cleared. Use "Select Provider" to set a new one.');
     }),
   );
 
