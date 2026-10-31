@@ -13,14 +13,18 @@ import {
   SqliteWorkspaceLockService,
   ObservabilityService,
   HttpTransport,
+  ClarificationCoordinator,
   runMigrations,
   createMigrationRegistry,
+  type ObservabilityServiceDeps,
 } from '@codeforge/infrastructure';
 import {
   ControlPlane,
   SessionService,
   ExecutionCoordinator,
+  buildClarificationRequest,
   type Session,
+  type ClarificationOutcome,
 } from '@codeforge/agent-core';
 
 function makeCounters(): { now: () => string; nextId: () => string } {
@@ -44,6 +48,8 @@ let db: SqliteDatabaseAdapter;
 let transport: HttpTransport;
 let base: string;
 let events: SqliteEventLog;
+/** The deps the default service was built with — reused to build variant services. */
+let serviceDeps: ObservabilityServiceDeps;
 
 beforeEach(async () => {
   db = new SqliteDatabaseAdapter(':memory:');
@@ -73,11 +79,12 @@ beforeEach(async () => {
   const coord = new ExecutionCoordinator({ executions, now: c.now });
   await coord.init('T1');
 
-  const service = new ObservabilityService({
+  serviceDeps = {
     sessions, graphs, executions, taskRuns, events, controlPlane: new ControlPlane(),
     sessionControl: { transition: (id, ev) => sessionSvc.transition(id, ev as never) },
     now: c.now, nextId: c.nextId,
-  });
+  };
+  const service = new ObservabilityService(serviceDeps);
   transport = new HttpTransport({ service, streamPollMs: 50 });
   const port = await transport.listen(0);
   base = `http://127.0.0.1:${port}`;
@@ -222,5 +229,157 @@ describe('P9.3 HttpTransport — SSE live tail (OB-009)', () => {
       controller.abort();
     }
     expect(buf).toContain('TASK_STATE_CHANGED');
+  });
+});
+
+// Goal clarification gate — POST /clarification contract (design C4).
+// A REAL ClarificationCoordinator is wired as the `clarification` port. Its session ports are
+// fakes (transition is a no-op; the reader reports a controllable state) so awaitAnswers() parks
+// without driving the real SQLite session. The ObservabilityService still resolves the session
+// against the real SQLite repo, where session 'S' exists (unknown ids → 404).
+// Requirements 1.5, 5.1–5.9, 6.3.
+describe('POST /clarification — contract', () => {
+  let clarifyTransport: HttpTransport;
+  let clarifyBase: string;
+  let coordinator: ClarificationCoordinator;
+  let fakeState: string;
+  let waiter: Promise<ClarificationOutcome> | undefined;
+
+  const request = buildClarificationRequest('REQ-1', 'M-1', 'G', ['What is the input?', 'What is the output?']);
+
+  /** Park a pending request for session 'S' (not awaited; terminated in afterEach). */
+  function startWaiter(): void {
+    waiter = coordinator.awaitAnswers('S', request);
+  }
+
+  function post(body: string, url = clarifyBase): Promise<Response> {
+    return fetch(`${url}/clarification`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body,
+    });
+  }
+  function postJson(payload: unknown, url = clarifyBase): Promise<Response> {
+    return post(JSON.stringify(payload), url);
+  }
+
+  beforeEach(async () => {
+    fakeState = 'AWAITING_HUMAN';
+    waiter = undefined;
+    coordinator = new ClarificationCoordinator({
+      sessionService: { transition: async () => undefined },
+      sessions: { getById: async () => ({ state: fakeState }) },
+      pollIntervalMs: 5,
+    });
+    const service = new ObservabilityService({ ...serviceDeps, clarification: coordinator });
+    clarifyTransport = new HttpTransport({ service, streamPollMs: 50 });
+    clarifyBase = `http://127.0.0.1:${await clarifyTransport.listen(0)}`;
+  });
+
+  afterEach(async () => {
+    // Make sure the waiter terminates: flipping the state ends the poll loop ('cancelled')
+    // if it was not already answered.
+    fakeState = 'CANCELLING';
+    if (waiter !== undefined) await waiter;
+    await clarifyTransport.close();
+  });
+
+  it('200 with {requestId, answered, skipped} and resolves the waiter', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'S', answers: { q1: 'a CSV file', q2: '   ' } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ requestId: 'REQ-1', answered: 1, skipped: 1 });
+    expect(await waiter).toEqual({ kind: 'answered', answers: { q1: 'a CSV file', q2: '' } });
+  });
+
+  it('400 invalid JSON body', async () => {
+    startWaiter();
+    const r = await post('{not json');
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'invalid JSON body' });
+  });
+
+  it('400 sessionId required (missing, empty string, number)', async () => {
+    startWaiter();
+    for (const payload of [
+      { answers: { q1: 'x' } },
+      { sessionId: '', answers: { q1: 'x' } },
+      { sessionId: 42, answers: { q1: 'x' } },
+    ]) {
+      const r = await postJson(payload);
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ error: 'sessionId required' });
+    }
+  });
+
+  it('400 answers required ({}, null, array, missing)', async () => {
+    startWaiter();
+    for (const payload of [
+      { sessionId: 'S', answers: {} },
+      { sessionId: 'S', answers: null },
+      { sessionId: 'S', answers: ['x'] },
+      { sessionId: 'S' },
+    ]) {
+      const r = await postJson(payload);
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ error: 'answers required' });
+    }
+  });
+
+  it('400 answers must be strings', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'S', answers: { q1: 7 } });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'answers must be strings' });
+  });
+
+  it('400 unknown question id', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'S', answers: { qX: 'x' } });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'unknown question id: qX' });
+  });
+
+  it('400 answer too long (501 chars)', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'S', answers: { q1: 'a'.repeat(501) } });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'answer too long' });
+  });
+
+  it('a rejected 400 does not consume the pending request (follow-up valid POST → 200)', async () => {
+    startWaiter();
+    expect((await postJson({ sessionId: 'S', answers: { qX: 'x' } })).status).toBe(400);
+    expect((await postJson({ sessionId: 'S', answers: { q1: 7 } })).status).toBe(400);
+    expect((await postJson({ sessionId: 'S', answers: { q1: 'a'.repeat(501) } })).status).toBe(400);
+    const r = await postJson({ sessionId: 'S', answers: { q1: 'in', q2: 'out' } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ requestId: 'REQ-1', answered: 2, skipped: 0 });
+  });
+
+  it('404 session not found', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'NOPE', answers: { q1: 'x' } });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ error: 'session not found' });
+  });
+
+  it('409 on a second submit after an accepted one', async () => {
+    startWaiter();
+    expect((await postJson({ sessionId: 'S', answers: { q1: 'x' } })).status).toBe(200);
+    const r = await postJson({ sessionId: 'S', answers: { q2: 'y' } });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: 'session not awaiting clarification' });
+  });
+
+  it('409 when the session has no pending request', async () => {
+    const r = await postJson({ sessionId: 'S', answers: { q1: 'x' } });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: 'session not awaiting clarification' });
+  });
+
+  it('501 clarification not enabled when the port is not wired', async () => {
+    // `base` is the default transport, built WITHOUT the clarification port.
+    const r = await postJson({ sessionId: 'S', answers: { q1: 'x' } }, base);
+    expect(r.status).toBe(501);
+    expect(await r.json()).toEqual({ error: 'clarification not enabled' });
   });
 });

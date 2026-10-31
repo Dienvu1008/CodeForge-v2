@@ -142,6 +142,11 @@
           "type": "number",
           "default": 9500,
           "description": "HTTP port the runtime's observability server listens on."
+        },
+        "codeforge.clarify": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ask clarifying questions in the Goals panel when a goal is ambiguous (starts the runtime with --mission on --clarify on)."
         }
       }
     }

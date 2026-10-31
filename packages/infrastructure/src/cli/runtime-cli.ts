@@ -46,6 +46,10 @@
 //                        on, an advisory stage verifies capabilities, routes the model, and
 //                        (for complex goals) proposes an architecture + runs a gate. Off =
 //                        byte-identical to Phase 11 (MI-002 fail-safe parity).
+//   --clarify <on|off>   Goal clarification gate (default: off; requires --mission on). When
+//                        on, an UNKNOWN goal pauses the session (AWAITING_HUMAN) and asks the
+//                        user via POST /clarification; skipped questions get stated defaults.
+//                        Off = assume-and-state (Tier B1) behavior, unchanged.
 import { resolve, join, relative, sep } from 'node:path';
 import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -83,7 +87,7 @@ import { inspectProject }                 from '../verification-runtime/index.js
 import { WorkspaceProcessSupervisor }     from '../verification-runtime/index.js';
 import { ContextCollector }               from '../context-runtime/index.js';
 import { LspPool }                         from '../code-intelligence/index.js';
-import { NodeApprovalCoordinator }         from '../approval-runtime/index.js';
+import { NodeApprovalCoordinator, ClarificationCoordinator } from '../approval-runtime/index.js';
 
 // Agent-core (pure domain)
 import {
@@ -200,6 +204,13 @@ async function main(): Promise<void> {
   // orchestrator is byte-identical to Phase 11 (MI-002 fail-safe parity). `--mission on` wires an
   // advisory analysis + verified preflight + architecture gate that runs ONCE before planning.
   const missionOn = (args['mission'] ?? 'off').toLowerCase() === 'on';
+  // Goal clarification gate: OFF by default. Only meaningful with the mission stage (it is the
+  // UNKNOWN detector) — without it the flag is ignored with a warning.
+  const clarifyArg = (args['clarify'] ?? 'off').toLowerCase() === 'on';
+  const clarifyOn = clarifyArg && missionOn;
+  if (clarifyArg && !missionOn) {
+    console.warn('  ⚠ --clarify on requires --mission on — clarification disabled');
+  }
   // Multi-provider: default 'ollama' (local). 'openai-compatible' targets any OpenAI Chat
   // Completions API (OpenAI, OpenRouter, Groq, Together, DeepSeek, LM Studio, …). For a cloud
   // provider pass the …/v1 base URL via --endpoint and the key via CODEFORGE_API_KEY (preferred,
@@ -431,6 +442,14 @@ async function main(): Promise<void> {
   // (MI-003), route the model within a REAL registry seeded from the configured Ollama model
   // (MI-006), and (for complex missions) propose an architecture + run the deterministic gate
   // (MI-007). When off, missionStage is undefined → Phase 11 behavior (MI-002 parity).
+  // With --clarify on, an UNKNOWN goal waits for the user's answers (POST /clarification) via
+  // the ClarificationCoordinator; SessionService stays the single transition authority (DC-002).
+  const clarificationCoordinator = clarifyOn
+    ? new ClarificationCoordinator({
+        sessionService: { transition: (id, ev, ctx) => sessionSvc.transition(id, ev as never, ctx as never) },
+        sessions,
+      })
+    : undefined;
   const missionStage = missionOn
     ? new MissionIntelligence({
         events,
@@ -458,9 +477,11 @@ async function main(): Promise<void> {
         // Tier B1: when a goal is under-specified, make explicit assumptions (option (ii)) instead
         // of stopping to ask — shown in the dashboard as the agent's reasoning.
         assumptionAdvisor: new AssumptionAdvisor({ gateway: model, now: rt.now, newProvenanceId: rt.nextId }),
+        ...(clarificationCoordinator !== undefined ? { clarificationGate: clarificationCoordinator } : {}),
       })
     : undefined;
   console.log(`  Mission:    ${missionOn ? 'ON (advisory pre-planning: preflight + model routing + architecture gate)' : 'off (Phase 11 behavior)'}`);
+  console.log(`  Clarify:    ${clarifyOn ? 'ON (ask the user when a goal is UNKNOWN)' : 'off (assume-and-state)'}`);
 
   // 8e. P12.9 mission-driven model routing. When the mission stage is ON and we're on the
   // switchable gateway (i.e. NOT --model-routes, where per-purpose routing already governs the
@@ -522,6 +543,8 @@ async function main(): Promise<void> {
     toolCalls: { listBySession: (sid) => toolCalls.listBySession(sid) },
     // P10.9: POST /goal enqueues work while the runtime is already running.
     goalIngress,
+    // Goal clarification (POST /clarification): courier to the waiting coordinator. Absent ⇒ 501.
+    ...(clarificationCoordinator !== undefined ? { clarification: clarificationCoordinator } : {}),
     // Model management (GET /models, POST /models/pull): list + download Ollama models.
     modelAdmin: new OllamaModelAdmin({ endpoint }),
     // Workspace files (GET /workspace/files): read-only listing so the dashboard shows the RESULT

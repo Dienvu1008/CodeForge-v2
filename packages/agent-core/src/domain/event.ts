@@ -85,7 +85,10 @@ export type KnownEventType =
   | 'MISSION_ARCHITECTURE_PROPOSED'
   | 'MISSION_ARCHITECTURE_GATE_PASSED'
   | 'MISSION_ARCHITECTURE_GATE_BLOCKED'
-  | 'MISSION_USER_CONFIRMATION_REQUIRED';
+  | 'MISSION_USER_CONFIRMATION_REQUIRED'
+  // Goal Clarification Gate (Phase 1, opt-in `--clarify on`): ask the user when a goal is UNKNOWN.
+  | 'GOAL_CLARIFICATION_REQUESTED'
+  | 'GOAL_CLARIFICATION_ANSWERED';
 
 export type EventType = KnownEventType | (string & {});
 

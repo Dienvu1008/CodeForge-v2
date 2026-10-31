@@ -26,7 +26,8 @@ import {
   resolveRuntimeEntry, buildRuntimeArgv, runtimeUrlForPort, resolveNodeCommand,
 } from './runtime-launch.js';
 import {
-  newGoalEntry, withGoalId, reconcileHistory, type GoalEntry,
+  newGoalEntry, withGoalId, reconcileHistory, findOpenClarification,
+  type GoalEntry, type OpenClarificationView,
 } from './goal-history.js';
 import { goalsPanelHtml, type GoalEntryView } from './goals-webview.js';
 
@@ -125,10 +126,20 @@ function activateInner(context: vscode.ExtensionContext): void {
   let localIdSeq = goalHistory.length;
   let goalsPanel: vscode.WebviewPanel | null = null;
 
-  const toEntryView = (e: GoalEntry): GoalEntryView => ({
-    localId: e.localId, description: e.description, submittedAt: e.submittedAt,
-    status: e.status, sessionId: e.sessionId, goalId: e.goalId,
-  });
+  // Open clarification requests keyed by sessionId. VIEW-ONLY: rebuilt from the runtime's events on
+  // every refresh and never persisted to globalState (the EventLog is the only authority).
+  let openClarifications = new Map<string, OpenClarificationView>();
+  // Last observed runtime connectivity (updated by refreshAll while the Goals panel is open).
+  let goalsConnected = false;
+
+  const toEntryView = (e: GoalEntry): GoalEntryView => {
+    const clarification = e.sessionId !== undefined ? openClarifications.get(e.sessionId) : undefined;
+    return {
+      localId: e.localId, description: e.description, submittedAt: e.submittedAt,
+      status: e.status, sessionId: e.sessionId, goalId: e.goalId,
+      ...(clarification !== undefined ? { clarification } : {}),
+    };
+  };
 
   const pushGoalsToPanel = (connected: boolean): void => {
     if (goalsPanel === null) return;
@@ -207,6 +218,17 @@ function activateInner(context: vscode.ExtensionContext): void {
         goalHistory = next;
         persistGoals();
       }
+      // Derive open clarification requests (AWAITING_HUMAN sessions only) — rebuilt every refresh.
+      const stateById = new Map<string, string>(sessions.map((s) => [s.sessionId, s.state]));
+      const rc = client;
+      const awaiting = [...new Set(goalHistory
+        .map((e) => e.sessionId)
+        .filter((sid): sid is string => sid !== undefined && (stateById.get(sid) ?? '').toUpperCase() === 'AWAITING_HUMAN'))];
+      const found = await Promise.all(awaiting.map(async (sid) => [sid, findOpenClarification(await rc.getEvents(sid))] as const));
+      const nextClarifications = new Map<string, OpenClarificationView>();
+      for (const [sid, view] of found) if (view !== null) nextClarifications.set(sid, view);
+      openClarifications = nextClarifications;
+      goalsConnected = connected;
       pushGoalsToPanel(connected);
     }
   };
@@ -275,8 +297,28 @@ function activateInner(context: vscode.ExtensionContext): void {
     const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
     panel.webview.html = goalsPanelHtml(nonce);
     panel.onDidDispose(() => { goalsPanel = null; }, null, context.subscriptions);
-    panel.webview.onDidReceiveMessage(async (m: { type?: string; description?: string }) => {
+    panel.webview.onDidReceiveMessage(async (m: { type?: string; description?: string; sessionId?: unknown; requestId?: unknown; answers?: unknown }) => {
       if (m.type === 'ready') { void refreshAll(); return; }
+      if (m.type === 'clarify') {
+        // Defensive shape check: the webview is untrusted input.
+        const { sessionId: sid, requestId: rid, answers: raw } = m;
+        if (typeof sid !== 'string' || typeof rid !== 'string') return;
+        if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return;
+        const answers: Record<string, string> = {};
+        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+          if (typeof v !== 'string') return;
+          answers[k] = v;
+        }
+        const reply = (ok: boolean, message: string): void => {
+          void panel.webview.postMessage({ type: 'clarifyResult', requestId: rid, ok, message });
+        };
+        if (client === null || !goalsConnected) { reply(false, 'runtime not connected'); return; }
+        const res = await client.postClarification(sid, answers);
+        if (res.status === 200) reply(true, `Answers sent (answered ${res.body.answered ?? 0}, skipped ${res.body.skipped ?? 0})`);
+        else reply(false, res.body.error ?? `HTTP ${res.status}`);
+        await refreshAll();
+        return;
+      }
       if (m.type === 'submit' && typeof m.description === 'string') {
         const desc = m.description.trim();
         if (desc === '' || client === null) return;
@@ -471,6 +513,8 @@ function activateInner(context: vscode.ExtensionContext): void {
         ...(provider !== 'ollama' ? { provider } : {}),
         ...(endpoint !== '' ? { endpoint } : {}),
         ...(apiKey !== '' ? { apiKey } : {}),
+        // Requirement 1.6: opt-in goal clarification gate.
+        ...(cfg.get<boolean>('clarify', false) ? { clarify: true } : {}),
       });
       // Use the SYSTEM node (not process.execPath, which is VS Code's Electron) so native modules
       // like better-sqlite3 load against the ABI they were built for.

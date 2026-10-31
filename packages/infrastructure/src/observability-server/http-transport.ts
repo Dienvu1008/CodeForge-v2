@@ -20,6 +20,8 @@
 //   GET  /stream?session=<id>&from= -> text/event-stream live tail (OB-009)
 //   POST /control  {ControlRequest} -> { admission, record } (OB-006)
 //   POST /goal     {description, acceptanceCriteria?} -> { goalId, position } (P10.9)
+//   POST /clarification {sessionId, answers} -> { requestId, answered, skipped } (goal clarification;
+//                                   400 invalid input, 404 unknown session, 409 not awaiting, 501 off)
 //   GET  /models                    -> { models: OllamaModelInfo[] } (model management)
 //   POST /models/pull {name}        -> text/event-stream pull progress (model download)
 //   GET  /                          -> dashboard HTML (static client)
@@ -27,7 +29,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import type { ControlRequest } from '@codeforge/agent-core';
-import type { ObservabilityService } from './observability-service.js';
+import { ObservabilityServiceError, type ObservabilityService } from './observability-service.js';
 import { DASHBOARD_HTML, DASHBOARD_JS } from './dashboard-assets.js';
 
 export interface HttpTransportOptions {
@@ -182,6 +184,47 @@ export class HttpTransport {
         }
       }
 
+      if (method === 'POST' && path === '/clarification') {
+        // Goal clarification answers. Transport only — the service/coordinator validates and
+        // accepts at most once; this route never writes events (OB-009).
+        const body = await readBody(req);
+        let payload: unknown;
+        try { payload = JSON.parse(body); }
+        catch { return this.sendJson(res, 400, { error: 'invalid JSON body' }); }
+        const fields = isPlainObject(payload) ? payload : {};
+        const sessionId = fields['sessionId'];
+        if (typeof sessionId !== 'string' || sessionId === '') {
+          return this.sendJson(res, 400, { error: 'sessionId required' });
+        }
+        const answers = fields['answers'];
+        if (!isPlainObject(answers) || Object.keys(answers).length === 0) {
+          return this.sendJson(res, 400, { error: 'answers required' });
+        }
+        let result;
+        try {
+          result = await this.opts.service.submitClarification(sessionId, answers);
+        } catch (err) {
+          if (err instanceof ObservabilityServiceError && err.code === 'CLARIFICATION_UNSUPPORTED') {
+            return this.sendJson(res, 501, { error: 'clarification not enabled' });
+          }
+          if (err instanceof ObservabilityServiceError && err.code === 'SESSION_NOT_FOUND') {
+            return this.sendJson(res, 404, { error: 'session not found' });
+          }
+          throw err; // falls through to the generic 500 handler
+        }
+        if (result.ok) {
+          return this.sendJson(res, 200, { requestId: result.requestId, answered: result.answered, skipped: result.skipped });
+        }
+        switch (result.code) {
+          case 'NOT_AWAITING': return this.sendJson(res, 409, { error: 'session not awaiting clarification' });
+          case 'NON_STRING_ANSWER': return this.sendJson(res, 400, { error: 'answers must be strings' });
+          case 'UNKNOWN_QUESTION': return this.sendJson(res, 400, { error: result.message });
+          case 'ANSWER_TOO_LONG': return this.sendJson(res, 400, { error: 'answer too long' });
+          case 'EMPTY_ANSWERS': return this.sendJson(res, 400, { error: 'answers required' });
+          default: return this.sendJson(res, 400, { error: 'invalid answers' });
+        }
+      }
+
       // Model management: list installed models + stream a pull (download) with progress.
       if (method === 'GET' && path === '/models') {
         try {
@@ -301,6 +344,11 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
+}
+
+/** A non-null, non-array object (JSON object literal). */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 function sleep(ms: number): Promise<void> {

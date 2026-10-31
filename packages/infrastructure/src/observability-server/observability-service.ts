@@ -46,6 +46,7 @@ import {
   ControlPlane,
   buildInterventionRecord,
 } from '@codeforge/agent-core';
+import type { SubmitClarificationResult } from '../approval-runtime/clarification-coordinator.js';
 
 // ── Kernel ports the service needs to EXECUTE an admitted control action ────────
 // (Narrow structural interfaces so the service does not import concrete classes.)
@@ -65,6 +66,10 @@ export interface ToolStateReader {
 export interface GoalIngressPort {
   submitGoal(input: { description: string; acceptanceCriteria?: readonly string[] }):
     { goalId: string; position: number };
+}
+/** Accepts clarification answers (POST /clarification). Optional; absent ⇒ 501. */
+export interface ClarificationIngressPort {
+  submit(sessionId: string, rawAnswers: unknown): SubmitClarificationResult;
 }
 
 /** Progress update for a model pull (mirrors OllamaModelAdmin.PullProgress structurally). */
@@ -97,6 +102,8 @@ export interface ObservabilityServiceDeps {
   readonly toolStateReader?: ToolStateReader;
   /** P10.9: accepts goals submitted at runtime (POST /goal). Optional. */
   readonly goalIngress?: GoalIngressPort;
+  /** Goal clarification answers (POST /clarification; --clarify on). Optional. */
+  readonly clarification?: ClarificationIngressPort;
   /** Model management (list + pull local Ollama models). Optional; no runtime authority. */
   readonly modelAdmin?: ModelAdminPort;
   /** Lists the files currently in the agent's workspace (so the UI can show the RESULT). Optional. */
@@ -166,7 +173,7 @@ export interface SubmitControlResult {
 }
 
 export class ObservabilityServiceError extends Error {
-  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED' | 'GOAL_INGRESS_UNSUPPORTED' | 'MODEL_ADMIN_UNSUPPORTED';
+  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED' | 'GOAL_INGRESS_UNSUPPORTED' | 'MODEL_ADMIN_UNSUPPORTED' | 'CLARIFICATION_UNSUPPORTED';
   constructor(code: ObservabilityServiceError['code'], message?: string) {
     super(message ?? code);
     this.name = 'ObservabilityServiceError';
@@ -332,6 +339,21 @@ export class ObservabilityService {
       throw new ObservabilityServiceError('GOAL_INGRESS_UNSUPPORTED', 'goal ingress not wired');
     }
     return this.deps.goalIngress.submitGoal(input);
+  }
+
+  /**
+   * Deliver goal-clarification answers to the waiting ClarificationCoordinator. A courier
+   * only: validation + at-most-once acceptance live in the port, and the port never writes
+   * events (MissionIntelligence is the single emitter, OB-009). Throws when not wired or
+   * when the session is unknown.
+   */
+  async submitClarification(sessionId: string, rawAnswers: unknown): Promise<SubmitClarificationResult> {
+    if (this.deps.clarification === undefined) {
+      throw new ObservabilityServiceError('CLARIFICATION_UNSUPPORTED', 'clarification not enabled');
+    }
+    const session = await this.deps.sessions.getById(sessionId);
+    if (session === null) throw new ObservabilityServiceError('SESSION_NOT_FOUND', sessionId);
+    return this.deps.clarification.submit(sessionId, rawAnswers);
   }
 
   /** List the files in the agent's workspace (the tangible RESULT). Empty when not wired. */

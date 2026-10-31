@@ -75,3 +75,47 @@ describe('RuntimeClient', () => {
     expect(calls[0]!.url).toContain('from=5');
   });
 });
+
+describe('RuntimeClient.postClarification', () => {
+  /** A fake fetch for /clarification returning a fixed status and a JSON (or broken) body. */
+  function scripted(status: number, body: unknown, opts: { nonJson?: boolean; throws?: boolean } = {}) {
+    const calls: { url: string; init?: { method?: string; headers?: Record<string, string>; body?: string } }[] = [];
+    const fetch: FetchLike = async (url, init) => {
+      calls.push({ url, init });
+      if (opts.throws) throw new Error('ECONNREFUSED');
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => { if (opts.nonJson) throw new SyntaxError('Unexpected token <'); return body; },
+        text: async () => (opts.nonJson ? '<html>oops</html>' : JSON.stringify(body)),
+      };
+    };
+    return { client: new RuntimeClient({ baseUrl: 'http://x:9500/', fetch }), calls };
+  }
+
+  it('POSTs {sessionId, answers} to /clarification and returns 200 with the body', async () => {
+    const { client, calls } = scripted(200, { requestId: 'r1', answered: 1, skipped: 1 });
+    const res = await client.postClarification('S', { q1: 'json' });
+    expect(res).toEqual({ status: 200, body: { requestId: 'r1', answered: 1, skipped: 1 } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe('http://x:9500/clarification');
+    expect(calls[0]!.init?.method).toBe('POST');
+    expect(calls[0]!.init?.headers?.['content-type']).toBe('application/json');
+    expect(JSON.parse(calls[0]!.init!.body!)).toEqual({ sessionId: 'S', answers: { q1: 'json' } });
+  });
+
+  it('returns a 409 status with the error body as-is', async () => {
+    const { client } = scripted(409, { error: 'no open clarification' });
+    expect(await client.postClarification('S', { q1: 'x' })).toEqual({ status: 409, body: { error: 'no open clarification' } });
+  });
+
+  it('degrades a non-JSON body to HTTP <status>', async () => {
+    const { client } = scripted(501, null, { nonJson: true });
+    expect(await client.postClarification('S', { q1: 'x' })).toEqual({ status: 501, body: { error: 'HTTP 501' } });
+  });
+
+  it('returns status 0 / runtime unreachable when fetch throws', async () => {
+    const { client } = scripted(0, null, { throws: true });
+    expect(await client.postClarification('S', { q1: 'x' })).toEqual({ status: 0, body: { error: 'runtime unreachable' } });
+  });
+});

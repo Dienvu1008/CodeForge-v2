@@ -49,6 +49,7 @@ import { analyzeModelRequirement, routeModel, type ModelRegistry, type RoutingOu
 import { MissionArchitect } from './mission-architect.js';
 import { evaluateArchitecture } from './architecture-gate.js';
 import type { CapabilityDiscovery } from './capability-discovery.js';
+import { buildClarificationRequest, mergeClarificationAnswers, type ClarificationGate } from './goal-clarification.js';
 
 // ── Optional collaborators (all advisory; absent → that step is skipped) ─────────
 
@@ -89,6 +90,14 @@ export interface MissionIntelligenceDeps {
    */
   readonly assumptionAdvisor?: AssumptionAdvisor;
 
+  /**
+   * Optional goal clarification gate (opt-in `--clarify on`). When present AND the goal is
+   * UNKNOWN with open questions, the stage ASKS the user (GOAL_CLARIFICATION_REQUESTED → wait →
+   * GOAL_CLARIFICATION_ANSWERED) and the advisor only assumes for the skipped questions.
+   * Absent ⇒ the existing Tier B1 assume-and-state path, unchanged (MI-002 parity).
+   */
+  readonly clarificationGate?: ClarificationGate;
+
   /** Optional workspace signals (languages/fileCount) to sharpen complexity analysis. */
   readonly workspaceSignals?: WorkspaceSignals;
 }
@@ -98,7 +107,8 @@ export interface MissionIntelligenceDeps {
 export interface MissionStageOutcome {
   /**
    * Whether planning may proceed. false ONLY when the ArchitectureGate BLOCKed — the orchestrator
-   * must then stop and move the session to AWAITING_HUMAN (MI-007). true in every other case
+   * must then stop and move the session to AWAITING_HUMAN (MI-007) — or when the user cancelled
+   * while the clarification gate was waiting (blocker 'clarification cancelled'). true in every other case
    * (including when no architect/gate ran — advisory analysis never blocks on its own, MI-001).
    */
   readonly proceed: boolean;
@@ -216,45 +226,29 @@ export class MissionIntelligence {
     const planning = decidePlanningMode(missionWithArch);
     await this.emit(sessionId, 'MISSION_PLANNING_MODE_SELECTED', missionId, { mode: planning.mode, reason: planning.reason });
 
-    let mission: Mission = { ...missionWithArch, planningMode: planning.mode };
-
-    // ── Tier B1: goal clarification by explicit assumption (option (ii)) ─────────
-    // When the goal is under-specified (uncertainty ≥ INFERRED) and an advisor is wired, make
-    // EXPLICIT assumptions instead of stopping to ask. The assumptions are mirrored into the
-    // Mission's acceptanceCriteria (a mission-level copy — NEVER the Goal, MI-004) so planning
-    // has a concrete target, and surfaced to the user via MISSION_ASSUMPTIONS_MADE (shown in the
-    // dashboard like a commercial agent's "reasoning"). Fail-safe: on error, proceed unchanged.
-    let clarification: GoalClarification | undefined;
-    if (this.deps.assumptionAdvisor !== undefined && mission.uncertainty.level !== 'KNOWN') {
-      try {
-        clarification = await this.deps.assumptionAdvisor.clarify(mission);
-        const assumedCriteria: AcceptanceCriterion[] = clarification.assumptions.map((a, i) => ({
-          criterionId: `${missionId}-assumed-${i + 1}`,
-          description: a.acceptance,
-          mandatory: false, // assumed, not user-stated — advisory acceptance
-        }));
-        mission = { ...mission, acceptanceCriteria: [...mission.acceptanceCriteria, ...assumedCriteria] };
-        await this.emit(sessionId, 'MISSION_ASSUMPTIONS_MADE', missionId, {
-          clarifiedGoal: clarification.clarifiedGoal,
-          assumptions: clarification.assumptions,
-        });
-      } catch {
-        // Advisory LLM failure must not break the run (MI-001/MI-002): proceed without assumptions.
-        clarification = undefined;
-      }
-    }
-
-    // Tier B2: flatten the structured assumptions into plain statements so the orchestrator can
-    // thread them into each TaskExecutorRequest (MissionStageDecision.assumptions). Empty list ⇒
-    // the field is omitted below (conditional spread) and prompts stay unchanged (fail-safe).
-    const assumptionStatements: readonly string[] = clarification !== undefined
-      ? clarification.assumptions.map((a) => a.assumption).filter((s) => s.trim().length > 0)
-      : [];
+    // ── Tier B1 / clarification gate: resolve goal ambiguity (assume-and-state or ask) ──
+    const resolved = await this.resolveAmbiguity(
+      sessionId, missionId, goal, { ...missionWithArch, planningMode: planning.mode },
+    );
+    const mission: Mission = resolved.mission;
+    const clarification: GoalClarification | undefined = resolved.clarification;
+    const assumptionStatements: readonly string[] = resolved.statements;
 
     const contextStrategy = decideContextStrategy(mission);
     const contextPlan = toContextPlan(contextStrategy);
     const expertProfile = selectExpertProfile(missionType, goal.description, this.deps.workspaceSignals);
     const promptPlan = composePromptPlan(mission, expertProfile);
+
+    // The user cancelled while the clarification gate was waiting: stop before routing/architect
+    // (no further LLM calls). The orchestrator treats proceed=false as "do not plan".
+    if (resolved.cancelled) {
+      return {
+        proceed: false,
+        mission, contextStrategy, contextPlan, promptPlan, expertProfile,
+        blockers: ['clarification cancelled'],
+        ...(preflight !== undefined ? { preflight } : {}),
+      };
+    }
 
     // ── Model routing (MI-006) ──────────────────────────────────────────────────
     let routing: RoutingOutcome | undefined;
@@ -324,6 +318,116 @@ export class MissionIntelligence {
     };
   }
 
+  // ── Goal ambiguity resolution ─────────────────────────────────────────────────
+
+  /**
+   * Resolve an under-specified goal. Two paths:
+   *  - Clarification gate (opt-in `--clarify on`): when a gate is wired AND the goal is UNKNOWN
+   *    with open questions, ASK the user, merge the answers as `[user-provided]` statements, and
+   *    let the advisor assume only for the skipped questions.
+   *  - Tier B1 (default): assume-and-state via the advisor, unchanged (MI-002 parity).
+   * Only the Mission COPY and the returned statements change — never the Goal (MI-004).
+   */
+  private async resolveAmbiguity(
+    sessionId: string,
+    missionId: string,
+    goal: Goal,
+    mission: Mission,
+  ): Promise<{
+    readonly mission: Mission;
+    readonly clarification?: GoalClarification;
+    readonly statements: readonly string[];
+    readonly cancelled: boolean;
+  }> {
+    const gate = this.deps.clarificationGate;
+    if (gate !== undefined && mission.uncertainty.level === 'UNKNOWN' && mission.uncertainty.openQuestions.length > 0) {
+      const request = buildClarificationRequest(this.deps.newId(), missionId, goal.goalId, mission.uncertainty.openQuestions);
+      await this.emit(sessionId, 'GOAL_CLARIFICATION_REQUESTED', missionId, {
+        requestId: request.requestId,
+        missionId,
+        goalId: goal.goalId,
+        level: mission.uncertainty.level,
+        openQuestions: request.openQuestions,
+      });
+      const outcome = await gate.awaitAnswers(sessionId, request);
+      if (outcome.kind === 'cancelled') return { mission, statements: [], cancelled: true };
+
+      const source: 'user' | 'timeout' = outcome.kind === 'answered' ? 'user' : 'timeout';
+      const merged = mergeClarificationAnswers(request, outcome.kind === 'answered' ? outcome.answers : {});
+
+      let resolved: Mission = mission;
+      let clarification: GoalClarification | undefined;
+      if (merged.skipped.length > 0) {
+        const r = await this.assumeAndState(sessionId, missionId, {
+          ...mission,
+          uncertainty: { level: mission.uncertainty.level, openQuestions: merged.skipped.map((q) => q.text) },
+        });
+        // Keep the real uncertainty on the copy; take only the mirrored acceptance criteria.
+        resolved = { ...mission, acceptanceCriteria: r.mission.acceptanceCriteria };
+        clarification = r.clarification;
+      } else {
+        resolved = { ...mission, uncertainty: { level: 'KNOWN', openQuestions: [] } };
+      }
+
+      const statements = [...merged.userStatements, ...flattenAssumptions(clarification)];
+      await this.emit(sessionId, 'GOAL_CLARIFICATION_ANSWERED', missionId, {
+        requestId: request.requestId,
+        source,
+        answers: merged.answered.map((a) => ({ questionId: a.questionId, question: a.question, answer: a.answer })),
+        skippedQuestionIds: merged.skipped.map((q) => q.id),
+        assumptions: statements,
+      });
+      return {
+        mission: resolved,
+        statements,
+        cancelled: false,
+        ...(clarification !== undefined ? { clarification } : {}),
+      };
+    }
+
+    // Tier B1 (unchanged): only when the goal is under-specified (uncertainty ≥ INFERRED).
+    if (mission.uncertainty.level === 'KNOWN') return { mission, statements: [], cancelled: false };
+    const r = await this.assumeAndState(sessionId, missionId, mission);
+    return {
+      mission: r.mission,
+      statements: flattenAssumptions(r.clarification),
+      cancelled: false,
+      ...(r.clarification !== undefined ? { clarification: r.clarification } : {}),
+    };
+  }
+
+  /**
+   * Tier B1: goal clarification by explicit assumption (option (ii)). When an advisor is wired,
+   * make EXPLICIT assumptions instead of stopping to ask. The assumptions are mirrored into the
+   * Mission's acceptanceCriteria (a mission-level copy — NEVER the Goal, MI-004) so planning has
+   * a concrete target, and surfaced to the user via MISSION_ASSUMPTIONS_MADE (shown in the
+   * dashboard like a commercial agent's "reasoning"). Fail-safe: on error, proceed unchanged.
+   */
+  private async assumeAndState(
+    sessionId: string,
+    missionId: string,
+    mission: Mission,
+  ): Promise<{ readonly mission: Mission; readonly clarification?: GoalClarification }> {
+    if (this.deps.assumptionAdvisor === undefined) return { mission };
+    try {
+      const clarification = await this.deps.assumptionAdvisor.clarify(mission);
+      const assumedCriteria: AcceptanceCriterion[] = clarification.assumptions.map((a, i) => ({
+        criterionId: `${missionId}-assumed-${i + 1}`,
+        description: a.acceptance,
+        mandatory: false, // assumed, not user-stated — advisory acceptance
+      }));
+      const next: Mission = { ...mission, acceptanceCriteria: [...mission.acceptanceCriteria, ...assumedCriteria] };
+      await this.emit(sessionId, 'MISSION_ASSUMPTIONS_MADE', missionId, {
+        clarifiedGoal: clarification.clarifiedGoal,
+        assumptions: clarification.assumptions,
+      });
+      return { mission: next, clarification };
+    } catch {
+      // Advisory LLM failure must not break the run (MI-001/MI-002): proceed without assumptions.
+      return { mission };
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
   private assembleMission(parts: {
@@ -380,6 +484,17 @@ export class MissionIntelligence {
 }
 
 // ── Pure derivations ──────────────────────────────────────────────────────────────
+
+/**
+ * Tier B2: flatten structured assumptions into plain statements so the orchestrator can thread
+ * them into each TaskExecutorRequest (MissionStageDecision.assumptions). Empty list ⇒ the field is
+ * omitted from the outcome (conditional spread) and prompts stay unchanged (fail-safe).
+ */
+function flattenAssumptions(clarification: GoalClarification | undefined): string[] {
+  return clarification !== undefined
+    ? clarification.assumptions.map((a) => a.assumption).filter((s) => s.trim().length > 0)
+    : [];
+}
 
 function inferContextScope(type: MissionType, level: Mission['complexity']['level'], multiRepo: boolean): ContextScope {
   if (type === 'MULTI_REPOSITORY' || multiRepo) return 'MULTI_REPOSITORY';

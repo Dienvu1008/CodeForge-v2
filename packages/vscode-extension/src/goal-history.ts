@@ -116,3 +116,89 @@ export function statusChip(status: GoalStatus): string {
     case 'failed': return 'failed';
   }
 }
+
+// ── Goal clarification (goal-clarification-gate, Phase 1) ─────────────────────────────────────
+// The open question set is DERIVED from the session's events only (no local store): the latest
+// GOAL_CLARIFICATION_REQUESTED whose requestId has no GOAL_CLARIFICATION_ANSWERED. Self-contained
+// (no agent-core import) and defensive: payloads may be JSON strings or malformed.
+
+/** One open question as rendered by the Goals panel. */
+export interface OpenClarificationQuestionView {
+  readonly id: string;
+  readonly text: string;
+  readonly suggestedOptions?: readonly string[];
+}
+
+/** The open clarification request for a session, if any. */
+export interface OpenClarificationView {
+  readonly requestId: string;
+  readonly questions: readonly OpenClarificationQuestionView[];
+}
+
+/** Minimal event shape read from GET /events (only `type` and `payload` are used). */
+export interface ClarificationEventLike {
+  readonly type: string;
+  readonly payload?: unknown;
+}
+
+function asRecord(payload: unknown): Record<string, unknown> | null {
+  let value = payload;
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value) as unknown; } catch { return null; }
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function parseQuestion(raw: unknown): OpenClarificationQuestionView | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const q = raw as Record<string, unknown>;
+  if (typeof q['id'] !== 'string' || q['id'] === '' || typeof q['text'] !== 'string') return null;
+  const opts = q['suggestedOptions'];
+  if (Array.isArray(opts)) {
+    const strings = opts.filter((o): o is string => typeof o === 'string');
+    if (strings.length > 0) return { id: q['id'], text: q['text'], suggestedOptions: strings };
+  }
+  return { id: q['id'], text: q['text'] };
+}
+
+function parseRequested(payload: unknown): OpenClarificationView | null {
+  const p = asRecord(payload);
+  if (p === null) return null;
+  const requestId = p['requestId'];
+  const raw = p['openQuestions'];
+  if (typeof requestId !== 'string' || requestId === '' || !Array.isArray(raw)) return null;
+  const questions: OpenClarificationQuestionView[] = [];
+  for (const item of raw) {
+    const q = parseQuestion(item);
+    if (q === null) return null; // a malformed question invalidates the whole request
+    questions.push(q);
+  }
+  if (questions.length === 0) return null;
+  return { requestId, questions };
+}
+
+/**
+ * The latest GOAL_CLARIFICATION_REQUESTED (valid payload) with no GOAL_CLARIFICATION_ANSWERED
+ * for the same requestId, or null. Never throws.
+ */
+export function findOpenClarification(events: readonly ClarificationEventLike[]): OpenClarificationView | null {
+  try {
+    const answered = new Set<string>();
+    for (const e of events) {
+      if (e?.type !== 'GOAL_CLARIFICATION_ANSWERED') continue;
+      const p = asRecord(e.payload);
+      const id = p?.['requestId'];
+      if (typeof id === 'string') answered.add(id);
+    }
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e?.type !== 'GOAL_CLARIFICATION_REQUESTED') continue;
+      const view = parseRequested(e.payload);
+      if (view !== null && !answered.has(view.requestId)) return view;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

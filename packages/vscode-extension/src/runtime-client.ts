@@ -67,6 +67,17 @@ export interface ControlResult {
   readonly record?: { readonly result?: string };
 }
 
+/** Result of POST /clarification: the HTTP status (0 = unreachable) plus the parsed body. */
+export interface ClarificationPostResult {
+  readonly status: number;
+  readonly body: {
+    readonly requestId?: string;
+    readonly answered?: number;
+    readonly skipped?: number;
+    readonly error?: string;
+  };
+}
+
 export interface RuntimeClientOptions {
   /** Base URL of the runtime HTTP server, e.g. "http://127.0.0.1:9500". */
   readonly baseUrl: string;
@@ -152,6 +163,31 @@ export class RuntimeClient {
       });
       return (await res.json()) as { goalId?: string; position?: number; error?: string };
     } catch { return null; }
+  }
+
+  /**
+   * POST /clarification — submit answers to an open goal-clarification request. Never throws:
+   * the HTTP status is returned as-is (200/400/404/409/501), a non-JSON body degrades to
+   * `{ error: 'HTTP <status>' }`, and a network failure yields `{ status: 0, error: 'runtime unreachable' }`.
+   */
+  async postClarification(sessionId: string, answers: Readonly<Record<string, string>>): Promise<ClarificationPostResult> {
+    let res: Awaited<ReturnType<FetchLike>>;
+    try {
+      res = await this.fetchImpl(joinUrl(this.base, '/clarification'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, answers }),
+      });
+    } catch {
+      return { status: 0, body: { error: 'runtime unreachable' } };
+    }
+    try {
+      const body = (await res.json()) as unknown;
+      if (body !== null && typeof body === 'object' && !Array.isArray(body)) {
+        return { status: res.status, body: body as ClarificationPostResult['body'] };
+      }
+    } catch { /* fall through */ }
+    return { status: res.status, body: { error: `HTTP ${res.status}` } };
   }
 
   // ── internals ───────────────────────────────────────────────────────────────

@@ -80,6 +80,34 @@ describe('buildRuntimeArgv', () => {
     expect(argv).toContain('gemini');
     expect(argv).toContain('AIza_test');
   });
+
+  // Goal clarification gate — Requirement 1.6.
+  const count = (argv: string[], flag: string): number => argv.filter((a) => a === flag).length;
+
+  it('clarify: true appends --mission on --clarify on with exactly one --mission', () => {
+    const argv = buildRuntimeArgv({ entryPath: 'c', workspace: 'w', model: 'm', port: 1, clarify: true });
+    expect(argv.slice(-4)).toEqual(['--mission', 'on', '--clarify', 'on']);
+    expect(count(argv, '--mission')).toBe(1);
+    expect(count(argv, '--clarify')).toBe(1);
+  });
+
+  it('clarify: false or omitted adds neither --clarify nor --mission', () => {
+    for (const clarify of [false, undefined]) {
+      const argv = buildRuntimeArgv({ entryPath: 'c', workspace: 'w', model: 'm', port: 1, clarify });
+      expect(argv).not.toContain('--clarify');
+      expect(argv).not.toContain('--mission');
+    }
+  });
+
+  it('clarify: true never duplicates --mission (alongside all other options)', () => {
+    // RuntimeLaunchSpec cannot express a pre-existing --mission, so assert the count stays 1.
+    const argv = buildRuntimeArgv({
+      entryPath: 'c', workspace: 'w', model: 'm', port: 1,
+      endpoint: 'http://e', autonomy: 'full', provider: 'gemini', apiKey: 'k', clarify: true,
+    });
+    expect(count(argv, '--mission')).toBe(1);
+    expect(count(argv, '--clarify')).toBe(1);
+  });
 });
 
 describe('runtimeUrlForPort', () => {

@@ -52,6 +52,24 @@ export { MissionArchitect, type MissionArchitectDeps } from './mission-architect
 // Tier B1: assumption-based goal clarification (LLM, advisory).
 export { AssumptionAdvisor, type AssumptionAdvisorDeps } from './assumption-advisor.js';
 export { evaluateArchitecture } from './architecture-gate.js';
+// Goal Clarification Gate (Phase 1, opt-in): pure request/validate/normalize/merge core.
+export {
+  MAX_ANSWER_LENGTH,
+  SUGGESTED_OPTIONS,
+  buildClarificationRequest,
+  normalizeAnswer,
+  validateClarificationAnswers,
+  mergeClarificationAnswers,
+  type OpenQuestion,
+  type ClarificationRequest,
+  type ClarificationAnswers,
+  type ClarificationOutcome,
+  type ClarificationGate,
+  type AnswerValidation,
+  type AnswerValidationCode,
+  type AnsweredQuestion,
+  type MergedClarification,
+} from './goal-clarification.js';
 // P12.7: context strategy + the optional pre-planning MissionIntelligence stage (MI-001/002/004).
 export {
   decideContextStrategy,

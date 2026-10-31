@@ -2,8 +2,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   newGoalEntry, withGoalId, reconcileHistory, statusFromSessionState, statusChip,
-  type GoalEntry, type BindableSession,
+  findOpenClarification,
+  type GoalEntry, type BindableSession, type ClarificationEventLike,
 } from '../../packages/vscode-extension/src/goal-history.js';
+import { forAll, int, pick, bool, type Rng } from '../mission/clarification-generators.js';
 
 describe('statusFromSessionState', () => {
   it('maps terminal success states to completed', () => {
@@ -103,5 +105,145 @@ describe('statusChip', () => {
     expect(statusChip('running')).toBe('running');
     expect(statusChip('completed')).toBe('completed');
     expect(statusChip('failed')).toBe('failed');
+  });
+});
+
+// ── Goal clarification projection (goal-clarification-gate) ──────────────────────────────────
+
+const REQ_IDS = ['r1', 'r2', 'r3', 'r4', ''];
+
+/** A question that may or may not be well-formed. */
+function genQuestion(rng: Rng, i: number): unknown {
+  const r = rng();
+  if (r < 0.75) {
+    return bool(rng, 0.3)
+      ? { id: `q${i + 1}`, text: `Question ${i}?`, suggestedOptions: ['a', 'b'] }
+      : { id: `q${i + 1}`, text: `Question ${i}?` };
+  }
+  return pick<unknown>(rng, [
+    null,
+    ['q1', 'text'],
+    'q1',
+    { text: 'no id' },
+    { id: '', text: 'empty id' },
+    { id: 7, text: 'numeric id' },
+    { id: `q${i + 1}` },
+    { id: `q${i + 1}`, text: 42 },
+  ]);
+}
+
+/** A REQUESTED payload: valid object, JSON string, or one of several broken shapes. */
+function genRequestedPayload(rng: Rng): unknown {
+  const requestId = pick(rng, REQ_IDS);
+  const n = int(rng, 1, 4);
+  const questions = Array.from({ length: n }, (_, i) => genQuestion(rng, i));
+  const valid = { requestId, missionId: 'm', goalId: 'g', openQuestions: questions };
+  const r = rng();
+  if (r < 0.5) return valid;
+  if (r < 0.65) return JSON.stringify(valid);
+  return pick<unknown>(rng, [
+    null,
+    undefined,
+    'not json {',
+    '"just a string"',
+    '[1,2]',
+    [valid],
+    { openQuestions: questions },
+    { requestId: 5, openQuestions: questions },
+    { requestId, openQuestions: [] },
+    { requestId, openQuestions: 'q1' },
+    { requestId },
+  ]);
+}
+
+function genAnsweredPayload(rng: Rng): unknown {
+  const requestId = pick(rng, REQ_IDS);
+  const r = rng();
+  if (r < 0.6) return { requestId, answers: { q1: 'x' }, skippedQuestionIds: [] };
+  if (r < 0.75) return JSON.stringify({ requestId });
+  return pick<unknown>(rng, [null, 'not json {', { requestId: 1 }, {}, [requestId]]);
+}
+
+function genEvents(rng: Rng): ClarificationEventLike[] {
+  const len = int(rng, 0, 12);
+  const events: ClarificationEventLike[] = [];
+  for (let i = 0; i < len; i++) {
+    const r = rng();
+    if (r < 0.45) events.push({ type: 'GOAL_CLARIFICATION_REQUESTED', payload: genRequestedPayload(rng) });
+    else if (r < 0.7) events.push({ type: 'GOAL_CLARIFICATION_ANSWERED', payload: genAnsweredPayload(rng) });
+    else {
+      // Unrelated events — some even carry a requestId that must be ignored.
+      events.push({
+        type: pick(rng, ['TASK_STARTED', 'MISSION_CREATED', 'VERIFICATION_ENDED', 'goal_clarification_answered']),
+        payload: bool(rng) ? { requestId: pick(rng, REQ_IDS) } : undefined,
+      });
+    }
+  }
+  return events;
+}
+
+/** Reference oracle: last valid REQUESTED whose requestId has no ANSWERED anywhere. */
+function oracle(events: readonly ClarificationEventLike[]): { requestId: string; questions: { id: string; text: string }[] } | null {
+  const toObj = (p: unknown): Record<string, unknown> | null => {
+    let v = p;
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch { return null; }
+    }
+    return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  };
+  const answered = new Set<string>();
+  for (const e of events) {
+    if (e.type !== 'GOAL_CLARIFICATION_ANSWERED') continue;
+    const id = toObj(e.payload)?.['requestId'];
+    if (typeof id === 'string') answered.add(id);
+  }
+  let found: { requestId: string; questions: { id: string; text: string }[] } | null = null;
+  for (const e of events) {
+    if (e.type !== 'GOAL_CLARIFICATION_REQUESTED') continue;
+    const p = toObj(e.payload);
+    if (!p) continue;
+    const rid = p['requestId'];
+    const qs = p['openQuestions'];
+    if (typeof rid !== 'string' || rid === '' || !Array.isArray(qs) || qs.length === 0) continue;
+    const ok = qs.every((q) =>
+      q !== null && typeof q === 'object' && !Array.isArray(q) &&
+      typeof (q as Record<string, unknown>)['id'] === 'string' && (q as Record<string, unknown>)['id'] !== '' &&
+      typeof (q as Record<string, unknown>)['text'] === 'string');
+    if (!ok || answered.has(rid)) continue;
+    found = { requestId: rid, questions: qs.map((q) => ({ id: (q as { id: string }).id, text: (q as { text: string }).text })) };
+  }
+  return found;
+}
+
+describe('findOpenClarification', () => {
+  // Feature: goal-clarification-gate, Property 7: Projection câu hỏi đang mở từ event
+  // **Validates: Requirements 8.1, 9.3**
+  it('Property 7: matches the reference oracle on random event sequences and never throws', () => {
+    forAll(0x1c1a7e07, 300, (rng) => {
+      const events = genEvents(rng);
+      let actual: ReturnType<typeof findOpenClarification> = null;
+      expect(() => { actual = findOpenClarification(events); }).not.toThrow();
+      const expected = oracle(events);
+      const got = actual as ReturnType<typeof findOpenClarification>;
+      if (expected === null) {
+        expect(got).toBeNull();
+      } else {
+        expect(got).not.toBeNull();
+        expect(got!.requestId).toBe(expected.requestId);
+        expect(got!.questions.map((q) => ({ id: q.id, text: q.text }))).toEqual(expected.questions);
+      }
+    });
+  });
+
+  it('returns the open request with suggested options and null once answered', () => {
+    const requested: ClarificationEventLike = {
+      type: 'GOAL_CLARIFICATION_REQUESTED',
+      payload: { requestId: 'r1', openQuestions: [{ id: 'q1', text: 'Which format?', suggestedOptions: ['json', 'csv'] }] },
+    };
+    expect(findOpenClarification([requested])).toEqual({
+      requestId: 'r1',
+      questions: [{ id: 'q1', text: 'Which format?', suggestedOptions: ['json', 'csv'] }],
+    });
+    expect(findOpenClarification([requested, { type: 'GOAL_CLARIFICATION_ANSWERED', payload: '{"requestId":"r1"}' }])).toBeNull();
   });
 });

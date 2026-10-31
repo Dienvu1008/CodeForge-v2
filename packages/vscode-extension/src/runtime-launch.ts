@@ -37,6 +37,11 @@ export interface RuntimeLaunchSpec {
    * runtime CLI (which then uses it for Authorization: Bearer). Never logged.
    */
   readonly apiKey?: string;
+  /**
+   * Goal clarification gate (Requirement 1.6). When true the runtime is started with
+   * `--mission on --clarify on` so ambiguous goals pause for questions in the Goals panel.
+   */
+  readonly clarify?: boolean;
 }
 
 /** Inputs we resolve the runtime entry path from. */
@@ -83,6 +88,11 @@ export function buildRuntimeArgv(spec: RuntimeLaunchSpec): string[] {
   // P12.35: cloud provider support — pass --provider and --api-key when specified.
   if (spec.provider !== undefined && spec.provider !== 'ollama') argv.push('--provider', spec.provider);
   if (spec.apiKey !== undefined && spec.apiKey !== '') argv.push('--api-key', spec.apiKey);
+  // Requirement 1.6: the clarification gate requires mission mode; never duplicate --mission.
+  if (spec.clarify === true) {
+    if (!argv.includes('--mission')) argv.push('--mission', 'on');
+    argv.push('--clarify', 'on');
+  }
   return argv;
 }
 
