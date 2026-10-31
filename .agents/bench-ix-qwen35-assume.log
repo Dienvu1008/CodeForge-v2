@@ -1,0 +1,42 @@
+
+Capability curve: ollama 'Qwen3.5:latest' @ http://localhost:11434  (12 tasks, split=all, ablation=full, interaction=assume)
+
+  id      difficulty  verdict   detail
+  ------------------------------------------------------------------
+  IV-01   EASY        FAIL      temp.js converts C↔F rounded to 1 decimal
+          ↳ UNKNOWN/LOW: assumed
+  IV-02   EASY        FAIL      slug.js slugify matches the examples
+          ↳ UNKNOWN/LOW: assumed
+  IV-03   EASY        FAIL      wordcount.js counts lowercased words
+          ↳ INFERRED/LOW: assumed
+  IV-04   EASY        FAIL      money.js formatCents matches the examples
+          ↳ INFERRED/LOW: assumed
+  IV-05   EASY        FAIL      validate.js isValidEmail matches the examples
+          ↳ UNKNOWN/LOW: assumed
+  IV-06   EASY        FAIL      dates.js daysBetween matches the examples
+          ↳ UNKNOWN/LOW: assumed
+  IM-01   MEDIUM      FAIL      csv2json.js handles quoted fields with commas and escaped quotes
+          ↳ KNOWN/HIGH: no question
+  IM-02   MEDIUM      FAIL      cache.js evicts the least recently used entry
+          ↳ INFERRED/HIGH: assumed
+  IM-03   MEDIUM      FAIL      ratelimit.js uses a sliding window per key
+          ↳ KNOWN/HIGH: no question
+  IM-04   MEDIUM      FAIL      todos.js persists to a JSON file across store instances
+          ↳ KNOWN/HIGH: no question
+  IM-05   MEDIUM      FAIL      md2html.js renders basics and escapes raw HTML
+          ↳ INFERRED/MEDIUM: assumed
+  IM-06   MEDIUM      FAIL      events.js dispatches synchronously and isolates listener errors
+          ↳ INFERRED/HIGH: assumed
+
+  by difficulty:
+    EASY     0/6
+    MEDIUM   0/6
+
+  TOTAL: 0/12 success  (failure=12, invalid=0)
+  failure classes: {"VERIFICATION_FAILURE":11,"PLANNING_FAILURE":1}
+
+  interaction:
+    vague           pass 0/6  asked 0/6  plan options 0/6 (user pick 0)
+    multi-approach  pass 0/6  asked 0/6  plan options 0/6 (user pick 0)
+
+PROGRESSIVE DONE

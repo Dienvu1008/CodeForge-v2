@@ -1,0 +1,281 @@
+
+Capability curve: ollama 'Qwen3.5:latest' @ http://localhost:11434  (12 tasks, split=all, ablation=full, interaction=ask)
+
+  [ws] IV-01: package.json, temp.js
+    --- temp.js
+      function cToF(c) {
+        if (typeof c !== 'number' || isNaN(c)) {
+          throw new Error('Invalid input: temperature must be a number');
+        }
+        return Math.round((c * 9 / 5) + 32 * 10) / 10;
+      }
+      
+      function fToC(f) {
+        if (typeof f !== 'number' || isNaN(f)) {
+          throw new Error('Invalid input: temperature must be a number');
+        }
+        return Math.round(((f - 32) * 5 / 9) * 10) / 10;
+  [tool] write_file temp.js content[0..40]="function cToF(c) {\n  if (typeof c !== 'n"
+  [ev] IV-01: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IV-02: package.json, slug.js
+    --- slug.js
+      function slugify(title) {
+        return title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+      }
+      
+      module.exports = { slugify };
+  [tool] write_file slug.js content[0..40]="function slugify(title) {\n  return title"
+  [ev] IV-02: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IV-03: package.json, word_count.sh
+  [tool] write_file word_count.sh content[0..40]="#!/bin/bash\n# Simple word count tool tha"
+  [ev] IV-03: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IV-04: Money.js, package.json
+    --- Money.js
+      /class Money {
+        constructor(value, currency) {
+          if (value === undefined || value === null) {
+            throw new Error('Value is required');
+          }
+          if (currency === undefined || currency === null) {
+            throw new Error('Currency is required');
+          }
+          this._value = Number(value);
+          this._currency = String(currency);
+        }
+      
+  [tool] write_file Money.js content[0..40]="/class Money {\n  constructor(value, curr"
+  [ev] IV-04: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IV-05: package.json, validate.js
+    --- validate.js
+      function validate(input) {
+        if (typeof input !== 'object' && typeof input !== 'string') {
+          return false;
+        }
+      
+        if (typeof input === 'string') {
+          return true;
+        }
+      
+        if (input === null || input === undefined) {
+          return false;
+        }
+  [tool] write_file validate.js content[0..40]="function validate(input) {\n  if (typeof "
+  [ev] IV-05: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IV-06: date_ops.py, package.json
+  [tool] write_file date_ops.py content[0..40]="# date_ops.py - Basic date operations mo"
+  [ev] IV-06: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IM-01: package.json
+  [tool] write_file package.json content[0..40]="{\n  \"name\": \"ix\",\n  \"version\": \"1.0.0\",\n"
+  [ev] IM-01: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IM-02: cache.js, package.json
+    --- cache.js
+      //**
+       * Creates an LRU cache using Map-based storage with timestamp tracking.
+       * @param {number} max - Maximum number of entries allowed in the cache.
+       * @returns {Object} Cache object with get and set methods.
+       */
+      function createCache(max) {
+        if (max <= 0) {
+          throw new Error('max must be a positive integer');
+        }
+      
+        // Map to store key-value pairs
+        const dataMap = new Map();
+  [tool] write_file cache.js content[0..40]="//**\n * Creates an LRU cache using Map-b"
+  [ev] IM-02: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IM-03: package.json, ratelimit.js
+    --- ratelimit.js
+      function createLimiter(limit, windowMs) {
+        const requests = new Map();
+      
+        return function allow(key, nowMs) {
+          const keyRequests = requests.get(key) || [];
+          
+          // Filter out timestamps outside the window
+          const validRequests = keyRequests.filter(ts => nowMs - ts <= windowMs);
+          
+          if (validRequests.length >= limit) {
+            return false;
+          }
+  [tool] write_file ratelimit.js content[0..40]="function createLimiter(limit, windowMs) "
+  [ev] IM-03: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IM-04: package.json, todos.js
+    --- todos.js
+      /
+       * @fileoverview Node.js module for managing todos with JSON file persistence.
+       * @author Senior Software Engineer
+       */
+      
+      const fs = require('fs');
+      const path = require('path');
+      
+      /**
+       * Creates a store object that manages todos with JSON file persistence.
+       * @param {string} filePath - The absolute or relative path to the JSON file for storing todos.
+       * @returns {Object} A store object with methods to manage todos.
+  [tool] write_file todos.js content[0..40]="/\n * @fileoverview Node.js module for ma"
+  [ev] IM-04: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IM-05: md2html.js, package.json
+    --- md2html.js
+      /function render(md) {
+        if (typeof md !== 'string') {
+          throw new TypeError('Input must be a string');
+        }
+      
+        let html = '';
+        let i = 0;
+      
+        // Helper to parse inline elements (bold, italic, code)
+        function parseInline(text) {
+          let out = '';
+          let j = 0;
+  [tool] write_file md2html.js content[0..40]="/function render(md) {\n  if (typeof md !"
+  [ev] IM-05: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  [ws] IM-06: events.js, package.json
+    --- events.js
+      /const createEmitter = function () {
+        const listeners = new Map();
+      
+        return {
+          on: function (event, callback) {
+            if (!listeners.has(event)) {
+              listeners.set(event, []);
+            }
+            listeners.get(event).push(callback);
+          },
+      
+          off: function (event, callback) {
+  [tool] write_file events.js content[0..40]="/const createEmitter = function () {\n  c"
+  [ev] IM-06: session=SESSION_CREATED>INITIALIZING>RUNNING>COMPLETED toolCalls=0 failures=0
+  id      difficulty  verdict   detail
+  ------------------------------------------------------------------
+  IV-01   EASY        FAIL      temp.js converts C↔F rounded to 1 decimal
+          ↳ UNKNOWN/LOW: asked 2q (2 by rule)
+    ↳ FAILED CHECK: temp.js converts C↔F rounded to 1 decimal
+      exit 1: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+      
+      50 !== 212
+      
+          at [eval]:5:8
+          at [eval]:7:3
+          at runScriptInThisContext (node:internal/vm:219:10)
+          at node:internal/proc
+  IV-02   EASY        PASS      
+          ↳ UNKNOWN/LOW: asked 3q (3 by rule)
+  IV-03   EASY        FAIL      wordcount.js counts lowercased words
+          ↳ INFERRED/LOW: assumed
+    ↳ FAILED CHECK: wordcount.js counts lowercased words
+      exit 1: Error: Cannot find module 'C:\Users\Dienv\AppData\Local\Temp\cf-bench-HyYbBM\wordcount.js'
+      Require stack:
+      - C:\Users\Dienv\AppData\Local\Temp\cf-bench-HyYbBM\[eval]
+          at Module._resolveFilename (nod
+  IV-04   EASY        FAIL      money.js formatCents matches the examples
+          ↳ INFERRED/LOW: assumed
+    ↳ FAILED CHECK: money.js formatCents matches the examples
+      exit 1: C:\Users\Dienv\AppData\Local\Temp\cf-bench-xdqXM7\money.js:1
+      /class Money {
+      ^
+      
+      SyntaxError: Invalid regular expression: missing /
+          at wrapSafe (node:internal/modules/cjs/loader:1763:18)
+          at Modu
+  IV-05   EASY        FAIL      validate.js isValidEmail matches the examples
+          ↳ UNKNOWN/LOW: asked 2q (2 by rule)
+    ↳ FAILED CHECK: validate.js isValidEmail matches the examples
+      exit 1: TypeError: isValidEmail is not a function
+          at [eval]:5:74
+          at [eval]:7:3
+          at runScriptInThisContext (node:internal/vm:219:10)
+          at node:internal/process/execution:451:12
+          at [eval]-wrapp
+  IV-06   EASY        FAIL      dates.js daysBetween matches the examples
+          ↳ UNKNOWN/LOW: asked 2q (2 by rule)
+    ↳ FAILED CHECK: dates.js daysBetween matches the examples
+      exit 1: Error: Cannot find module 'C:\Users\Dienv\AppData\Local\Temp\cf-bench-ASP2Lz\dates.js'
+      Require stack:
+      - C:\Users\Dienv\AppData\Local\Temp\cf-bench-ASP2Lz\[eval]
+          at Module._resolveFilename (node:in
+  IM-01   MEDIUM      FAIL      csv2json.js handles quoted fields with commas and escaped quotes
+          ↳ KNOWN/HIGH: no question; plan o2/3 (user, 2 hits)
+    ↳ FAILED CHECK: csv2json.js handles quoted fields with commas and escaped quotes
+      exit 1: Error: Command failed: C:\Program Files\nodejs\node.exe csv2json.js _h.csv _h.json
+      node:internal/modules/cjs/loader:1479
+        throw err;
+        ^
+      
+      Error: Cannot find module 'C:\Users\Dienv\AppData\Local\T
+    ↳ FAILED CHECK: no third-party dependencies were added
+      exit 1: AssertionError [ERR_ASSERTION]: package.json dependencies must be empty
+      + actual - expected
+      
+      + [
+      +   'csv-parse'
+      + ]
+      - []
+      
+          at [eval]:6:8
+          at [eval]:8:3
+          at runScriptInThisContext (node:inter
+  IM-02   MEDIUM      FAIL      cache.js evicts the least recently used entry
+          ↳ INFERRED/HIGH: assumed; plan o1/3 (user, 1 hits)
+    ↳ FAILED CHECK: cache.js evicts the least recently used entry
+      exit 1: C:\Users\Dienv\AppData\Local\Temp\cf-bench-1AuvKW\cache.js:2
+       * Creates an LRU cache using Map-based storage with timestamp tracking.
+       ^
+      
+      SyntaxError: Unexpected token '*'
+          at wrapSafe (node:intern
+  IM-03   MEDIUM      FAIL      ratelimit.js uses a sliding window per key
+          ↳ KNOWN/HIGH: no question; plan o1/3 (user, 1 hits)
+    ↳ FAILED CHECK: ratelimit.js uses a sliding window per key
+      exit 1: TypeError: l.allow is not a function
+          at [eval]:6:22
+          at [eval]:10:3
+          at runScriptInThisContext (node:internal/vm:219:10)
+          at node:internal/process/execution:451:12
+          at [eval]-wrapper:6
+  IM-04   MEDIUM      FAIL      todos.js persists to a JSON file across store instances
+          ↳ KNOWN/HIGH: no question; plan o2/3 (user, 3 hits)
+    ↳ FAILED CHECK: todos.js persists to a JSON file across store instances
+      exit 1: C:\Users\Dienv\AppData\Local\Temp\cf-bench-Ny8swA\todos.js:1
+      /
+      ^
+      
+      SyntaxError: Invalid regular expression: missing /
+          at wrapSafe (node:internal/modules/cjs/loader:1763:18)
+          at Module._compile (
+  IM-05   MEDIUM      FAIL      md2html.js renders basics and escapes raw HTML
+          ↳ INFERRED/MEDIUM: assumed; plan o3/3 (user, 1 hits)
+    ↳ FAILED CHECK: md2html.js renders basics and escapes raw HTML
+      exit 1: C:\Users\Dienv\AppData\Local\Temp\cf-bench-MqtePR\md2html.js:1
+      /function render(md) {
+      ^
+      
+      SyntaxError: Invalid regular expression: missing /
+          at wrapSafe (node:internal/modules/cjs/loader:1763:18)
+       
+  IM-06   MEDIUM      FAIL      events.js dispatches synchronously and isolates listener errors
+          ↳ INFERRED/HIGH: assumed; plan o1/3 (user, 2 hits)
+    ↳ FAILED CHECK: events.js dispatches synchronously and isolates listener errors
+      exit 1: C:\Users\Dienv\AppData\Local\Temp\cf-bench-rqYjd2\events.js:1
+      /const createEmitter = function () {
+      ^
+      
+      SyntaxError: Invalid regular expression: missing /
+          at wrapSafe (node:internal/modules/cjs/load
+
+  by difficulty:
+    EASY     1/6
+    MEDIUM   0/6
+
+  TOTAL: 1/12 success  (failure=11, invalid=0)
+  failure classes: {"VERIFICATION_FAILURE":11}
+
+  interaction:
+    vague           pass 1/6  asked 4/6  plan options 0/6 (user pick 0)
+    multi-approach  pass 0/6  asked 0/6  plan options 6/6 (user pick 6)
+
+PROGRESSIVE DONE

@@ -127,6 +127,16 @@ recovery policy to fire.
   (FIX→ROLLBACK→ESCALATE, 3 attempts) — observed in the Flutter todo run.
 - Fix: tighten the `classifyFailure` heuristics in `failure-classifier.ts`.
 
+**Sub-class: VERIFICATION/NO_INRUN_CHECK.**
+The project had no runnable check (no test script, no build), so the verification policy was empty
+and a broken result (even a file that does not parse) was accepted as COMPLETED. The recovery loop
+never ran.
+- Signal: `buildVerificationPolicy` returns zero checks; the hidden/benchmark check fails with a
+  SyntaxError or a missing module.
+- Example: interaction benchmark (Qwen3.5) — 5/12 files started with a stray `/` and still
+  "completed".
+- Fix: a cheap, language-generic parse/syntax check on changed files when no test command exists.
+
 **Fix decision.** Verification fixes are always legitimate harness improvements — they make the
 external verdict more accurate. The test: "does this fix improve verdict accuracy on a codebase
 we have never seen before?" If yes, it generalises. If it only fixes one benchmark pattern, it is
@@ -180,6 +190,27 @@ The harness rejected a model output that was correct according to the spec.
   DESTRUCTIVE heuristic, but the operation was actually safe.
 - Fix: loosen the specific heuristic, with evidence that the change does not weaken safety on a
   held-out set.
+
+**Sub-class: INTERACTION/ANSWER_NOT_PLANNED.**
+The user answered clarification questions, but the answers reached only the executor
+(`STATED_ASSUMPTIONS`), not the Planner. The Planner decomposed the vague goal as if unanswered, and
+the executor followed the task.
+- Signal: `GOAL_CLARIFICATION_ANSWERED` in the log, but the planned task names a different
+  file/language/function than the answer.
+- Example: IV-06 — answer "dates.js (CommonJS)", Planner task "Create a Python script…".
+- Fix: thread the clarification statements into the Planner prompt (generic, bounded section).
+
+**Sub-class: INTERACTION/DETECTION_MISS.**
+The goal was vague but the uncertainty detector scored it KNOWN/INFERRED, so the agent assumed
+instead of asking, and the assumption was wrong.
+- Signal: interaction case shows `assumed` instead of `asked` and the result misses the intent.
+- Fix decision: record. Do not tune detector rules on the failing cases; study recall on an
+  independent set.
+
+**Sub-class: BENCHMARK/SIMULATED_USER_MISPICK.**
+The simulated user (interaction benchmark) chose an option that contradicts its own intent because
+its keyword scoring matched the wrong option. A defect in the measuring instrument, not the agent.
+- Fix: improve the instrument (e.g. `avoid` keywords), never the agent-facing goal.
 
 **Sub-class: INTERACTION/PROTOCOL.**
 The model produced correct individual tool calls but in the wrong order, causing the harness to
@@ -253,5 +284,5 @@ For each failing case after a benchmark run:
 
 ---
 
-*Last updated: P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
+*Last updated: interaction benchmark analysis (2026-10-31). Earlier: P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
 filing any harness bug or proposing a prompt change.*

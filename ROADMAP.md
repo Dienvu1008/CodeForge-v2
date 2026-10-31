@@ -157,8 +157,11 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      Spec: `.kiro/specs/plan-options/`.
    - **Interaction benchmark (harness DONE, numbers pending):** `benchmarks/codeforge-interaction`
      (6 vague + 6 multi-approach goals, hidden checks, deterministic simulated user) and
-     `run-progressive.mjs --interaction off|assume|ask`. Next: run the three arms on a live model
-     and record the before/after numbers (EVALUATION.md).
+     `run-progressive.mjs --interaction off|assume|ask`. First run (Qwen3.5, CPU): 0/12 in all arms —
+     no effect yet, dominated by harness gaps. Next, each re-measured on all three arms: thread
+     clarification answers into the Planner; an in-run syntax check when a project has no test
+     command; `avoid` keywords for the simulated user; GPU for Ollama. Analysis:
+     `.agents/interaction-benchmark-qwen35.md`.
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.

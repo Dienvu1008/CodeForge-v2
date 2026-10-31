@@ -146,6 +146,13 @@ assuming (Tier B1/B2) and with no mission stage at all.
   questions asked and plan picks per kind. Compare the TOTAL lines across arms.
 - **Discipline:** the same as the progressive benchmark — never tune case descriptions to the
   detector, never justify a harness change with a held-out case.
+- **Diagnosis:** with `CF_DEBUG=1` the runner also prints the files left in each workspace, the
+  `write_file`/`edit_file` arguments, the full output of every failing check, and saves each case's
+  raw model responses to `.agents/_raw-<id>.txt`.
+- **First run (Qwen3.5 9B, CPU):** off 0/12, assume 0/12, ask 0/12 (re-run 1/12). No measurable
+  effect yet; the outcome is dominated by output corruption that no in-run check catches, and by
+  clarification answers not reaching the Planner. Per-case classification and recommendations:
+  `.agents/interaction-benchmark-qwen35.md`.
 
 ## Future (data for self-improvement — §31)
 

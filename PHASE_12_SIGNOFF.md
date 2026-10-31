@@ -257,7 +257,8 @@ the index (one commit each unless noted); behavior detail and current status liv
 | Gate | `ff7809e` | Versioned pre-push gate (docs-sync, build, lint, depcruise, invariants) + commit-gate steering |
 | Session resume v1 | `d885bed` | Durable goal queue (migration 0007) + startup recovery: resume a session parked on an open clarification before planning, close other orphans with a reason; spec `.kiro/specs/session-resume/` |
 | Tier C Phase 2 | `ca34b2c` | Opt-in plan options (`--plan-options on`): 2–4 sanitized approaches, pick in the Goals panel / `POST /plan-choice`, `CHOSEN_APPROACH` in the Planner prompt, resumable; spec `.kiro/specs/plan-options/` |
-| Interaction benchmark | *(this commit)* | `benchmarks/codeforge-interaction` (12 cases, hidden checks), deterministic simulated user, `run-progressive.mjs --interaction off\|assume\|ask` |
+| Interaction benchmark | `059708b` | `benchmarks/codeforge-interaction` (12 cases, hidden checks), deterministic simulated user, `run-progressive.mjs --interaction off\|assume\|ask` |
+| Interaction benchmark, first run | *(this commit)* | Qwen3.5: off 0/12, assume 0/12, ask 0/12 (re-run 1/12); failure-taxonomy analysis + new sub-classes; `CF_DEBUG` diagnostics in the runner |
 
 **Measured (local Qwen3.5, progressive benchmark, after P12.34):** 38/65 overall — training 31/50,
 held-out 7/13 (HO-14 Ruby / HO-15 Swift skipped: toolchains absent). Ablation with
@@ -266,7 +267,7 @@ held-out 7/13 (HO-14 Ruby / HO-15 Swift skipped: toolchains absent). Ablation wi
 only VERIFICATION / GOVERNANCE / INTERACTION failures are fixed in the harness; MODEL_CAPABILITY
 failures are recorded, not patched).
 
-**Still open after the addendum:** live-model numbers for the interaction benchmark (Tier B2 / C before/after), real-model
+**Still open after the addendum:** the interaction-benchmark fixes (answers → Planner, in-run syntax check, simulated-user `avoid`) and their before/after re-measurement, real-model
 SWE-bench, resuming sessions that were mid-execution / awaiting tool approval / paused when the
 runtime died (v1 resumes only the pre-planning clarification / plan-choice waits), and the web
 dashboard rendering of clarification questions and plan options.

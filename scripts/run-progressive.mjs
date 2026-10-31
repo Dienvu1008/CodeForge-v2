@@ -112,7 +112,13 @@ function makeRealAgentRunner() {
       try {
         runMigrations(db, createMigrationRegistry(), { now: () => '2026-01-01T00:00:00.000Z' });
         const c = counters();
-        const gw = rpmThrottle(makeGateway());
+        const gw0 = rpmThrottle(makeGateway());
+        // CF_DEBUG: record every raw model response for this case (diagnostic only).
+        const rawLog = [];
+        const gw = process.env.CF_DEBUG ? {
+          get identity() { return gw0.identity; },
+          async generate(req) { const r = await gw0.generate(req); rawLog.push(typeof r?.raw === 'string' ? r.raw : JSON.stringify(r)); return r; },
+        } : gw0;
         const events = new SqliteEventLog(db);
         const graphs = new SqliteTaskGraphRepository(db);
         const hasher = new Blake3GraphHasher();
@@ -195,6 +201,33 @@ function makeRealAgentRunner() {
         try { await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 }); }
         catch (err) { if (process.env.CF_DEBUG) console.error(`  [orch error] ${task.description.slice(0, 40)} :: ${err?.code ?? ''} ${err?.message ?? String(err)}`); }
         const allEvents = await events.query({ sessionId: sid });
+        // CF_DEBUG: what did the agent actually leave in the workspace? (diagnostic only — the
+        // checks below are unaffected). Lists files + the head of each .js/.json the agent wrote.
+        if (process.env.CF_DEBUG) {
+          const { readdirSync, statSync, readFileSync } = await import('node:fs');
+          const { join, relative } = await import('node:path');
+          const walk = (d) => readdirSync(d).flatMap((n) => {
+            if (n === 'node_modules' || n.startsWith('.')) return [];
+            const p = join(d, n);
+            return statSync(p).isDirectory() ? walk(p) : [p];
+          });
+          const files = walk(workspaceRoot);
+          console.log(`  [ws] ${task.id}: ${files.map((p) => relative(workspaceRoot, p)).join(', ')}`);
+          for (const p of files) {
+            if (!/\.(js|mjs|cjs|json)$/.test(p) || relative(workspaceRoot, p) === 'package.json') continue;
+            const head = readFileSync(p, 'utf8').split('\n').slice(0, 12).join('\n      ');
+            console.log(`    --- ${relative(workspaceRoot, p)}\n      ${head}`);
+          }
+          for (const row of db.query("SELECT tool_name, arguments_json FROM tool_calls WHERE tool_name IN ('write_file','edit_file')", [])) {
+            const args = JSON.parse(row.arguments_json);
+            console.log(`  [tool] ${row.tool_name} ${args.path} content[0..40]=${JSON.stringify(String(args.content ?? args.newString ?? '').slice(0, 40))}`);
+          }
+          const { writeFileSync } = await import('node:fs');
+          writeFileSync(`.agents/_raw-${task.id}.txt`, rawLog.map((t, i) => `===== response ${i + 1} =====\n${t}`).join('\n\n'));
+          const types = allEvents.map((e) => e.type);
+          const count = (t) => types.filter((x) => x === t).length;
+          console.log(`  [ev] ${task.id}: session=${allEvents.filter((e) => e.type.startsWith('SESSION_')).map((e) => e.payload?.to ?? e.type).join('>')} toolCalls=${count('TOOL_CALL_REQUESTED')} failures=${count('FAILURE_RECORDED')}`);
+        }
         if (interactionMode !== 'off') {
           const payloadOf = (type) => allEvents.find((e) => e.type === type)?.payload;
           interactionStats.set(task.id, {

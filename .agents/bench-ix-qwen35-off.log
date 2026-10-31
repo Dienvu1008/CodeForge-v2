@@ -1,0 +1,26 @@
+
+Capability curve: ollama 'Qwen3.5:latest' @ http://localhost:11434  (12 tasks, split=all, ablation=full, interaction=off)
+
+  id      difficulty  verdict   detail
+  ------------------------------------------------------------------
+  IV-01   EASY        FAIL      temp.js converts C↔F rounded to 1 decimal
+  IV-02   EASY        FAIL      slug.js slugify matches the examples
+  IV-03   EASY        FAIL      wordcount.js counts lowercased words
+  IV-04   EASY        FAIL      money.js formatCents matches the examples
+  IV-05   EASY        FAIL      validate.js isValidEmail matches the examples
+  IV-06   EASY        FAIL      dates.js daysBetween matches the examples
+  IM-01   MEDIUM      FAIL      csv2json.js handles quoted fields with commas and escaped quotes
+  IM-02   MEDIUM      FAIL      cache.js evicts the least recently used entry
+  IM-03   MEDIUM      FAIL      ratelimit.js uses a sliding window per key
+  IM-04   MEDIUM      FAIL      todos.js persists to a JSON file across store instances
+  IM-05   MEDIUM      FAIL      md2html.js renders basics and escapes raw HTML
+  IM-06   MEDIUM      FAIL      events.js dispatches synchronously and isolates listener errors
+
+  by difficulty:
+    EASY     0/6
+    MEDIUM   0/6
+
+  TOTAL: 0/12 success  (failure=12, invalid=0)
+  failure classes: {"VERIFICATION_FAILURE":12}
+
+PROGRESSIVE DONE
