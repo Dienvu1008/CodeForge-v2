@@ -1,0 +1,10 @@
+#!/bin/sh
+# CodeForge pre-push gate. Installed by: npm run hooks:install (scripts/install-git-hooks.mjs).
+# Runs scripts/pre-push-gate.mjs; git passes the pushed refs on stdin, which exec forwards.
+NODE=node
+if ! command -v node >/dev/null 2>&1; then
+  for c in "/c/Program Files/nodejs/node.exe" "/mnt/c/Program Files/nodejs/node.exe"; do
+    if [ -x "$c" ]; then NODE="$c"; break; fi
+  done
+fi
+exec "$NODE" scripts/pre-push-gate.mjs "$@"

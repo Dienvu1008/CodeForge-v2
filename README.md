@@ -113,7 +113,13 @@ npm run build
 npm test            # full Vitest suite
 npm run lint        # eslint
 npm run depcruise   # dependency-direction + cycle checks
+npm run gate        # docs-sync + build + lint + depcruise + invariants (what pre-push runs)
 ```
+
+Install the versioned `pre-push` hook once per clone with `npm run hooks:install`. It blocks a
+push when build, lint, depcruise or the invariant suite fails, or when the pushed commits change
+code without updating any project `.md` doc (override only with a `Docs-Reviewed: <reason>`
+commit trailer). Set `CF_GATE_FULL=1` to also run the full Vitest suite.
 
 ### Run the runtime (CLI + dashboard)
 
@@ -170,6 +176,7 @@ npm start -- \
 | `--autonomy <level>` | `edits` | `full` / `edits` / `readonly` — which tool risk classes auto-approve vs. require a human decision. |
 | `--mission <on\|off>` | `off` | Advisory Mission Intelligence stage before planning. |
 | `--learning <on\|off>` | `off` | Advisory learning plane for recovery ordering. |
+| `--clarify <on\|off>` | `off` | Goal clarification gate (needs `--mission on`): when a goal scores UNKNOWN, pause in `AWAITING_HUMAN`, ask the open questions (Goals panel / `POST /clarification`), then plan under the answers. Off ⇒ assume-and-state. |
 | `--model-routes <path>` | — | JSON file routing each purpose to a provider/model (see below). Replaces `--provider`/`--model`/`--endpoint`. |
 | `--model-registry <path>` | — | JSON file listing multiple models (id + tier + capabilities) so `--mission on` can route by task complexity (see `examples/model-registry.example.json`). |
 
@@ -229,8 +236,9 @@ npm run bundle:cli    # → dist-cli/codeforge.cjs (native deps kept external)
 `packages/vscode-extension` is a native VS Code client for a running runtime: an activity-bar
 container with live tree views (Sessions / Task-Graph / Changes / Governance), native editor diffs
 per change, Approve/Deny notifications for pending tool calls, a Goals panel (conversational goal
-history + live status), a model picker (`GET /models`), and a **Start Runtime Here** command that
-spawns the runtime in the open workspace. All decision logic lives in pure, unit-tested modules;
+history + live status, plus an accessible answer form when the runtime asks clarifying questions),
+a model picker (`GET /models`), and a **Start Runtime Here** command that spawns the runtime in the
+open workspace (`codeforge.clarify: true` starts it with `--mission on --clarify on`). All decision logic lives in pure, unit-tested modules;
 the extension stays a client (reads over HTTP, controls via `POST /control`). Built as a `.vsix`
 (not yet published); the dashboard webview is kept as a secondary view.
 
@@ -289,8 +297,9 @@ Highest-value next work (evidence-gated by before/after benchmark runs):
 1. **Wire Mission Intelligence further into execution** — context strategy already sizes the
    context pipeline; next is applying the routed model at execution time and letting the Planner
    consume planning-mode / expert-profile / architecture. (Step 2 → 3 of the autonomy path.)
-2. **Goal clarification** — detection (Tier A) and assume-and-state (Tier B1/B2) are done; an
-   optional stop-and-ask path (Tier C) remains.
+2. **Goal clarification** — detection (Tier A), assume-and-state (Tier B1/B2) and an opt-in
+   stop-and-ask gate (Tier C Phase 1, `--clarify on`) are done; next is Phase 2 (offer several plan
+   variants with trade-offs) and a before/after benchmark.
 3. **Finish the recovery vocabulary** — implement REPLAN and ROLLBACK. (Toward step 3.)
 4. **Measure real-model task correctness** — run the benchmark against a live model so autonomy
    claims rest on evidence, not hope.

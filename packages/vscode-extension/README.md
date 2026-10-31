@@ -18,6 +18,15 @@ Observe and control a running CodeForge agent runtime from VS Code, using native
   warning notification pops with **Approve / Deny** buttons (named with the tool + target).
 - **Status bar** item showing the attached session's state + passed/total + budget pressure.
 - **Submit Goal** — queue a new goal at the runtime (`POST /goal`).
+- **Goals panel clarification** — when the runtime (started with `--mission on --clarify on`)
+  asks about an ambiguous goal, the Goals panel shows the questions under the goal (`needs input`)
+  with an accessible form: answer, pick a suggested option, or "Use defaults for all". Answers go
+  to `POST /clarification`; the questions are derived from the session's events only.
+
+## Settings
+
+- `codeforge.clarify` (default `false`) — when `true`, **Start Runtime Here** launches the runtime
+  with `--mission on --clarify on` so ambiguous goals are asked about instead of assumed.
 - **Open Dashboard** — the full web dashboard in a webview panel (secondary view).
 
 ## Commands

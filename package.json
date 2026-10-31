@@ -28,7 +28,9 @@
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "gen:vectors": "npm run typecheck && node scripts/gen-vector-expected.mjs",
     "start": "npm run build && node packages/infrastructure/dist/cli/runtime-cli.js",
-    "bundle:cli": "npm run build && node scripts/bundle-cli.mjs"
+    "bundle:cli": "npm run build && node scripts/bundle-cli.mjs",
+    "gate": "node scripts/pre-push-gate.mjs",
+    "hooks:install": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.11.0",

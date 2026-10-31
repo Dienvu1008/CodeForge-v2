@@ -136,8 +136,15 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      (`goalAssumptions`); the executor injects a TRUSTED `STATED_ASSUMPTIONS` prompt section that
      tells the model to proceed under them as fixed constraints. Fail-safe: absent ⇒ prompt
      unchanged; never mutates the Goal (MI-004). (Before/after benchmark still pending.)
-   - **Tier C (optional):** a stop-and-ask path for the hardest cases (reuse AWAITING_HUMAN + the
-     Goals chat), if assume-and-state proves insufficient for some goals.
+   - **Tier C Phase 1 (DONE, opt-in `--mission on --clarify on`):** when a goal scores UNKNOWN,
+     MissionIntelligence emits `GOAL_CLARIFICATION_REQUESTED`, the `ClarificationCoordinator`
+     parks the session in AWAITING_HUMAN (no new state), the Goals panel / `POST /clarification`
+     collects answers (at-most-once; 400/404/409/501), and answers become `[user-provided]`
+     statements in `STATED_ASSUMPTIONS` (skipped questions → AssumptionAdvisor defaults), logged as
+     `GOAL_CLARIFICATION_ANSWERED`. Flag off ⇒ Tier B1 unchanged (property-tested). Limitation: a
+     runtime restart while waiting cannot resume the run (409; resubmit the goal).
+     Spec: `.kiro/specs/goal-clarification-gate/`.
+   - **Tier C Phase 2 (next):** present several plan variants with trade-offs for the user to pick.
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.
