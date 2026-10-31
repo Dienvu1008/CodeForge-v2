@@ -49,7 +49,13 @@ import { analyzeModelRequirement, routeModel, type ModelRegistry, type RoutingOu
 import { MissionArchitect } from './mission-architect.js';
 import { evaluateArchitecture } from './architecture-gate.js';
 import type { CapabilityDiscovery } from './capability-discovery.js';
-import { buildClarificationRequest, mergeClarificationAnswers, type ClarificationGate } from './goal-clarification.js';
+import {
+  buildClarificationRequest,
+  mergeClarificationAnswers,
+  type ClarificationGate,
+  type ClarificationOutcome,
+  type ClarificationRequest,
+} from './goal-clarification.js';
 
 // ── Optional collaborators (all advisory; absent → that step is skipped) ─────────
 
@@ -100,6 +106,17 @@ export interface MissionIntelligenceDeps {
 
   /** Optional workspace signals (languages/fileCount) to sharpen complexity analysis. */
   readonly workspaceSignals?: WorkspaceSignals;
+}
+
+/** session-resume v1: resume an open clarification instead of starting the stage from scratch. */
+export interface MissionAnalyzeOptions {
+  /**
+   * The open request (and its missionId) rebuilt from the session's GOAL_CLARIFICATION_REQUESTED
+   * event. The stage recomputes its deterministic analysis SILENTLY (no re-emission of the events
+   * already in the log — MI-005 makes the result identical), waits on this SAME request, and from
+   * the answer onward emits exactly as a fresh run does.
+   */
+  readonly resumeClarification?: { readonly missionId: string; readonly request: ClarificationRequest };
 }
 
 // ── Outcome ──────────────────────────────────────────────────────────────────────
@@ -159,6 +176,9 @@ export interface MissionStageOutcome {
 // ── MissionIntelligence stage ─────────────────────────────────────────────────────
 
 export class MissionIntelligence {
+  /** session-resume: sessions whose pre-gate events are already logged (emit() is muted for them). */
+  private readonly quiet = new Set<string>();
+
   constructor(private readonly deps: MissionIntelligenceDeps) {}
 
   /**
@@ -167,8 +187,23 @@ export class MissionIntelligence {
    * for advisory reasons — if the optional architect LLM call fails, the stage logs and proceeds
    * (advisory layer must not break the run; MI-002 fail-safe spirit).
    */
-  async analyze(sessionId: string, goal: Goal): Promise<MissionStageOutcome> {
-    const missionId = this.deps.newId();
+  async analyze(sessionId: string, goal: Goal, options?: MissionAnalyzeOptions): Promise<MissionStageOutcome> {
+    const resume = options?.resumeClarification;
+    if (resume === undefined) return this.analyzeInner(sessionId, goal, this.deps.newId(), undefined);
+    this.quiet.add(sessionId);
+    try {
+      return await this.analyzeInner(sessionId, goal, resume.missionId, resume.request);
+    } finally {
+      this.quiet.delete(sessionId);
+    }
+  }
+
+  private async analyzeInner(
+    sessionId: string,
+    goal: Goal,
+    missionId: string,
+    resumeRequest: ClarificationRequest | undefined,
+  ): Promise<MissionStageOutcome> {
     await this.emit(sessionId, 'MISSION_RECEIVED', missionId, { goalId: goal.goalId, description: goal.description });
 
     // ── Deterministic classification (MI-005) ──────────────────────────────────
@@ -228,7 +263,7 @@ export class MissionIntelligence {
 
     // ── Tier B1 / clarification gate: resolve goal ambiguity (assume-and-state or ask) ──
     const resolved = await this.resolveAmbiguity(
-      sessionId, missionId, goal, { ...missionWithArch, planningMode: planning.mode },
+      sessionId, missionId, goal, { ...missionWithArch, planningMode: planning.mode }, resumeRequest,
     );
     const mission: Mission = resolved.mission;
     const clarification: GoalClarification | undefined = resolved.clarification;
@@ -333,6 +368,7 @@ export class MissionIntelligence {
     missionId: string,
     goal: Goal,
     mission: Mission,
+    resumeRequest?: ClarificationRequest,
   ): Promise<{
     readonly mission: Mission;
     readonly clarification?: GoalClarification;
@@ -340,16 +376,24 @@ export class MissionIntelligence {
     readonly cancelled: boolean;
   }> {
     const gate = this.deps.clarificationGate;
-    if (gate !== undefined && mission.uncertainty.level === 'UNKNOWN' && mission.uncertainty.openQuestions.length > 0) {
-      const request = buildClarificationRequest(this.deps.newId(), missionId, goal.goalId, mission.uncertainty.openQuestions);
-      await this.emit(sessionId, 'GOAL_CLARIFICATION_REQUESTED', missionId, {
-        requestId: request.requestId,
-        missionId,
-        goalId: goal.goalId,
-        level: mission.uncertainty.level,
-        openQuestions: request.openQuestions,
-      });
-      const outcome = await gate.awaitAnswers(sessionId, request);
+    if (resumeRequest !== undefined || (gate !== undefined && mission.uncertainty.level === 'UNKNOWN' && mission.uncertainty.openQuestions.length > 0)) {
+      let request: ClarificationRequest;
+      if (resumeRequest !== undefined) {
+        // session-resume: the request is already logged — wait on the SAME one, then emit normally.
+        request = resumeRequest;
+        this.quiet.delete(sessionId);
+      } else {
+        request = buildClarificationRequest(this.deps.newId(), missionId, goal.goalId, mission.uncertainty.openQuestions);
+        await this.emit(sessionId, 'GOAL_CLARIFICATION_REQUESTED', missionId, {
+          requestId: request.requestId,
+          missionId,
+          goalId: goal.goalId,
+          level: mission.uncertainty.level,
+          openQuestions: request.openQuestions,
+        });
+      }
+      // Defensive: a resume without a wired gate cannot wait — treat it like a timeout (defaults).
+      const outcome: ClarificationOutcome = gate !== undefined ? await gate.awaitAnswers(sessionId, request) : { kind: 'timeout' };
       if (outcome.kind === 'cancelled') return { mission, statements: [], cancelled: true };
 
       const source: 'user' | 'timeout' = outcome.kind === 'answered' ? 'user' : 'timeout';
@@ -469,6 +513,7 @@ export class MissionIntelligence {
   }
 
   private async emit(sessionId: string, type: EventType, missionId: string, payload: unknown): Promise<void> {
+    if (this.quiet.has(sessionId)) return; // session-resume: already in the log (Req 4.7)
     const event: DomainEvent = {
       eventId: this.deps.newId(),
       sessionId,

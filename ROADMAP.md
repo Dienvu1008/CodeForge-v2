@@ -141,8 +141,13 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      parks the session in AWAITING_HUMAN (no new state), the Goals panel / `POST /clarification`
      collects answers (at-most-once; 400/404/409/501), and answers become `[user-provided]`
      statements in `STATED_ASSUMPTIONS` (skipped questions → AssumptionAdvisor defaults), logged as
-     `GOAL_CLARIFICATION_ANSWERED`. Flag off ⇒ Tier B1 unchanged (property-tested). Limitation: a
-     runtime restart while waiting cannot resume the run (409; resubmit the goal).
+     `GOAL_CLARIFICATION_ANSWERED`. Flag off ⇒ Tier B1 unchanged (property-tested).
+   - **Session resume v1 (DONE):** a runtime restart while waiting no longer loses the run. Goals
+     and the queue are durable (migration 0007 `goal_queue`); on startup `StartupRecovery` adopts a
+     session parked on an open clarification before planning (`SessionService.adopt`, fresh lock)
+     and resumes it on the SAME request (`SessionOrchestrator.resume`, no event replay); every
+     other orphan is closed with a reason. Spec: `.kiro/specs/session-resume/`. Not yet resumable:
+     sessions mid-execution, awaiting tool approval, or paused (they are closed, not resumed).
      Spec: `.kiro/specs/goal-clarification-gate/`.
    - **Tier C Phase 2 (next):** present several plan variants with trade-offs for the user to pick.
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.

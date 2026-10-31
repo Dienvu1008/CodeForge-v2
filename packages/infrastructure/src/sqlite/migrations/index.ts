@@ -18,3 +18,4 @@ export { migration0003 } from './0003-context-tables.js';
 export { migration0004 } from './0004-artifacts.js';
 export { migration0005 } from './0005-memory-tables.js';
 export { migration0006 } from './0006-learning-tables.js';
+export { migration0007 } from './0007-goal-queue.js';

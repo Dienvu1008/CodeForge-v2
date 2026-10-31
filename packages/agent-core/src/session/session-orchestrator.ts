@@ -24,6 +24,7 @@ import type { TaskExecutor, TaskExecutorRequest } from '../execution/task-execut
 import type { CheckpointService, CaptureInput }   from '../checkpoint/checkpoint-service.js';
 import type { ContextPlan }             from '../mission/mission-context-strategy.js';
 import type { PromptPlan }              from '../mission/prompt-composer.js';
+import type { ClarificationRequest }    from '../mission/goal-clarification.js';
 import { computeSchedule }              from '../scheduler/scheduler.js';
 import { isTerminalTaskState }          from '../state-machine/states.js';
 import type { FailureAnalyzer }          from '../recovery/failure-analyzer.js';
@@ -122,7 +123,20 @@ export interface RuntimeModelSelector {
 }
 export interface MissionStage {
   /** Analyze the goal for a specific session (sessionId scopes the MISSION_* audit events). */
-  analyze(sessionId: string, goal: Goal): Promise<MissionStageDecision>;
+  analyze(sessionId: string, goal: Goal, options?: MissionStageAnalyzeOptions): Promise<MissionStageDecision>;
+}
+
+/** session-resume v1: resume an open goal clarification (structurally = MissionAnalyzeOptions). */
+export interface MissionStageAnalyzeOptions {
+  readonly resumeClarification?: { readonly missionId: string; readonly request: ClarificationRequest };
+}
+
+/**
+ * session-resume v1: input for resuming a session that a dead runtime left in AWAITING_HUMAN on an
+ * open goal clarification (before planning). Same fields as a fresh run plus the open request.
+ */
+export interface SessionOrchestratorResumeInput extends SessionOrchestratorRunInput {
+  readonly resumeClarification: { readonly missionId: string; readonly request: ClarificationRequest };
 }
 
 /**
@@ -269,14 +283,29 @@ export class SessionOrchestrator {
   }
 
   async run(input: SessionOrchestratorRunInput): Promise<SessionOrchestratorResult> {
+    // 1. CREATED -> RUNNING
+    await this.deps.sessionService.transition(input.sessionId, 'SESSION_INITIALIZED');
+    await this.deps.sessionService.transition(input.sessionId, 'SESSION_READY');
+    return this.continueRun(input, undefined);
+  }
+
+  /**
+   * session-resume v1: continue a session that a dead runtime left in AWAITING_HUMAN on an open goal
+   * clarification (before planning). Starts from the CURRENT state — no SESSION_INITIALIZED /
+   * SESSION_READY replay (Req 4.3) — and shares every step after the mission stage with run().
+   */
+  async resume(input: SessionOrchestratorResumeInput): Promise<SessionOrchestratorResult> {
+    return this.continueRun(input, { resumeClarification: input.resumeClarification });
+  }
+
+  private async continueRun(
+    input: SessionOrchestratorRunInput,
+    missionOptions: MissionStageAnalyzeOptions | undefined,
+  ): Promise<SessionOrchestratorResult> {
     const t0 = Date.now();
     let taskRunCount = 0;
     const passedIds:    string[] = [];
     const nonPassedIds: string[] = [];
-
-    // 1. CREATED -> RUNNING
-    await this.deps.sessionService.transition(input.sessionId, 'SESSION_INITIALIZED');
-    await this.deps.sessionService.transition(input.sessionId, 'SESSION_READY');
 
     // 1b. P12.7: OPTIONAL Mission Intelligence stage (advisory). Runs ONCE between RUNNING and
     // planning. Absent → skipped entirely (MI-002 parity: no events, no behavior change). The
@@ -296,7 +325,9 @@ export class SessionOrchestrator {
     if (this.deps.missionStage !== undefined) {
       let decision: MissionStageDecision | undefined;
       try {
-        decision = await this.deps.missionStage.analyze(input.sessionId, input.goal);
+        decision = missionOptions !== undefined
+          ? await this.deps.missionStage.analyze(input.sessionId, input.goal, missionOptions)
+          : await this.deps.missionStage.analyze(input.sessionId, input.goal);
       } catch {
         // The advisory stage must never break the run (MI-002 spirit). On any error, fall
         // through to normal planning as if the stage were not wired.

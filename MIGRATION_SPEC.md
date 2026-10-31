@@ -682,15 +682,20 @@ Tables:
 - provenance
 - schema_versions
 
-### 13.2 Future migrations (planned)
+### 13.2 Shipped migrations
 
-| ID | Description | Forward-only |
-|---|---|---|
-| `0002_add_canonical_form_version` | Add `canonical_form_version` column | No |
-| `0003_add_verification_checks_table` | Split checks table | No |
-| `0004_add_context_snapshots` | Add context snapshots table | No |
-| `0005_canonical_form_v2` | Bump canonical form | **Yes** |
-| `0006_add_recovery_actions` | Add recovery actions table | No |
+The planned list that used to live here was superseded; this is the chain actually registered in
+`packages/infrastructure/src/sqlite/migrations/registry.ts` (all additive and reversible).
+
+| ID | Version | Description | Forward-only |
+|---|---|---|---|
+| `0001_create_initial_schema` | 0 → 1 | Initial schema (sessions, goals, tasks, graph, tool calls, events, locks, …) | No |
+| `0002_phase15_approvals_failures_recovery` | 1 → 2 | approvals, failures, recovery_actions | No |
+| `0003_phase2_context_tables` | 2 → 3 | context_snapshots, context_items, context_provenance | No |
+| `0004_phase3_artifacts` | 3 → 4 | artifacts | No |
+| `0005_phase7_memory` | 4 → 5 | memory_records | No |
+| `0006_phase11_learning` | 5 → 6 | learning_lessons | No |
+| `0007_session_resume_goal_queue` | 6 → 7 | goal_queue (durable FIFO, QUEUED/STARTED + sessionId, start revision) — session resume v1 | No |
 
 ### 13.3 Reserved ranges
 

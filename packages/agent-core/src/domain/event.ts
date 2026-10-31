@@ -88,7 +88,11 @@ export type KnownEventType =
   | 'MISSION_USER_CONFIRMATION_REQUIRED'
   // Goal Clarification Gate (Phase 1, opt-in `--clarify on`): ask the user when a goal is UNKNOWN.
   | 'GOAL_CLARIFICATION_REQUESTED'
-  | 'GOAL_CLARIFICATION_ANSWERED';
+  | 'GOAL_CLARIFICATION_ANSWERED'
+  // session-resume v1: startup recovery of sessions orphaned by a dead runtime process
+  | 'SESSION_RECOVERY_DECIDED'
+  | 'SESSION_ADOPTED'
+  | 'SESSION_RESUMED';
 
 export type EventType = KnownEventType | (string & {});
 

@@ -255,6 +255,7 @@ the index (one commit each unless noted); behavior detail and current status liv
 | P12.35–36 | `55b5472`, `1e3b7f7` | VS Code provider picker + cloud settings; API key in SecretStorage + console deep links |
 | Tier C Phase 1 | `4343a6d` | Opt-in goal clarification gate (`--clarify on`); spec `.kiro/specs/goal-clarification-gate/` |
 | Gate | `ff7809e` | Versioned pre-push gate (docs-sync, build, lint, depcruise, invariants) + commit-gate steering |
+| Session resume v1 | *(this commit)* | Durable goal queue (migration 0007) + startup recovery: resume a session parked on an open clarification before planning, close other orphans with a reason; spec `.kiro/specs/session-resume/` |
 
 **Measured (local Qwen3.5, progressive benchmark, after P12.34):** 38/65 overall — training 31/50,
 held-out 7/13 (HO-14 Ruby / HO-15 Swift skipped: toolchains absent). Ablation with
@@ -264,5 +265,6 @@ only VERIFICATION / GOVERNANCE / INTERACTION failures are fixed in the harness; 
 failures are recorded, not patched).
 
 **Still open after the addendum:** before/after benchmarks for Tier B2 and Tier C, real-model
-SWE-bench, resuming a session across a runtime restart, and Tier C Phase 2 (plan variants).
-Test count at the end of the addendum: 2007 tests / 213 files (WSL).
+SWE-bench, resuming sessions that were mid-execution / awaiting tool approval / paused when the
+runtime died (v1 resumes only the pre-planning clarification wait), and Tier C Phase 2 (plan variants).
+Test count at the end of the addendum: 2046 tests / 219 files (WSL).

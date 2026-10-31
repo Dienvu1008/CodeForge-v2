@@ -13,6 +13,8 @@ export { SqliteVerificationRepository } from './verification-repository.js';
 export { SqliteTaskGraphRepository } from './task-graph-repository.js';
 export { SqliteWorkspaceLockService } from './workspace-lock-repository.js';
 export { SqliteGoalRepository } from './goal-repository.js';
+export { SqliteGoalQueueStore } from './goal-queue-store.js';
+export { SqliteOrphanSource, findOpenClarification as findOpenClarificationRequest, type SqliteOrphanSourceOptions } from './orphan-session-source.js';
 export { SqliteTaskExecutionRepository } from './task-execution-repository.js';
 export { SqliteGraphCommitter } from './graph-committer.js';
 export { SqliteToolCallRepository, SqliteApprovalRepository } from './tool-call-repository.js';

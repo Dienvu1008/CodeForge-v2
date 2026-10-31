@@ -66,6 +66,7 @@ import { SqliteTaskGraphRepository }      from '../repositories/index.js';
 import { SqliteGraphCommitter }           from '../repositories/index.js';
 import { SqliteCheckpointRepository }     from '../repositories/index.js';
 import { SqliteWorkspaceLockService }     from '../repositories/index.js';
+import { SqliteGoalQueueStore, SqliteOrphanSource } from '../repositories/index.js';
 import { SqliteEventLog }                 from '../event-log/index.js';
 import { SqliteToolCallRepository }       from '../repositories/index.js';
 import { SqliteApprovalRepository }       from '../repositories/index.js';
@@ -97,6 +98,8 @@ import {
   PlanCritic,
   inferLanguage,
   GoalIngressService,
+  StartupRecovery,
+  type ResumePlan,
   GraphCommitService,
   GraphService,
   ExecutionCoordinator,
@@ -247,7 +250,7 @@ async function main(): Promise<void> {
   const rt = makeRuntime();
   // P10.9: one runtime now serves a QUEUE of goals. Each goal gets its own session; the
   // active session id is tracked here so shared helpers (revision provider) can tag it.
-  let activeSessionId = randomUUID();
+  let activeSessionId: string = randomUUID();
 
   // 2. Repositories
   const sessions   = new SqliteSessionRepository(db);
@@ -528,7 +531,11 @@ async function main(): Promise<void> {
   });
 
   // 10. Goal ingress (P10.9) — a FIFO queue of goals submitted at runtime via POST /goal.
-  const goalIngress = new GoalIngressService({ now: rt.now, nextId: rt.nextId });
+  //     session-resume v1: the queue is DURABLE (goals + goal_queue tables), so queued goals survive
+  //     a restart and a goal is claimed (QUEUED → STARTED + sessionId) at most once.
+  const workspaceId = 'ws-' + workspaceRoot;
+  const goalQueue = new SqliteGoalQueueStore(db, workspaceId);
+  const goalIngress = new GoalIngressService({ now: rt.now, nextId: rt.nextId, store: goalQueue });
 
   // 11. Observability server
   const obService = new ObservabilityService({
@@ -573,8 +580,7 @@ async function main(): Promise<void> {
   // 12. Per-goal runner: a goal → a fresh session → seed graph → orchestrator.run().
   //     Each goal still goes through Planner → GraphCommit → orchestrator (GI-009) — the
   //     queue is only a Decision Gate for "what to do next", never a bypass.
-  async function runGoal(goal: Goal): Promise<void> {
-    const sid = randomUUID();
+  async function runGoal(goal: Goal, sid: string): Promise<void> {
     activeSessionId = sid;
     const session: Session = {
       sessionId: sid, workspaceId: 'ws-' + workspaceRoot, workspaceRoot,
@@ -604,12 +610,29 @@ async function main(): Promise<void> {
       createdBy: { sessionId: sid, reason: 'session_start' },
     });
 
+    // session-resume v1: remember the revision this session started from (resume → workspaceChanged).
+    try { goalQueue.recordStartRevision(sid, revision.hash); } catch { /* best-effort */ }
+
     console.log('');
     console.log(`  > Goal:     ${goal.description}`);
     console.log(`    Session:  ${sid}`);
     console.log(`    Workspace: ${revision.fileCount} files, ${revision.hash.slice(0, 12)}...`);
     console.log(`    Observe:  http://localhost:${actualPort}/?session=${sid}`);
 
+    await driveSession(goal, sid, revision, undefined);
+  }
+
+  /**
+   * Everything after the session exists and its revision is known — shared by a fresh goal and a
+   * resumed session (session-resume v1): rollback baseline, language hint, orchestrator, and the
+   * AWAITING_HUMAN → ABORT lock release.
+   */
+  async function driveSession(
+    goal: Goal,
+    sid: string,
+    revision: Awaited<ReturnType<typeof computeWorkspaceRevision>>,
+    resume: ResumePlan | undefined,
+  ): Promise<void> {
     // P12.14: snapshot the pre-edit workspace as this session's clean rollback baseline. If a
     // SYNTAX recovery later chooses ROLLBACK, the port reverts the agent's broken edit to here.
     try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal — ROLLBACK degrades to re-arm */ }
@@ -627,7 +650,10 @@ async function main(): Promise<void> {
     } catch { /* inference is best-effort */ }
 
     try {
-      const result = await orchestrator.run({ sessionId: sid, goal, revision, graphVersion: 1, ...(languageHint !== undefined ? { languageHint } : {}) });
+      const runInput = { sessionId: sid, goal, revision, graphVersion: 1, ...(languageHint !== undefined ? { languageHint } : {}) };
+      const result = resume !== undefined
+        ? await orchestrator.resume({ ...runInput, resumeClarification: { missionId: resume.missionId, request: resume.request } })
+        : await orchestrator.run(runInput);
       console.log(`  < Result:   ${result.sessionState} | tasks ${result.taskRunCount}, passed ${result.passedTaskIds.length}, non-passed ${result.nonPassedTaskIds.length} (${(result.durationMs / 1000).toFixed(1)}s)`);
 
       // P11.6: when learning is on, distill this session's recovery history into persisted
@@ -658,17 +684,71 @@ async function main(): Promise<void> {
     }
   }
 
+  /** session-resume v1: continue a session a dead runtime left awaiting goal clarification. */
+  async function resumeSession(plan: ResumePlan): Promise<void> {
+    const sid = plan.sessionId;
+    activeSessionId = sid;
+    const bound = goalQueue.getBySession(sid);
+    if (bound === null) {
+      console.error(`    Resume failed: no persisted goal for session ${sid} — closing it.`);
+      try { await sessionSvc.transition(sid, 'ABORT'); } catch { /* best-effort */ }
+      return;
+    }
+    const revision = await computeWorkspaceRevision({
+      root: workspaceRoot,
+      scratchPrefixes: SCRATCH_PREFIXES,
+      createdBy: { sessionId: sid, reason: 'session_start' },
+    });
+    const workspaceChanged = bound.startRevisionHash !== undefined && bound.startRevisionHash !== revision.hash;
+    try {
+      await events.append({
+        eventId: rt.nextId(), sessionId: sid, type: 'SESSION_RESUMED', aggregate: { kind: 'session', id: sid },
+        payload: {
+          requestId: plan.request.requestId, workspaceChanged,
+          ...(bound.startRevisionHash !== undefined ? { startRevisionHash: bound.startRevisionHash } : {}),
+          revisionHash: revision.hash, previousProcessId: plan.previousProcessId,
+        },
+        at: rt.now(), sequenceNumber: 0,
+      });
+    } catch { /* audit append is best-effort */ }
+    console.log('');
+    console.log(`  ↻ Resumed:  ${bound.goal.description}`);
+    console.log(`    Session:  ${sid} (awaiting clarification — answer in the Goals panel or POST /clarification)`);
+    if (workspaceChanged) {
+      console.warn('    ⚠ The workspace changed while the runtime was down; resuming anyway (workspaceChanged: true).');
+    }
+    await driveSession(bound.goal, sid, revision, plan);
+  }
+
   // 12b. Crash recovery: if a previous run on THIS host died hard (SIGKILL / ABI crash) it may
   //      have left a workspace lock held forever, which would reject every goal with "workspace
   //      already locked". Reclaim it iff the owning PID is provably dead. Never touches a lock
   //      owned by a live process or another machine.
-  const reclaimed = await lock.reclaimStale(
-    'ws-' + workspaceRoot,
-    hostname(),
-    (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } },
-    rt.now(),
-  );
+  const isAlive = (pid: number): boolean => {
+    try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; }
+  };
+  const reclaimed = await lock.reclaimStale(workspaceId, hostname(), isAlive, rt.now());
   if (reclaimed) console.log('  Recovered a stale workspace lock from a previous crashed run.');
+
+  // 12c. session-resume v1: decide what to do with sessions a dead runtime process left behind.
+  //      A session parked on an open goal clarification before planning is RESUMED (adopted with a
+  //      fresh lock, then driven before any new goal); every other orphan is closed (ABORT) with a
+  //      reason. Sessions of a live process or another host are never touched. Never throws.
+  const startupRecovery = new StartupRecovery({
+    orphans: new SqliteOrphanSource({ db, workspaceId, hostname: hostname(), isAlive, sessions, graphs, events }),
+    sessionService: sessionSvc, events, now: rt.now, nextId: rt.nextId,
+  });
+  const recovered = await startupRecovery.recover({
+    clarifyEnabled: clarifyOn, hostname: hostname(), processId: process.pid, newLockId: () => 'L-' + randomUUID(),
+  });
+  for (const a of recovered.aborted) console.log(`  ↺ Closed orphaned session ${a.sessionId}: ${a.reason}`);
+  for (const e of recovered.errors) console.error(`  ⚠ Recovery of session ${e.sessionId} failed: ${e.message}`);
+  if (recovered.skippedResume !== undefined) {
+    console.warn(`  ⚠ Not resuming ${recovered.skippedResume.sessionId}: ${recovered.skippedResume.message}`);
+  }
+  if (recovered.resume !== undefined) {
+    console.log(`  Resume:     session ${recovered.resume.sessionId} awaiting clarification — answer in the Goals panel`);
+  }
 
   // 13. Seed the first goal from --goal (if any), then run the queue worker (stays alive).
   //     With no --goal the queue starts empty and the worker idles until a POST /goal arrives.
@@ -678,16 +758,25 @@ async function main(): Promise<void> {
   console.log('  Goal queue worker running. POST /goal {"description":"..."} to enqueue more.');
   console.log('  Press Ctrl+C to stop.');
 
+  if (recovered.resume !== undefined) {
+    try {
+      await resumeSession(recovered.resume);
+    } catch (err) {
+      console.error('    Resume failed:', err instanceof Error ? err.message : err);
+    }
+  }
+
   const idleSleepMs = 500;
   for (;;) {
-    const next = goalIngress.dequeue();
+    const sid = randomUUID();
+    const next = goalIngress.claimNext(sid);
     if (next === undefined) {
       await new Promise((r) => setTimeout(r, idleSleepMs));
       continue;
     }
     // A single goal must never crash the worker — log and keep draining the queue.
     try {
-      await runGoal(next);
+      await runGoal(next, sid);
     } catch (err) {
       console.error('    Goal failed:', err instanceof Error ? err.message : err);
     }

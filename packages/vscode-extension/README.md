@@ -21,7 +21,8 @@ Observe and control a running CodeForge agent runtime from VS Code, using native
 - **Goals panel clarification** — when the runtime (started with `--mission on --clarify on`)
   asks about an ambiguous goal, the Goals panel shows the questions under the goal (`needs input`)
   with an accessible form: answer, pick a suggested option, or "Use defaults for all". Answers go
-  to `POST /clarification`; the questions are derived from the session's events only.
+  to `POST /clarification`; the questions are derived from the session's events only. If the runtime
+  restarts while waiting, it resumes the same session and the same form keeps working.
 
 ## Settings
 

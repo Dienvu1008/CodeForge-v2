@@ -13,6 +13,7 @@ import {
   migration0004,
   migration0005,
   migration0006,
+  migration0007,
 } from '@codeforge/infrastructure';
 
 let db: SqliteDatabaseAdapter;
@@ -58,7 +59,7 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
     expect(db.getSchemaVersion()).toBe(0);
     const result = runMigrations(db, createMigrationRegistry(), { now });
     expect(result.fromVersion).toBe(0);
-    expect(result.toVersion).toBe(6);
+    expect(result.toVersion).toBe(7);
     expect(result.applied).toEqual([
       '0001_create_initial_schema',
       '0002_phase15_approvals_failures_recovery',
@@ -66,8 +67,9 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
       '0004_phase3_artifacts',
       '0005_phase7_memory',
       '0006_phase11_learning',
+      '0007_session_resume_goal_queue',
     ]);
-    expect(db.getSchemaVersion()).toBe(6);
+    expect(db.getSchemaVersion()).toBe(7);
   });
 
   it('creates every Phase 1 table', () => {
@@ -79,12 +81,13 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
     expect(names).toContain('schema_versions');
     expect(names).toContain('memory_records'); // Phase 7 (v5)
     expect(names).toContain('learning_lessons'); // Phase 11 (v6)
+    expect(names).toContain('goal_queue'); // session-resume (v7)
   });
 
   it('records the migration in schema_versions', () => {
     runMigrations(db, createMigrationRegistry(), { now, runtimeVersion: '0.1.0' });
     const history = readSchemaHistory(db);
-    expect(history).toHaveLength(6);
+    expect(history).toHaveLength(7);
     expect(history[0]).toMatchObject({
       schemaVersion: 1,
       migrationId: '0001_create_initial_schema',
@@ -123,6 +126,12 @@ describe('runMigrations — forward (MIGRATION_SPEC §4)', () => {
       forwardOnly: false,
       rollbackTo: 5,
     });
+    expect(history[6]).toMatchObject({
+      schemaVersion: 7,
+      migrationId: '0007_session_resume_goal_queue',
+      forwardOnly: false,
+      rollbackTo: 6,
+    });
   });
 });
 
@@ -130,10 +139,10 @@ describe('runMigrations — idempotent (MIGRATION_SPEC §1.3)', () => {
   it('is a no-op when already at target', () => {
     runMigrations(db, createMigrationRegistry(), { now });
     const second = runMigrations(db, createMigrationRegistry(), { now });
-    expect(second.fromVersion).toBe(6);
-    expect(second.toVersion).toBe(6);
+    expect(second.fromVersion).toBe(7);
+    expect(second.toVersion).toBe(7);
     expect(second.applied).toEqual([]);
-    expect(readSchemaHistory(db)).toHaveLength(6);
+    expect(readSchemaHistory(db)).toHaveLength(7);
   });
 
   it('fails fast if the db is newer than the runtime target', () => {
@@ -215,13 +224,14 @@ describe('schema v1 — structure', () => {
 describe('migration registry -- chain validation', () => {
   it('MIGRATIONS forms a contiguous chain from 0', () => {
     const reg = createMigrationRegistry(MIGRATIONS);
-    expect(reg.latestVersion()).toBe(6);
+    expect(reg.latestVersion()).toBe(7);
     expect(reg.getByToVersion(1)?.migrationId).toBe('0001_create_initial_schema');
     expect(reg.getByToVersion(2)?.migrationId).toBe('0002_phase15_approvals_failures_recovery');
     expect(reg.getByToVersion(3)?.migrationId).toBe('0003_phase2_context_tables');
     expect(reg.getByToVersion(4)?.migrationId).toBe('0004_phase3_artifacts');
     expect(reg.getByToVersion(5)?.migrationId).toBe('0005_phase7_memory');
     expect(reg.getByToVersion(6)?.migrationId).toBe('0006_phase11_learning');
+    expect(reg.getByToVersion(7)?.migrationId).toBe('0007_session_resume_goal_queue');
   });
 
   it('rejects a broken chain (gap)', () => {
@@ -257,6 +267,12 @@ describe('migration registry -- chain validation', () => {
     expect(migration0006.fromVersion).toBe(5);
     expect(migration0006.toVersion).toBe(6);
     expect(migration0006.reversible).toBe(true);
+  });
+
+  it('migration0007 is exported and has correct version bounds (session-resume)', () => {
+    expect(migration0007.fromVersion).toBe(6);
+    expect(migration0007.toVersion).toBe(7);
+    expect(migration0007.reversible).toBe(true);
   });
 });
 

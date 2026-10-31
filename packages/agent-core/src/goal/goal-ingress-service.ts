@@ -19,6 +19,7 @@
 // in the runtime (infra), so this stays trivially testable (agent-core ↛ infrastructure).
 import type { Goal } from '../domain/goal.js';
 import type { AcceptanceCriterion } from '../domain/common.js';
+import type { GoalQueueStore } from './goal-queue-store.js';
 
 // ── Submission + result ────────────────────────────────────────────────────────
 
@@ -47,6 +48,11 @@ export class GoalIngressError extends Error {
 export interface GoalIngressServiceDeps {
   readonly now:    () => string;
   readonly nextId: () => string;
+  /**
+   * session-resume v1: optional durable queue. Present ⇒ goals are persisted and the FIFO survives
+   * a restart (submit/claim go through the store). Absent ⇒ the in-memory FIFO, unchanged.
+   */
+  readonly store?: GoalQueueStore;
 }
 
 // ── GoalIngressService ───────────────────────────────────────────────────────
@@ -83,17 +89,30 @@ export class GoalIngressService {
       createdBy: 'user',
     };
 
+    if (this.deps.store !== undefined) {
+      this.deps.store.enqueue(goal, goal.createdAt);
+      return { goalId: goal.goalId, position: this.deps.store.queuedCount() };
+    }
     this.queue.push(goal);
     return { goalId: goal.goalId, position: this.queue.length };
   }
 
-  /** Dequeue the next goal (FIFO), or undefined when the queue is empty. */
+  /**
+   * Take the next goal (FIFO) for a session that is about to start. With a store, the goal flips to
+   * STARTED bound to `sessionId` atomically, so it can never be run twice (session-resume v1).
+   */
+  claimNext(sessionId: string): Goal | undefined {
+    if (this.deps.store !== undefined) return this.deps.store.claimNext(sessionId, this.deps.now());
+    return this.queue.shift();
+  }
+
+  /** Dequeue the next goal (FIFO), or undefined when the queue is empty. In-memory queue only. */
   dequeue(): Goal | undefined {
     return this.queue.shift();
   }
 
   /** Number of goals currently waiting. */
   size(): number {
-    return this.queue.length;
+    return this.deps.store !== undefined ? this.deps.store.queuedCount() : this.queue.length;
   }
 }

@@ -4,7 +4,7 @@
 > A phase passing its tests does NOT mean CodeForge is complete. This file records what the
 > software *actually does today*, verified against the source tree, not against phase labels.
 >
-> Last updated: 2026-10-31 · goal clarification gate (Tier C Phase 1) + pre-push gate · 2007 tests / 213 files green (WSL).
+> Last updated: 2026-10-31 · session resume v1 (durable goal queue + startup recovery) · 2046 tests / 219 files green (WSL).
 > Companion: `ROADMAP.md` (what's next) · per-phase detail in `PHASE_*_ROADMAP.md` / `PHASE_*_SIGNOFF.md`.
 
 ## What CodeForge is
@@ -70,7 +70,8 @@ next investment.
 | MissionIntelligence stage wired into orchestrator | PARTIAL | `--mission on` runs it between RUNNING and planning; emits `MISSION_*` events. The orchestrator reads `proceed` (gate BLOCK → AWAITING_HUMAN), `assumptions` (Tier B2 → executor prompt), `contextPlan` (P12.7 → context pipeline size), **and now `promptPlan`** (P12.8 → prompt shaping: persona/guidance/few-shot/verbosity into the executor prompt). Routing/architecture are still otherwise observable-only. |
 | Uncertainty assessment (goal ambiguity) | DONE | Tier A: `assessUncertainty` (deterministic) → KNOWN/INFERRED/UNKNOWN + `openQuestions`; `MISSION_UNCERTAINTY_ASSESSED`. |
 | Goal clarification by assumption (option ii) | DONE | Tier B1: `AssumptionAdvisor` (LLM) turns a vague goal's gaps into EXPLICIT assumptions + a clarified restatement; mirrored into Mission.acceptanceCriteria (never the Goal — MI-004); emitted as `MISSION_ASSUMPTIONS_MADE` and shown in the dashboard reasoning. **Tier B2: the assumptions now STEER the agent** — the stage exposes a flattened `assumptions` list, the orchestrator threads it into every `TaskExecutorRequest` (`goalAssumptions`), and the executor injects a TRUSTED `STATED_ASSUMPTIONS` prompt section telling the model to proceed under them as fixed constraints. Fail-safe (absent ⇒ prompt unchanged). Before/after benchmark still pending. |
-| Goal clarification by asking (Tier C Phase 1) | DONE (opt-in) | `--mission on --clarify on`: an UNKNOWN goal emits `GOAL_CLARIFICATION_REQUESTED`; `ClarificationCoordinator` moves the session RUNNING → AWAITING_HUMAN (`HUMAN_REQUIRED`) and waits inside the run; answers arrive via `POST /clarification` (validated, at-most-once, 400/404/409/501) or the VS Code Goals panel form; they become one-line `[user-provided]` statements in `goalAssumptions` → `STATED_ASSUMPTIONS`, skipped questions get AssumptionAdvisor defaults, `GOAL_CLARIFICATION_ANSWERED` is logged, session → RUNNING (`HUMAN_DECIDED`). Timeout 1 h ⇒ defaults; cancel ⇒ no planning. Flag off ⇒ Tier B1 byte-identical (property test). Restart while waiting cannot resume the run (409). |
+| Goal clarification by asking (Tier C Phase 1) | DONE (opt-in) | `--mission on --clarify on`: an UNKNOWN goal emits `GOAL_CLARIFICATION_REQUESTED`; `ClarificationCoordinator` moves the session RUNNING → AWAITING_HUMAN (`HUMAN_REQUIRED`) and waits inside the run; answers arrive via `POST /clarification` (validated, at-most-once, 400/404/409/501) or the VS Code Goals panel form; they become one-line `[user-provided]` statements in `goalAssumptions` → `STATED_ASSUMPTIONS`, skipped questions get AssumptionAdvisor defaults, `GOAL_CLARIFICATION_ANSWERED` is logged, session → RUNNING (`HUMAN_DECIDED`). Timeout 1 h ⇒ defaults; cancel ⇒ no planning. Flag off ⇒ Tier B1 byte-identical (property test). A restart while waiting resumes the run (see Session resume). |
+| Session resume after a runtime restart (v1) | DONE (pre-planning) | Goals + queue are durable (`goals` + `goal_queue`, migration 0007; claim = QUEUED → STARTED + sessionId atomically, so a goal never runs twice — a crash between claim and session creation loses that goal by design). On startup `StartupRecovery` lists orphans (non-terminal, this host, dead pid) via `SqliteOrphanSource`, classifies them with the pure `classifyOrphan`/`planRecovery`, closes every non-resumable one (ABORT + `SESSION_RECOVERY_DECIDED` reason) and adopts at most one session parked on an open clarification before planning (`SessionService.adopt`: fresh lock, `SESSION_ADOPTED`, no new state/transition). `SessionOrchestrator.resume()` + `MissionIntelligence.analyze(…, {resumeClarification})` wait on the SAME request without replaying events; `SESSION_RESUMED` records `workspaceChanged`. Not resumed (closed instead): mid-execution, awaiting tool approval, paused, `--clarify off`. |
 
 > **The honest one-line summary of Phase 12 today:** the intelligence layer *analyzes and
 > observes* (events + a gate that can halt for a human). Its influence on the agent is still
@@ -206,9 +207,9 @@ next investment.
    executor prompt** so the agent proceeds under a concrete interpretation instead of guessing
    blindly. With `--mission on --clarify on` the runtime instead **stops and asks** (VS Code Goals
    panel or `POST /clarification`) and plans under the answers; it is off by default, the web
-   dashboard does not render the questions yet, multiple plan variants (Phase 2) are not built, and
-   a restart while waiting cannot resume the run. The before/after benchmarks for B2 and Tier C are
-   still pending.
+   dashboard does not render the questions yet and multiple plan variants (Phase 2) are not built.
+   A runtime restart while waiting resumes the session (session resume v1). The before/after
+   benchmarks for B2 and Tier C are still pending.
    Clear goals (like the CF-001..010 benchmark tasks) remain what the runtime drives best.
 9. **Models (weak AND strong) under-perform at execution; the runtime mitigates but cannot force
    competence.** Local 6–9B models loop on reads, emit malformed tool-call JSON, or over-decompose.
@@ -261,6 +262,9 @@ Driven by running the real runtime against live goals:
 - **Goal clarification gate (Tier C Phase 1, opt-in)** — `--clarify on` pauses an UNKNOWN goal in
   AWAITING_HUMAN, asks the open questions (Goals panel form / `POST /clarification`), and threads the
   answers into `STATED_ASSUMPTIONS` as `[user-provided]` statements.
+- **Session resume v1** — durable goal queue (migration 0007) + startup recovery: a session waiting
+  for clarification before planning is adopted and resumed after a restart; other orphans are closed
+  with a reason.
 - **Pre-push gate** — versioned `scripts/git-hooks/pre-push` (`npm run hooks:install`) runs
   docs-sync, build, lint, depcruise and invariants before every push (`npm run gate` on demand).
 - **Tolerate tool-native OpenAI-compatible models** — Groq's `gpt-oss-*` answer via a tool call and

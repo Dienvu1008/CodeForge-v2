@@ -15,10 +15,10 @@ import type {
   AcceptanceCriterion,
   Constraint,
 } from '@codeforge/agent-core';
-import type { DatabaseAdapter } from '../sqlite/types.js';
+import type { DatabaseAdapter, SqlParam } from '../sqlite/types.js';
 import { RepoError } from './errors.js';
 
-interface GoalRow {
+export interface GoalRow {
   goal_id: string;
   version: number;
   description: string;
@@ -98,27 +98,31 @@ export class SqliteGoalRepository implements GoalRepository {
   }
 
   private insert(goal: Goal): void {
-    this.db.execute(
-      `INSERT INTO goals
-         (goal_id, version, description, constraints_json, acceptance_json,
-          created_at, created_by, superseded_by, schema_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        goal.goalId,
-        goal.version,
-        goal.description,
-        JSON.stringify(goal.constraints),
-        JSON.stringify(goal.acceptanceCriteria),
-        goal.createdAt,
-        goal.createdBy,
-        goal.supersededBy ?? null,
-        this.schemaVersion,
-      ],
-    );
+    this.db.execute(GOAL_INSERT_SQL, goalInsertParams(goal, this.schemaVersion));
   }
 }
 
-function rowToGoal(row: GoalRow): Goal {
+/** Shared with SqliteGoalQueueStore so the goals-table mapping lives in one place. */
+export const GOAL_INSERT_SQL = `INSERT INTO goals
+         (goal_id, version, description, constraints_json, acceptance_json,
+          created_at, created_by, superseded_by, schema_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+export function goalInsertParams(goal: Goal, schemaVersion: number): SqlParam[] {
+  return [
+    goal.goalId,
+    goal.version,
+    goal.description,
+    JSON.stringify(goal.constraints),
+    JSON.stringify(goal.acceptanceCriteria),
+    goal.createdAt,
+    goal.createdBy,
+    goal.supersededBy ?? null,
+    schemaVersion,
+  ];
+}
+
+export function rowToGoal(row: GoalRow): Goal {
   return {
     goalId: row.goal_id,
     version: row.version,

@@ -8,3 +8,5 @@
 export * from './goal-service.js';
 // P10.9 — runtime goal ingress (queue new goals while the agent runs).
 export * from './goal-ingress-service.js';
+// session-resume v1 — durable goal queue port.
+export * from './goal-queue-store.js';

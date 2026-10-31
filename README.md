@@ -144,6 +144,13 @@ curl -X POST http://localhost:9500/goal \
   -d '{"description":"Write a test for the reverse() function"}'
 ```
 
+Goals are persisted (SQLite `goals` + `goal_queue`), so queued goals survive a restart and a goal
+is never run twice. On startup the runtime also handles sessions a previous, dead runtime process
+left behind: a session that was waiting for clarification answers before planning is **resumed**
+(same questions, answer them in the Goals panel or via `POST /clarification`); every other
+leftover session is closed with an explicit reason (`SESSION_RECOVERY_DECIDED`). Sessions of a
+live process or another machine are never touched.
+
 To use a cloud provider instead of local Ollama:
 
 ```bash

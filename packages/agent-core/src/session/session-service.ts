@@ -47,6 +47,15 @@ export interface CreateSessionInput {
   readonly processId: number;
 }
 
+/** session-resume v1: hand an orphaned session over to the current runtime process. */
+export interface AdoptSessionInput {
+  readonly sessionId: string;
+  /** A FRESH lock id (lock ids are primary keys; the dead process's lock is released). */
+  readonly lockId: string;
+  readonly hostname: string;
+  readonly processId: number;
+}
+
 export class SessionService {
   constructor(private readonly deps: SessionServiceDeps) {}
 
@@ -114,6 +123,44 @@ export class SessionService {
       throw new SessionError('PREMATURE_COMPLETION', result.reason);
     }
     const updated = await this.applyState(current, result.next, 'ALL_TASKS_TERMINAL');
+    return updated;
+  }
+
+  /**
+   * session-resume v1: adopt a non-terminal session left behind by a dead runtime process.
+   * Acquires a NEW workspace lock for it (SS-001 — throws LockError('LOCK_HELD') unchanged when a
+   * live session holds the workspace, so the caller can leave everything alone), records the new
+   * owner in the session row, and emits SESSION_ADOPTED. The session STATE is not changed — no
+   * transition is added to the state machine (SS-002).
+   */
+  async adopt(input: AdoptSessionInput): Promise<Session> {
+    const current = await this.deps.sessions.getById(input.sessionId);
+    if (!current) {
+      throw new SessionError('NOT_FOUND', input.sessionId);
+    }
+    if (isSessionTerminal(current.state)) {
+      throw new SessionError('TERMINAL', `session is terminal: ${current.state}`);
+    }
+    await this.deps.lock.acquire({
+      lockId: input.lockId,
+      workspaceId: current.workspaceId,
+      sessionId: current.sessionId,
+      hostname: input.hostname,
+      processId: input.processId,
+      at: this.deps.now(),
+    });
+    const updated: Session = {
+      ...current,
+      lockId: input.lockId,
+      metadata: { ...current.metadata, hostname: input.hostname, processId: input.processId },
+      updatedAt: this.deps.now(),
+    };
+    await this.deps.sessions.update(updated);
+    await this.emit(current.sessionId, 'SESSION_ADOPTED', {
+      previousProcessId: current.metadata.processId,
+      processId: input.processId,
+      lockId: input.lockId,
+    });
     return updated;
   }
 

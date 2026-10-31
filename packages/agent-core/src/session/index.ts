@@ -9,3 +9,5 @@ export * from './workspace-lock.js';
 export * from './session-service.js';
 // Phase 4 — P4-SO1: SessionOrchestrator
 export * from './session-orchestrator.js';
+// session-resume v1: startup recovery of orphaned sessions
+export * from './startup-recovery.js';
