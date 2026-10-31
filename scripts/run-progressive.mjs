@@ -9,6 +9,13 @@
 //   node scripts/run-progressive.mjs                       # default: ollama qwen2.5-coder:latest
 //   node scripts/run-progressive.mjs qwen2.5-coder:latest  # pick an Ollama model
 //   node scripts/run-progressive.mjs --provider openai-compatible --endpoint https://api.openai.com/v1 --model gpt-4o-mini   (key via CODEFORGE_API_KEY)
+//
+// Interaction benchmark (vague / multi-approach goals answered by a deterministic simulated user):
+//   node scripts/run-progressive.mjs <model> --benchmark benchmarks/codeforge-interaction/benchmark.json --split all --interaction ask
+//   --interaction off     no mission stage (default; byte-identical to the plain capability curve)
+//   --interaction assume  mission stage + AssumptionAdvisor (Tier B1/B2: assume and state, never ask)
+//   --interaction ask     + clarification gate and plan options answered by the case's simulatedUser
+//   Run the three arms on the same model and compare the TOTAL lines (before/after evidence).
 import {
   SqliteDatabaseAdapter, SqliteSessionRepository, SqliteTaskRepository, SqliteTaskRunRepository,
   SqliteTaskExecutionRepository, SqliteTaskGraphRepository, SqliteGraphCommitter,
@@ -27,6 +34,8 @@ import {
   FailureAnalyzer, RecoveryEngine,
   buildToolPolicy, buildVerificationPolicy,
   DEFAULT_RECOVERY_POLICY, applyAblations,
+  MissionIntelligence, AssumptionAdvisor, ApproachAdvisor,
+  SimulatedClarificationGate, SimulatedPlanChoiceGate,
 } from '../packages/agent-core/dist/index.js';
 
 // Expose the repo root so benchmark command checks can reference repo scripts portably via the
@@ -53,6 +62,13 @@ const delayMs = Number(flag('delay-ms', '0')) || 0;
 // (e.g. Gemini). A global monotonic gate so bursts can never exceed 60000/interval calls/min.
 const minCallIntervalMs = Number(flag('min-call-interval-ms', '0')) || 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Interaction arm (see header). 'off' keeps the runner exactly as before.
+const interactionMode = (flag('interaction', 'off') ?? 'off').toLowerCase();
+if (!['off', 'assume', 'ask'].includes(interactionMode)) {
+  console.error(`--interaction must be off, assume, or ask (got: ${interactionMode})`); process.exit(1);
+}
+// Per-case interaction stats (taskId → what the mission stage detected and what the simulated user did).
+const interactionStats = new Map();
 
 // Serialize model calls so each starts at least `minCallIntervalMs` after the previous one began.
 let _rpmChain = Promise.resolve();
@@ -159,12 +175,37 @@ function makeRealAgentRunner() {
               workspaceRollback,
               ...(ablatedPolicy !== undefined ? { recoveryPolicy: ablatedPolicy } : {}),
             };
-        const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, taskRunRepository: taskRuns, ...recoveryWiring, now: c.now, nextId: c.nextId });
-        const goal = { goalId: 'G', version: 1, description: task.description, constraints: [], acceptanceCriteria: [{ criterionId: 'a', description: 'done', mandatory: true }], createdAt: c.now(), createdBy: 'user' };
+        // Interaction arms: wire the REAL mission stage. 'ask' adds the clarification gate and plan
+        // options, answered by the case's deterministic simulated user (no human, no session parking).
+        const profile = task.simulatedUser;
+        const clarGate = interactionMode === 'ask' && profile !== undefined ? new SimulatedClarificationGate(profile) : undefined;
+        const planGate = interactionMode === 'ask' && profile !== undefined ? new SimulatedPlanChoiceGate(profile) : undefined;
+        const missionStage = interactionMode === 'off' ? undefined : new MissionIntelligence({
+          events, now: c.now, newId: c.nextId,
+          assumptionAdvisor: new AssumptionAdvisor({ gateway: gw, now: c.now, newProvenanceId: c.nextId }),
+          ...(clarGate !== undefined ? { clarificationGate: clarGate } : {}),
+          ...(planGate !== undefined ? { approachAdvisor: new ApproachAdvisor({ gateway: gw }), planChoiceGate: planGate } : {}),
+        });
+        const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, taskRunRepository: taskRuns, ...recoveryWiring, ...(missionStage !== undefined ? { missionStage } : {}), now: c.now, nextId: c.nextId });
+        // Interaction cases mirror the product's POST /goal ingress (acceptance = the description
+        // itself); every other case keeps the historical 'done' criterion (curve unchanged).
+        const acceptance = task.simulatedUser !== undefined ? task.description : 'done';
+        const goal = { goalId: 'G', version: 1, description: task.description, constraints: [], acceptanceCriteria: [{ criterionId: 'a', description: acceptance, mandatory: true }], createdAt: c.now(), createdBy: 'user' };
         try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal */ }
         try { await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 }); }
         catch (err) { if (process.env.CF_DEBUG) console.error(`  [orch error] ${task.description.slice(0, 40)} :: ${err?.code ?? ''} ${err?.message ?? String(err)}`); }
-        return { events: await events.query({ sessionId: sid }), traceRef: sid };
+        const allEvents = await events.query({ sessionId: sid });
+        if (interactionMode !== 'off') {
+          const payloadOf = (type) => allEvents.find((e) => e.type === type)?.payload;
+          interactionStats.set(task.id, {
+            uncertainty: payloadOf('MISSION_UNCERTAINTY_ASSESSED')?.level ?? '-',
+            complexity: payloadOf('MISSION_COMPLEXITY_ESTIMATED')?.level ?? '-',
+            assumed: allEvents.some((e) => e.type === 'MISSION_ASSUMPTIONS_MADE'),
+            asked: clarGate?.transcript.find((x) => x.kind === 'clarification'),
+            plan: planGate?.transcript.find((x) => x.kind === 'plan-choice'),
+          });
+        }
+        return { events: allEvents, traceRef: sid };
       } finally { db.close(); }
     },
   };
@@ -213,7 +254,7 @@ if (splitArg === 'train') {
   benchmark.tasks = benchmark.tasks.filter((t) => t.heldOut === true);
 }
 // splitArg === 'all' keeps everything.
-console.log(`\nCapability curve: ${provider} '${model}' @ ${endpoint}  (${benchmark.tasks.length} tasks, split=${splitArg}, ablation=${ablationLabel})\n`);
+console.log(`\nCapability curve: ${provider} '${model}' @ ${endpoint}  (${benchmark.tasks.length} tasks, split=${splitArg}, ablation=${ablationLabel}, interaction=${interactionMode})\n`);
 const runner = new BenchmarkRunner({
   agent: makeRealAgentRunner(),
   makeCheckSupervisor: (root) => new WorkspaceProcessSupervisor({ workspaceRoot: root }),
@@ -230,6 +271,12 @@ for (const r of run.results) {
   const mark = r.verdict === 'SUCCESS' ? 'PASS' : r.verdict === 'FAILURE' ? 'FAIL' : 'INVALID';
   const failed = r.checks.filter((c) => !c.passed).map((c) => c.description);
   console.log(`  ${r.taskId.padEnd(7)} ${String(t?.difficulty).padEnd(11)} ${mark.padEnd(9)} ${failed.length ? failed[0] : ''}`);
+  const ix = interactionStats.get(r.taskId);
+  if (ix !== undefined) {
+    const asked = ix.asked ? `asked ${ix.asked.questions}q (${ix.asked.answeredByRule} by rule)` : (ix.assumed ? 'assumed' : 'no question');
+    const plan = ix.plan ? `; plan ${ix.plan.optionId}/${ix.plan.options} (${ix.plan.source}${ix.plan.source === 'user' ? `, ${ix.plan.score} hits` : ''})` : '';
+    console.log(`          ↳ ${ix.uncertainty}/${ix.complexity}: ${asked}${plan}`);
+  }
   // CF_DEBUG: dump every failing check's evidence detail (e.g. the `node test.js` AssertionError),
   // so a FAIL can be read as "which assertion / which file" rather than just a check name.
   if (process.env.CF_DEBUG) {
@@ -251,4 +298,17 @@ for (const d of diffs) {
 }
 console.log(`\n  TOTAL: ${result.success}/${result.total} success  (failure=${result.failure}, invalid=${result.invalid})`);
 console.log(`  failure classes: ${JSON.stringify(result.failureBreakdown)}`);
+if (interactionMode !== 'off' && interactionStats.size > 0) {
+  // Interaction rollup: how often the detector fired on each kind of case, and pass rate per kind.
+  console.log('\n  interaction:');
+  for (const kind of ['vague', 'multi-approach']) {
+    const ids = benchmark.tasks.filter((t) => t.interaction === kind).map((t) => t.id);
+    if (ids.length === 0) continue;
+    const pass = run.results.filter((r) => ids.includes(r.taskId) && r.verdict === 'SUCCESS').length;
+    const asked = ids.filter((id) => interactionStats.get(id)?.asked !== undefined).length;
+    const planned = ids.filter((id) => interactionStats.get(id)?.plan !== undefined).length;
+    const userPick = ids.filter((id) => interactionStats.get(id)?.plan?.source === 'user').length;
+    console.log(`    ${kind.padEnd(15)} pass ${pass}/${ids.length}  asked ${asked}/${ids.length}  plan options ${planned}/${ids.length} (user pick ${userPick})`);
+  }
+}
 console.log('\nPROGRESSIVE DONE');

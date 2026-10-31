@@ -42,3 +42,11 @@ export {
   type SweBenchTaskWithSetup,
   type SweBenchAdapterOptions,
 } from './swe-bench-adapter.js';
+// Interaction benchmark — deterministic simulated user (answers questions, picks plan options).
+export {
+  answerClarification,
+  choosePlanOption,
+  SimulatedClarificationGate,
+  SimulatedPlanChoiceGate,
+  type SimulatedInteraction,
+} from './simulated-user.js';

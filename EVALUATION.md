@@ -113,6 +113,40 @@ replaces 3/10 with a genuine task-correctness number — the harness is ready fo
   model, point it at `benchmarks/codeforge-native/benchmark.json`, and record the baseline under a
   model-specific label to compare against `codeforge-0.12-fakemodel`.
 
+## Interaction benchmark (vague and multi-approach goals)
+
+`benchmarks/codeforge-interaction/benchmark.json` measures whether asking (goal clarification, Tier C
+Phase 1) and offering plan options (Phase 2) actually improve task correctness, compared with
+assuming (Tier B1/B2) and with no mission stage at all.
+
+- **Cases:** 6 *vague* goals (`IV-*`, e.g. "make a small utility for temperatures") whose hidden
+  intent fixes the module, function names and exact behavior; 6 *multi-approach* goals (`IM-*`,
+  interface stated) whose hidden preference picks one approach (LRU eviction, sliding-window rate
+  limiting, quoted-field CSV parsing, escaping HTML, no npm dependencies, …). 4 cases are held out.
+- **Hidden checks:** every check is an inline `node -e` script run after the agent finishes, so
+  nothing in the workspace reveals the intent. `tests/evaluation/interaction-benchmark.spec.ts`
+  proves each check is satisfiable (a reference solution passes), not trivially satisfied (the seed
+  workspace fails), and hidden.
+- **Simulated user:** each case carries a `simulatedUser` profile (`intent`, per-question
+  `answers` matched by substring, plan `prefer` keywords). It is deterministic rule matching — no
+  second LLM — so a run measures the agent. Unmatched questions get the full intent; plan options
+  with no preference hit are left to the agent (recommended option).
+- **Goal acceptance** mirrors `POST /goal` (acceptance = the description), so the uncertainty
+  detector sees exactly what it would see in the product. Detection recall is part of the result:
+  a vague goal the detector scores INFERRED is assumed, not asked about.
+- **Arms** (same model, same cases):
+  ```
+  node scripts/run-progressive.mjs <model> --benchmark benchmarks/codeforge-interaction/benchmark.json --split all --interaction off
+  node scripts/run-progressive.mjs <model> --benchmark benchmarks/codeforge-interaction/benchmark.json --split all --interaction assume
+  node scripts/run-progressive.mjs <model> --benchmark benchmarks/codeforge-interaction/benchmark.json --split all --interaction ask
+  ```
+  `off` = no mission stage (the plain curve), `assume` = mission stage + AssumptionAdvisor,
+  `ask` = + clarification gate and plan options answered by the simulated user. Each case prints
+  what was detected (uncertainty/complexity) and what the user did; the rollup prints pass rate,
+  questions asked and plan picks per kind. Compare the TOTAL lines across arms.
+- **Discipline:** the same as the progressive benchmark — never tune case descriptions to the
+  detector, never justify a harness change with a held-out case.
+
 ## Future (data for self-improvement — §31)
 
 The evaluation outputs (per-case failure classes + metrics + trace refs) are shaped to eventually

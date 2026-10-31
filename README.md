@@ -272,6 +272,11 @@ authority on its own success). It proves the loop end-to-end — isolation → g
 external verification → verdict → metrics → baseline. A real-Ollama run would replace 3/10 with a
 genuine task-correctness figure; the harness is ready for it. See `EVALUATION.md`.
 
+A separate **interaction benchmark** (`benchmarks/codeforge-interaction`, 12 vague / multi-approach
+goals with hidden intent and a deterministic simulated user) compares three arms of
+`scripts/run-progressive.mjs --interaction off|assume|ask` to measure whether asking and plan options
+improve correctness over assuming.
+
 ---
 
 ## Project direction

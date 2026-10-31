@@ -65,6 +65,23 @@ export interface BenchmarkCheck {
   readonly timeoutMs?: number;
 }
 
+// ── Simulated user (interaction benchmark) ─────────────────────────────────────────
+// For goals that are vague or admit several approaches, the benchmark plays the USER: it knows the
+// hidden intent the checks verify, answers clarification questions, and picks a plan option. The
+// profile is deterministic data (no LLM), so a run measures the AGENT, not a second model.
+
+export interface SimulatedUserProfile {
+  /** The full hidden intent (what the user actually wants). Fallback answer to any question. */
+  readonly intent: string;
+  /** Per-question answers: the first rule whose `match` (case-insensitive substring) occurs in the question wins. */
+  readonly answers?: readonly { readonly match: string; readonly answer: string }[];
+  /**
+   * Keywords the user looks for when choosing between plan options (case-insensitive substrings of
+   * title + summary + pros). The option with the most hits wins; no hits ⇒ "let the agent decide".
+   */
+  readonly prefer?: readonly string[];
+}
+
 // ── BenchmarkTask (§8) ───────────────────────────────────────────────────────────
 
 /**
@@ -128,6 +145,11 @@ export interface BenchmarkTask {
    * E.g. "ruby not available on this machine".
    */
   readonly skip?: string;
+
+  /** Interaction benchmark: the simulated user that answers questions / picks a plan option. */
+  readonly simulatedUser?: SimulatedUserProfile;
+  /** Interaction benchmark: what this case probes ('vague' goal or 'multi-approach' goal). */
+  readonly interaction?: 'vague' | 'multi-approach';
 }
 
 // ── Benchmark + version (§8) ─────────────────────────────────────────────────────

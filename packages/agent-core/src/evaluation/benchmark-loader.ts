@@ -18,6 +18,7 @@ import type {
   BenchmarkDifficulty,
   BenchmarkRisk,
   VerificationKind,
+  SimulatedUserProfile,
 } from '../domain/evaluation.js';
 
 export interface BenchmarkLoadError {
@@ -81,6 +82,39 @@ function validateCheck(raw: unknown, path: string, errors: BenchmarkLoadError[])
   return check;
 }
 
+/** Validate an optional simulated-user profile (interaction benchmark). */
+function validateSimulatedUser(raw: unknown, path: string, errors: BenchmarkLoadError[]): SimulatedUserProfile | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) { errors.push({ path, message: 'simulatedUser must be an object' }); return undefined; }
+  if (typeof raw.intent !== 'string' || raw.intent.trim() === '') {
+    errors.push({ path: `${path}.intent`, message: 'intent required' });
+    return undefined;
+  }
+  const answers: { match: string; answer: string }[] = [];
+  if (raw.answers !== undefined) {
+    if (!Array.isArray(raw.answers)) {
+      errors.push({ path: `${path}.answers`, message: 'answers must be an array' });
+    } else {
+      raw.answers.forEach((a, i) => {
+        if (!isObject(a) || typeof a.match !== 'string' || a.match === '' || typeof a.answer !== 'string') {
+          errors.push({ path: `${path}.answers[${i}]`, message: 'each answer needs a non-empty match and an answer string' });
+        } else {
+          answers.push({ match: a.match, answer: a.answer });
+        }
+      });
+    }
+  }
+  let prefer: string[] | undefined;
+  if (raw.prefer !== undefined) {
+    if (!Array.isArray(raw.prefer) || !raw.prefer.every((p) => typeof p === 'string' && p !== '')) {
+      errors.push({ path: `${path}.prefer`, message: 'prefer must be an array of non-empty strings' });
+    } else {
+      prefer = raw.prefer as string[];
+    }
+  }
+  return { intent: raw.intent, ...(answers.length > 0 ? { answers } : {}), ...(prefer !== undefined ? { prefer } : {}) };
+}
+
 /** Validate a single benchmark task. */
 export function validateBenchmarkTask(raw: unknown, path = 'task'): BenchmarkLoadResult<BenchmarkTask> {
   const errors: BenchmarkLoadError[] = [];
@@ -120,6 +154,10 @@ export function validateBenchmarkTask(raw: unknown, path = 'task'): BenchmarkLoa
     });
   }
 
+  const simulatedUser = validateSimulatedUser(raw.simulatedUser, `${path}.simulatedUser`, errors);
+  if (raw.interaction !== undefined && raw.interaction !== 'vague' && raw.interaction !== 'multi-approach') {
+    errors.push({ path: `${path}.interaction`, message: "interaction must be 'vague' or 'multi-approach'" });
+  }
   if (errors.length > 0) return { ok: false, errors };
 
   const task: BenchmarkTask = {
@@ -138,6 +176,8 @@ export function validateBenchmarkTask(raw: unknown, path = 'task'): BenchmarkLoa
     ...(raw.heldOut === true ? { heldOut: true } : {}),
     ...(typeof raw.heldOutAxis === 'string' ? { heldOutAxis: raw.heldOutAxis as string } : {}),
     ...(typeof raw.skip === 'string' ? { skip: raw.skip as string } : {}),
+    ...(simulatedUser !== undefined ? { simulatedUser } : {}),
+    ...(raw.interaction === 'vague' || raw.interaction === 'multi-approach' ? { interaction: raw.interaction } : {}),
   };
   return { ok: true, value: task };
 }

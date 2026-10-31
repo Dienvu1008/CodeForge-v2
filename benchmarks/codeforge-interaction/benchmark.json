@@ -1,0 +1,592 @@
+{
+  "id": "codeforge-interaction",
+  "version": "0.1.0",
+  "description": "Interaction benchmark: vague goals (hidden intent) and multi-approach goals (hidden preference), answered by a deterministic simulated user. Run with scripts/run-progressive.mjs --benchmark benchmarks/codeforge-interaction/benchmark.json --interaction off|assume|ask.",
+  "tasks": [
+    {
+      "id": "IV-01",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Vague: temperature utility",
+      "description": "make a small utility for temperatures",
+      "interaction": "vague",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "A CommonJS module temp.js exporting cToF(c) and fToC(f) that convert between Celsius and Fahrenheit.",
+        "answers": [
+          {
+            "match": "very short",
+            "answer": "A CommonJS module temp.js exporting cToF(c) and fToC(f) that convert between Celsius and Fahrenheit."
+          },
+          {
+            "match": "specifically",
+            "answer": "A CommonJS module temp.js exporting cToF(c) and fToC(f) that convert between Celsius and Fahrenheit."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Numbers in, numbers out, rounded to one decimal place: cToF(100) → 212, cToF(-40) → -40, fToC(98.6) → 37, fToC(33) → 0.6."
+          },
+          {
+            "match": "done",
+            "answer": "require('./temp.js') works and those exact examples hold."
+          }
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst t = require(require('node:path').resolve('temp.js'));\nassert.strictEqual(t.cToF(100), 212); assert.strictEqual(t.cToF(-40), -40);\nassert.strictEqual(t.fToC(98.6), 37); assert.strictEqual(t.fToC(33), 0.6);\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "temp.js converts C↔F rounded to 1 decimal"
+        }
+      ],
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "IV-02",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Vague: slugify",
+      "description": "add something to slugify titles",
+      "interaction": "vague",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "A CommonJS module slug.js exporting slugify(title) that lowercases, turns every run of non-alphanumeric characters into a single \"-\", and trims leading/trailing dashes.",
+        "answers": [
+          {
+            "match": "very short",
+            "answer": "A CommonJS module slug.js exporting slugify(title) that lowercases, turns every run of non-alphanumeric characters into a single \"-\", and trims leading/trailing dashes."
+          },
+          {
+            "match": "specifically",
+            "answer": "A CommonJS module slug.js exporting slugify(title) that lowercases, turns every run of non-alphanumeric characters into a single \"-\", and trims leading/trailing dashes."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "A string in, a string out: slugify('Hello, World!') → 'hello-world', slugify('  A  b ') → 'a-b', slugify('C++ & Rust') → 'c-rust', slugify('--x--') → 'x'."
+          },
+          {
+            "match": "done",
+            "answer": "require('./slug.js').slugify returns exactly those values."
+          }
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { slugify } = require(require('node:path').resolve('slug.js'));\nassert.strictEqual(slugify('Hello, World!'), 'hello-world'); assert.strictEqual(slugify('  A  b '), 'a-b');\nassert.strictEqual(slugify('C++ & Rust'), 'c-rust'); assert.strictEqual(slugify('--x--'), 'x');\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "slug.js slugify matches the examples"
+        }
+      ],
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "IV-03",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Vague: word counts",
+      "description": "write a tool for word counts",
+      "interaction": "vague",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "A CommonJS module wordcount.js exporting countWords(text) that returns a plain object mapping each lowercased word (runs of letters a-z) to how many times it occurs.",
+        "answers": [
+          {
+            "match": "very short",
+            "answer": "A CommonJS module wordcount.js exporting countWords(text) that returns a plain object mapping each lowercased word (runs of letters a-z) to how many times it occurs."
+          },
+          {
+            "match": "specifically",
+            "answer": "A CommonJS module wordcount.js exporting countWords(text) that returns a plain object mapping each lowercased word (runs of letters a-z) to how many times it occurs."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "A string in, an object out: countWords('Hello, hello... WORLD!') → { hello: 2, world: 1 }, countWords('') → {}."
+          },
+          {
+            "match": "done",
+            "answer": "require('./wordcount.js').countWords returns exactly those objects."
+          }
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { countWords } = require(require('node:path').resolve('wordcount.js'));\nassert.deepStrictEqual({ ...countWords('Hello, hello... WORLD!') }, { hello: 2, world: 1 });\nassert.deepStrictEqual({ ...countWords('The cat the Hat') }, { the: 2, cat: 1, hat: 1 });\nassert.deepStrictEqual({ ...countWords('') }, {});\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "wordcount.js counts lowercased words"
+        }
+      ],
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "IV-04",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Vague: money formatting",
+      "description": "make a helper that handles money stuff",
+      "interaction": "vague",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "A CommonJS module money.js exporting formatCents(cents) that formats an integer number of cents as US dollars with thousands separators and two decimals; negatives get a leading minus before the $.",
+        "answers": [
+          {
+            "match": "very short",
+            "answer": "A CommonJS module money.js exporting formatCents(cents) that formats an integer number of cents as US dollars with thousands separators and two decimals; negatives get a leading minus before the $."
+          },
+          {
+            "match": "specifically",
+            "answer": "A CommonJS module money.js exporting formatCents(cents) that formats an integer number of cents as US dollars with thousands separators and two decimals; negatives get a leading minus before the $."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "An integer in, a string out: formatCents(123456) → '$1,234.56', formatCents(-500) → '-$5.00', formatCents(5) → '$0.05', formatCents(100000000) → '$1,000,000.00'."
+          },
+          {
+            "match": "done",
+            "answer": "require('./money.js').formatCents returns exactly those strings."
+          }
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { formatCents } = require(require('node:path').resolve('money.js'));\nassert.strictEqual(formatCents(123456), '$1,234.56'); assert.strictEqual(formatCents(-500), '-$5.00');\nassert.strictEqual(formatCents(5), '$0.05'); assert.strictEqual(formatCents(100000000), '$1,000,000.00');\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "money.js formatCents matches the examples"
+        }
+      ],
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 240000
+    },
+    {
+      "id": "IV-05",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Vague: input validation",
+      "description": "build something to validate user input",
+      "interaction": "vague",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "A CommonJS module validate.js exporting isValidEmail(s) that returns true only for an address with exactly one @, a non-empty local part, no spaces, and a domain containing a dot that does not start or end with a dot.",
+        "answers": [
+          {
+            "match": "very short",
+            "answer": "A CommonJS module validate.js exporting isValidEmail(s) that returns true only for an address with exactly one @, a non-empty local part, no spaces, and a domain containing a dot that does not start or end with a dot."
+          },
+          {
+            "match": "specifically",
+            "answer": "A CommonJS module validate.js exporting isValidEmail(s) that returns true only for an address with exactly one @, a non-empty local part, no spaces, and a domain containing a dot that does not start or end with a dot."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "A string in, a boolean out: true for 'a@b.co' and 'first.last@example.org'; false for 'ab.co', 'a@b', '@b.co', 'a b@c.de', 'a@@b.co', 'a@.co'."
+          },
+          {
+            "match": "done",
+            "answer": "require('./validate.js').isValidEmail returns exactly those booleans."
+          }
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { isValidEmail } = require(require('node:path').resolve('validate.js'));\nfor (const s of ['a@b.co', 'first.last@example.org']) assert.strictEqual(isValidEmail(s), true, s);\nfor (const s of ['ab.co', 'a@b', '@b.co', 'a b@c.de', 'a@@b.co', 'a@.co']) assert.strictEqual(isValidEmail(s), false, s);\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "validate.js isValidEmail matches the examples"
+        }
+      ],
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 240000,
+      "heldOut": true,
+      "heldOutAxis": "vague goal: validation rules"
+    },
+    {
+      "id": "IV-06",
+      "version": 1,
+      "category": "FEATURE",
+      "title": "Vague: dates",
+      "description": "create a script that deals with dates",
+      "interaction": "vague",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "A CommonJS module dates.js exporting daysBetween(a, b) that takes two 'YYYY-MM-DD' strings and returns the absolute number of whole days between them (UTC, leap years correct).",
+        "answers": [
+          {
+            "match": "very short",
+            "answer": "A CommonJS module dates.js exporting daysBetween(a, b) that takes two 'YYYY-MM-DD' strings and returns the absolute number of whole days between them (UTC, leap years correct)."
+          },
+          {
+            "match": "specifically",
+            "answer": "A CommonJS module dates.js exporting daysBetween(a, b) that takes two 'YYYY-MM-DD' strings and returns the absolute number of whole days between them (UTC, leap years correct)."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Two strings in, a number out: daysBetween('2024-01-01', '2024-03-01') → 60, daysBetween('2024-03-01', '2024-01-01') → 60, daysBetween('2023-12-31', '2024-01-01') → 1, same date → 0."
+          },
+          {
+            "match": "done",
+            "answer": "require('./dates.js').daysBetween returns exactly those numbers."
+          }
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { daysBetween } = require(require('node:path').resolve('dates.js'));\nassert.strictEqual(daysBetween('2024-01-01', '2024-03-01'), 60); assert.strictEqual(daysBetween('2024-03-01', '2024-01-01'), 60);\nassert.strictEqual(daysBetween('2023-12-31', '2024-01-01'), 1); assert.strictEqual(daysBetween('2024-05-05', '2024-05-05'), 0);\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "dates.js daysBetween matches the examples"
+        }
+      ],
+      "difficulty": "EASY",
+      "risk": "LOW",
+      "timeoutMs": 240000,
+      "heldOut": true,
+      "heldOutAxis": "vague goal: date arithmetic"
+    },
+    {
+      "id": "IM-01",
+      "version": 1,
+      "category": "PROJECT_GENERATION",
+      "title": "Multi-approach: CSV to JSON CLI",
+      "description": "Build a command-line tool csv2json.js that converts a CSV file (first row is the header) to a JSON array of objects: node csv2json.js in.csv out.json. Include unit tests.",
+      "interaction": "multi-approach",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "Use only Node built-ins (no npm packages) and parse CSV properly: quoted fields may contain commas, and \"\" inside quotes is an escaped quote.",
+        "answers": [
+          {
+            "match": "done",
+            "answer": "Use only Node built-ins (no npm packages) and parse CSV properly: quoted fields may contain commas, and \"\" inside quotes is an escaped quote."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Use only Node built-ins (no npm packages) and parse CSV properly: quoted fields may contain commas, and \"\" inside quotes is an escaped quote."
+          }
+        ],
+        "prefer": [
+          "quoted",
+          "quote",
+          "rfc",
+          "no dependenc",
+          "no external",
+          "built-in",
+          "standard library",
+          "without"
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst fs = require('node:fs'); const { execFileSync } = require('node:child_process');\nfs.writeFileSync('_h.csv', 'name,quote\\nAda,\"Hello, world\"\\nBob,\"He said \"\"hi\"\"\"\\n');\nexecFileSync(process.execPath, ['csv2json.js', '_h.csv', '_h.json'], { stdio: 'pipe' });\nassert.deepStrictEqual(JSON.parse(fs.readFileSync('_h.json', 'utf8')), [{ name: 'Ada', quote: 'Hello, world' }, { name: 'Bob', quote: 'He said \"hi\"' }]);\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "csv2json.js handles quoted fields with commas and escaped quotes"
+        },
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst fs = require('node:fs');\nlet p = {}; try { p = JSON.parse(fs.readFileSync('package.json', 'utf8')); } catch {}\nassert.deepStrictEqual(Object.keys(p.dependencies || {}), [], 'package.json dependencies must be empty');\nassert.ok(!fs.existsSync('node_modules'), 'node_modules must not exist');\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "no third-party dependencies were added"
+        }
+      ],
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "IM-02",
+      "version": 1,
+      "category": "PROJECT_GENERATION",
+      "title": "Multi-approach: cache eviction",
+      "description": "Build a cache module cache.js exporting createCache({ max }) with get(key) and set(key, value) and an eviction policy when max entries is reached, plus unit tests.",
+      "interaction": "multi-approach",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "Evict the least recently used entry (a get counts as a use).",
+        "answers": [
+          {
+            "match": "done",
+            "answer": "Evict the least recently used entry (a get counts as a use)."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Evict the least recently used entry (a get counts as a use)."
+          }
+        ],
+        "prefer": [
+          "lru",
+          "least recently used",
+          "least-recently-used",
+          "recently used"
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { createCache } = require(require('node:path').resolve('cache.js'));\nconst c = createCache({ max: 2 });\nc.set('a', 1); c.set('b', 2); assert.strictEqual(c.get('a'), 1); c.set('c', 3);\nassert.strictEqual(c.get('b'), undefined, 'b was least recently used'); assert.strictEqual(c.get('a'), 1); assert.strictEqual(c.get('c'), 3);\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "cache.js evicts the least recently used entry"
+        }
+      ],
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "IM-03",
+      "version": 1,
+      "category": "PROJECT_GENERATION",
+      "title": "Multi-approach: rate limiter",
+      "description": "Build a rate limiter module ratelimit.js exporting createLimiter({ limit, windowMs }) whose allow(key, nowMs) returns true or false, plus unit tests.",
+      "interaction": "multi-approach",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "Use a sliding window: allow at most `limit` calls per key in any window (nowMs - windowMs, nowMs]; keys are independent.",
+        "answers": [
+          {
+            "match": "done",
+            "answer": "Use a sliding window: allow at most `limit` calls per key in any window (nowMs - windowMs, nowMs]; keys are independent."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Use a sliding window: allow at most `limit` calls per key in any window (nowMs - windowMs, nowMs]; keys are independent."
+          }
+        ],
+        "prefer": [
+          "sliding",
+          "rolling",
+          "timestamp log",
+          "log of timestamps"
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { createLimiter } = require(require('node:path').resolve('ratelimit.js'));\nconst l = createLimiter({ limit: 2, windowMs: 1000 });\nassert.strictEqual(l.allow('k', 900), true); assert.strictEqual(l.allow('k', 950), true);\nassert.strictEqual(l.allow('k', 1000), false, 'a fixed window would wrongly allow this');\nassert.strictEqual(l.allow('j', 1000), true, 'keys are independent');\nassert.strictEqual(l.allow('k', 1901), true);\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "ratelimit.js uses a sliding window per key"
+        }
+      ],
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "IM-04",
+      "version": 1,
+      "category": "PROJECT_GENERATION",
+      "title": "Multi-approach: persisted todos",
+      "description": "Build a todo list module todos.js exporting createStore(filePath) with add(text) returning an id, complete(id) and list(), persisted across runs, plus unit tests.",
+      "interaction": "multi-approach",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "Persist to the given file as plain JSON using only Node built-ins (no database, no npm packages). list() returns items with text and a done/completed flag.",
+        "answers": [
+          {
+            "match": "done",
+            "answer": "Persist to the given file as plain JSON using only Node built-ins (no database, no npm packages). list() returns items with text and a done/completed flag."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Persist to the given file as plain JSON using only Node built-ins (no database, no npm packages). list() returns items with text and a done/completed flag."
+          }
+        ],
+        "prefer": [
+          "json",
+          "no dependenc",
+          "built-in",
+          "fs",
+          "plain file"
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst path = require('node:path'); const fs = require('node:fs'); const os = require('node:os');\nconst { createStore } = require(path.resolve('todos.js'));\nconst f = path.join(os.tmpdir(), 'cf-ix-todos-' + process.pid + '.json');\ntry { fs.rmSync(f, { force: true }); } catch {}\nconst s = createStore(f); const id = await s.add('buy milk'); await s.complete(id);\nconst items = await createStore(f).list();\nassert.strictEqual(items.length, 1); assert.strictEqual(items[0].text, 'buy milk');\nassert.ok(items[0].done === true || items[0].completed === true, 'completed flag persisted');\nJSON.parse(fs.readFileSync(f, 'utf8'));\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "todos.js persists to a JSON file across store instances"
+        },
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst fs = require('node:fs');\nlet p = {}; try { p = JSON.parse(fs.readFileSync('package.json', 'utf8')); } catch {}\nassert.deepStrictEqual(Object.keys(p.dependencies || {}), [], 'package.json dependencies must be empty');\nassert.ok(!fs.existsSync('node_modules'), 'node_modules must not exist');\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "no third-party dependencies were added"
+        }
+      ],
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000
+    },
+    {
+      "id": "IM-05",
+      "version": 1,
+      "category": "PROJECT_GENERATION",
+      "title": "Multi-approach: markdown renderer",
+      "description": "Build a markdown to HTML converter md2html.js exporting render(markdown) that supports headings, bold, italics, links and lists, plus unit tests.",
+      "interaction": "multi-approach",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "Write it from scratch with no npm packages, and escape raw HTML in the input so it is safe to display.",
+        "answers": [
+          {
+            "match": "done",
+            "answer": "Write it from scratch with no npm packages, and escape raw HTML in the input so it is safe to display."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Write it from scratch with no npm packages, and escape raw HTML in the input so it is safe to display."
+          }
+        ],
+        "prefer": [
+          "escape",
+          "safe",
+          "xss",
+          "sanitiz",
+          "no dependenc",
+          "from scratch",
+          "own parser",
+          "tokeniz"
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { render } = require(require('node:path').resolve('md2html.js'));\nassert.ok(render('# Hi').includes('<h1>Hi</h1>'));\nassert.ok(render('**b**').includes('<strong>b</strong>'));\nassert.ok(render('[x](http://a.b)').includes('<a href=\"http://a.b\">x</a>'));\nconst out = render('<script>alert(1)</script>');\nassert.ok(!out.includes('<script>'), 'raw HTML must be escaped'); assert.ok(out.includes('&lt;script&gt;'));\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "md2html.js renders basics and escapes raw HTML"
+        },
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst fs = require('node:fs');\nlet p = {}; try { p = JSON.parse(fs.readFileSync('package.json', 'utf8')); } catch {}\nassert.deepStrictEqual(Object.keys(p.dependencies || {}), [], 'package.json dependencies must be empty');\nassert.ok(!fs.existsSync('node_modules'), 'node_modules must not exist');\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "no third-party dependencies were added"
+        }
+      ],
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000,
+      "heldOut": true,
+      "heldOutAxis": "multi-approach: library vs safe hand-written"
+    },
+    {
+      "id": "IM-06",
+      "version": 1,
+      "category": "PROJECT_GENERATION",
+      "title": "Multi-approach: event emitter",
+      "description": "Build an event emitter module events.js exporting createEmitter() with on, off, once and emit methods, plus unit tests.",
+      "interaction": "multi-approach",
+      "seedFiles": {
+        "package.json": "{\"name\":\"ix\",\"private\":true}\n"
+      },
+      "simulatedUser": {
+        "intent": "Dispatch synchronously in registration order, and isolate listener errors: a throwing listener must not stop the others and emit itself must not throw.",
+        "answers": [
+          {
+            "match": "done",
+            "answer": "Dispatch synchronously in registration order, and isolate listener errors: a throwing listener must not stop the others and emit itself must not throw."
+          },
+          {
+            "match": "inputs and outputs",
+            "answer": "Dispatch synchronously in registration order, and isolate listener errors: a throwing listener must not stop the others and emit itself must not throw."
+          }
+        ],
+        "prefer": [
+          "isolat",
+          "error",
+          "synchronous",
+          "sync",
+          "catch"
+        ]
+      },
+      "verification": [
+        {
+          "kind": "command",
+          "target": "node",
+          "args": [
+            "-e",
+            "(async () => {\nconst assert = require('node:assert');\n\nconst { createEmitter } = require(require('node:path').resolve('events.js'));\nconst e = createEmitter(); const log = [];\ne.on('x', () => log.push(1)); e.on('x', () => { throw new Error('boom'); }); e.on('x', () => log.push(3));\nlet threw = false; try { e.emit('x'); } catch { threw = true; }\nassert.strictEqual(threw, false, 'emit must not throw'); assert.deepStrictEqual(log, [1, 3], 'synchronous, in order, errors isolated');\ne.once('y', () => log.push('y')); e.emit('y'); e.emit('y'); assert.strictEqual(log.filter((v) => v === 'y').length, 1);\nconst h = () => log.push('z'); e.on('z', h); e.off('z', h); e.emit('z'); assert.ok(!log.includes('z'));\n})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });"
+          ],
+          "description": "events.js dispatches synchronously and isolates listener errors"
+        }
+      ],
+      "difficulty": "MEDIUM",
+      "risk": "LOW",
+      "timeoutMs": 300000,
+      "heldOut": true,
+      "heldOutAxis": "multi-approach: dispatch semantics"
+    }
+  ]
+}

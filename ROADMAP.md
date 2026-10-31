@@ -154,8 +154,11 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      recommended); the user picks in the Goals panel (`POST /plan-choice`), timeout ⇒ recommended;
      the pick reaches the Planner (`CHOSEN_APPROACH`) and the executor (`[chosen-approach]`). Shares
      the waiting core with the clarification gate (`HumanDecisionWaiter`); resumable after a restart.
-     Spec: `.kiro/specs/plan-options/`. Next: before/after benchmark of Tier B2/C on vague and
-     multi-approach goals.
+     Spec: `.kiro/specs/plan-options/`.
+   - **Interaction benchmark (harness DONE, numbers pending):** `benchmarks/codeforge-interaction`
+     (6 vague + 6 multi-approach goals, hidden checks, deterministic simulated user) and
+     `run-progressive.mjs --interaction off|assume|ask`. Next: run the three arms on a live model
+     and record the before/after numbers (EVALUATION.md).
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.
