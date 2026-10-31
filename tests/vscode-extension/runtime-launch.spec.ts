@@ -110,6 +110,27 @@ describe('buildRuntimeArgv', () => {
   });
 });
 
+describe('buildRuntimeArgv — plan options', () => {
+  const count = (argv: string[], flag: string): number => argv.filter((a) => a === flag).length;
+  it('planOptions: true appends --mission on --plan-options on', () => {
+    const argv = buildRuntimeArgv({ entryPath: 'c', workspace: 'w', model: 'm', port: 1, planOptions: true });
+    expect(argv.slice(-4)).toEqual(['--mission', 'on', '--plan-options', 'on']);
+  });
+  it('clarify + planOptions share a single --mission', () => {
+    const argv = buildRuntimeArgv({ entryPath: 'c', workspace: 'w', model: 'm', port: 1, clarify: true, planOptions: true });
+    expect(count(argv, '--mission')).toBe(1);
+    expect(count(argv, '--clarify')).toBe(1);
+    expect(count(argv, '--plan-options')).toBe(1);
+  });
+  it('planOptions false/omitted adds nothing', () => {
+    for (const planOptions of [false, undefined]) {
+      const argv = buildRuntimeArgv({ entryPath: 'c', workspace: 'w', model: 'm', port: 1, planOptions });
+      expect(argv).not.toContain('--plan-options');
+      expect(argv).not.toContain('--mission');
+    }
+  });
+});
+
 describe('runtimeUrlForPort', () => {
   it('builds a loopback URL', () => {
     expect(runtimeUrlForPort(9500)).toBe('http://127.0.0.1:9500');

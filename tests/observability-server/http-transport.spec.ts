@@ -14,6 +14,7 @@ import {
   ObservabilityService,
   HttpTransport,
   ClarificationCoordinator,
+  PlanChoiceCoordinator,
   runMigrations,
   createMigrationRegistry,
   type ObservabilityServiceDeps,
@@ -23,8 +24,10 @@ import {
   SessionService,
   ExecutionCoordinator,
   buildClarificationRequest,
+  buildPlanOptionsRequest,
   type Session,
   type ClarificationOutcome,
+  type PlanChoiceOutcome,
 } from '@codeforge/agent-core';
 
 function makeCounters(): { now: () => string; nextId: () => string } {
@@ -381,5 +384,107 @@ describe('POST /clarification — contract', () => {
     const r = await postJson({ sessionId: 'S', answers: { q1: 'x' } }, base);
     expect(r.status).toBe(501);
     expect(await r.json()).toEqual({ error: 'clarification not enabled' });
+  });
+});
+
+// Plan options — POST /plan-choice contract (design C6). Real PlanChoiceCoordinator with fake
+// session ports (the real SQLite session 'S' resolves the session; unknown ids → 404).
+// Requirements 1.5, 5.1–5.9.
+describe('POST /plan-choice — contract', () => {
+  let pcTransport: HttpTransport;
+  let pcBase: string;
+  let coordinator: PlanChoiceCoordinator;
+  let fakeState: string;
+  let waiter: Promise<PlanChoiceOutcome> | undefined;
+
+  const request = buildPlanOptionsRequest('REQ-P', 'M-1', 'G', [
+    { id: 'o1', title: 'Single script', summary: 'One file.', pros: ['Fast'], cons: ['No tests'], recommended: false },
+    { id: 'o2', title: 'Module + tests', summary: 'A module plus tests.', pros: ['Verifiable'], cons: ['More files'], recommended: true },
+  ]);
+  const startWaiter = (): void => { waiter = coordinator.awaitChoice('S', request); };
+  const post = (body: string, url = pcBase): Promise<Response> =>
+    fetch(`${url}/plan-choice`, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+  const postJson = (payload: unknown, url = pcBase): Promise<Response> => post(JSON.stringify(payload), url);
+
+  beforeEach(async () => {
+    fakeState = 'AWAITING_HUMAN';
+    waiter = undefined;
+    coordinator = new PlanChoiceCoordinator({
+      sessionService: { transition: async () => undefined },
+      sessions: { getById: async () => ({ state: fakeState }) },
+      pollIntervalMs: 5,
+    });
+    pcTransport = new HttpTransport({ service: new ObservabilityService({ ...serviceDeps, planChoice: coordinator }), streamPollMs: 50 });
+    pcBase = `http://127.0.0.1:${await pcTransport.listen(0)}`;
+  });
+  afterEach(async () => {
+    fakeState = 'CANCELLING';
+    if (waiter !== undefined) await waiter;
+    await pcTransport.close();
+  });
+
+  it('200 for an explicit option and resolves the waiter', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'S', optionId: 'o1' });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ requestId: 'REQ-P', optionId: 'o1', source: 'user' });
+    expect(await waiter).toEqual({ kind: 'chosen', optionId: 'o1', source: 'user' });
+  });
+
+  it('200 with useRecommended → the recommended option, source default', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'S', useRecommended: true });
+    expect(await r.json()).toEqual({ requestId: 'REQ-P', optionId: 'o2', source: 'default' });
+  });
+
+  it('400 invalid JSON body', async () => {
+    startWaiter();
+    const r = await post('{nope');
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'invalid JSON body' });
+  });
+
+  it('400 sessionId required', async () => {
+    startWaiter();
+    for (const p of [{ optionId: 'o1' }, { sessionId: '', optionId: 'o1' }, { sessionId: 3, optionId: 'o1' }]) {
+      const r = await postJson(p);
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ error: 'sessionId required' });
+    }
+  });
+
+  it('400 optionId required, 400 unknown option id — and neither consumes the request', async () => {
+    startWaiter();
+    let r = await postJson({ sessionId: 'S' });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'optionId required' });
+    r = await postJson({ sessionId: 'S', optionId: 'o9' });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: 'unknown option id: o9' });
+    r = await postJson({ sessionId: 'S', optionId: 'o2' });
+    expect(r.status).toBe(200);
+  });
+
+  it('404 session not found', async () => {
+    startWaiter();
+    const r = await postJson({ sessionId: 'NOPE', optionId: 'o1' });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ error: 'session not found' });
+  });
+
+  it('409 on a second submit and when nothing is pending', async () => {
+    let r = await postJson({ sessionId: 'S', optionId: 'o1' });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: 'session not awaiting plan choice' });
+    startWaiter();
+    expect((await postJson({ sessionId: 'S', optionId: 'o1' })).status).toBe(200);
+    r = await postJson({ sessionId: 'S', optionId: 'o2' });
+    expect(r.status).toBe(409);
+  });
+
+  it('501 when plan options are not wired', async () => {
+    const r = await postJson({ sessionId: 'S', optionId: 'o1' }, base);
+    expect(r.status).toBe(501);
+    expect(await r.json()).toEqual({ error: 'plan options not enabled' });
   });
 });

@@ -56,6 +56,17 @@ import {
   type ClarificationOutcome,
   type ClarificationRequest,
 } from './goal-clarification.js';
+import type { ApproachAdvisor } from './approach-advisor.js';
+import {
+  buildPlanOptionsRequest,
+  chosenApproachStatement,
+  resolveChosenApproach,
+  shouldProposePlanOptions,
+  type ChosenApproach,
+  type PlanChoiceGate,
+  type PlanChoiceOutcome,
+  type PlanOptionsRequest,
+} from './plan-options.js';
 
 // ── Optional collaborators (all advisory; absent → that step is skipped) ─────────
 
@@ -104,6 +115,15 @@ export interface MissionIntelligenceDeps {
    */
   readonly clarificationGate?: ClarificationGate;
 
+  /**
+   * Optional plan options (opt-in `--plan-options on`, Goal Clarification Phase 2). When BOTH are
+   * present and the mission complexity is MEDIUM or higher, the stage asks the advisor for 2–4
+   * approach sketches, lets the user choose (PLAN_OPTIONS_PROPOSED → wait → PLAN_OPTION_CHOSEN),
+   * and steers the Planner/executor with the chosen approach. Absent ⇒ unchanged (MI-002 parity).
+   */
+  readonly approachAdvisor?: ApproachAdvisor;
+  readonly planChoiceGate?: PlanChoiceGate;
+
   /** Optional workspace signals (languages/fileCount) to sharpen complexity analysis. */
   readonly workspaceSignals?: WorkspaceSignals;
 }
@@ -117,6 +137,16 @@ export interface MissionAnalyzeOptions {
    * the answer onward emits exactly as a fresh run does.
    */
   readonly resumeClarification?: { readonly missionId: string; readonly request: ClarificationRequest };
+  /**
+   * Resume an open PLAN CHOICE. The clarification step already finished before the wait, so it is
+   * NOT re-run (it could ask again or re-call the AssumptionAdvisor): `priorAssumptions` are the
+   * statements recorded in the log. The advisor is not re-called either — `request` is the logged one.
+   */
+  readonly resumePlanChoice?: {
+    readonly missionId: string;
+    readonly request: PlanOptionsRequest;
+    readonly priorAssumptions: readonly string[];
+  };
 }
 
 // ── Outcome ──────────────────────────────────────────────────────────────────────
@@ -169,6 +199,8 @@ export interface MissionStageOutcome {
    * assumptions into every TaskExecutorRequest, so the agent proceeds under them (option (ii)).
    */
   readonly assumptions?: readonly string[];
+  /** Plan options: the approach the user chose (or the recommended one on timeout). Absent ⇒ none. */
+  readonly chosenApproach?: ChosenApproach;
   /** Blockers that forced proceed=false (empty when proceed=true). */
   readonly blockers: readonly string[];
 }
@@ -189,10 +221,15 @@ export class MissionIntelligence {
    */
   async analyze(sessionId: string, goal: Goal, options?: MissionAnalyzeOptions): Promise<MissionStageOutcome> {
     const resume = options?.resumeClarification;
-    if (resume === undefined) return this.analyzeInner(sessionId, goal, this.deps.newId(), undefined);
+    const planResume = options?.resumePlanChoice;
+    if (resume === undefined && planResume === undefined) {
+      return this.analyzeInner(sessionId, goal, this.deps.newId(), undefined, undefined);
+    }
     this.quiet.add(sessionId);
     try {
-      return await this.analyzeInner(sessionId, goal, resume.missionId, resume.request);
+      return planResume !== undefined
+        ? await this.analyzeInner(sessionId, goal, planResume.missionId, undefined, planResume)
+        : await this.analyzeInner(sessionId, goal, (resume as { missionId: string }).missionId, resume?.request, undefined);
     } finally {
       this.quiet.delete(sessionId);
     }
@@ -203,6 +240,7 @@ export class MissionIntelligence {
     goal: Goal,
     missionId: string,
     resumeRequest: ClarificationRequest | undefined,
+    planResume: MissionAnalyzeOptions['resumePlanChoice'],
   ): Promise<MissionStageOutcome> {
     await this.emit(sessionId, 'MISSION_RECEIVED', missionId, { goalId: goal.goalId, description: goal.description });
 
@@ -262,12 +300,15 @@ export class MissionIntelligence {
     await this.emit(sessionId, 'MISSION_PLANNING_MODE_SELECTED', missionId, { mode: planning.mode, reason: planning.reason });
 
     // ── Tier B1 / clarification gate: resolve goal ambiguity (assume-and-state or ask) ──
-    const resolved = await this.resolveAmbiguity(
-      sessionId, missionId, goal, { ...missionWithArch, planningMode: planning.mode }, resumeRequest,
-    );
+    // A resumed PLAN CHOICE already passed this step: reuse the logged statements, do not re-ask.
+    const resolved = planResume !== undefined
+      ? { mission: { ...missionWithArch, planningMode: planning.mode }, statements: planResume.priorAssumptions, cancelled: false, clarification: undefined }
+      : await this.resolveAmbiguity(
+        sessionId, missionId, goal, { ...missionWithArch, planningMode: planning.mode }, resumeRequest,
+      );
     const mission: Mission = resolved.mission;
     const clarification: GoalClarification | undefined = resolved.clarification;
-    const assumptionStatements: readonly string[] = resolved.statements;
+    let assumptionStatements: readonly string[] = resolved.statements;
 
     const contextStrategy = decideContextStrategy(mission);
     const contextPlan = toContextPlan(contextStrategy);
@@ -283,6 +324,22 @@ export class MissionIntelligence {
         blockers: ['clarification cancelled'],
         ...(preflight !== undefined ? { preflight } : {}),
       };
+    }
+
+    // ── Plan options (Goal Clarification Phase 2): propose approaches, let the user choose ──
+    const planStep = await this.proposePlanOptions(sessionId, missionId, goal, mission, assumptionStatements, planResume);
+    if (planStep.kind === 'cancelled') {
+      return {
+        proceed: false,
+        mission, contextStrategy, contextPlan, promptPlan, expertProfile,
+        blockers: ['plan choice cancelled'],
+        ...(preflight !== undefined ? { preflight } : {}),
+        ...(clarification !== undefined ? { clarification } : {}),
+      };
+    }
+    const chosenApproach: ChosenApproach | undefined = planStep.kind === 'chosen' ? planStep.chosen : undefined;
+    if (chosenApproach !== undefined) {
+      assumptionStatements = [...assumptionStatements, chosenApproachStatement(chosenApproach.option)];
     }
 
     // ── Model routing (MI-006) ──────────────────────────────────────────────────
@@ -331,6 +388,7 @@ export class MissionIntelligence {
             ...(preflight !== undefined ? { preflight } : {}),
             ...(clarification !== undefined ? { clarification } : {}),
             ...(assumptionStatements.length > 0 ? { assumptions: assumptionStatements } : {}),
+            ...(chosenApproach !== undefined ? { chosenApproach } : {}),
           };
         }
       } catch {
@@ -350,7 +408,61 @@ export class MissionIntelligence {
       ...(gate !== undefined ? { gate } : {}),
       ...(clarification !== undefined ? { clarification } : {}),
       ...(assumptionStatements.length > 0 ? { assumptions: assumptionStatements } : {}),
+      ...(chosenApproach !== undefined ? { chosenApproach } : {}),
     };
+  }
+
+  // ── Plan options (Goal Clarification Phase 2) ──────────────────────────────────
+
+  /**
+   * Propose approaches and wait for the user's choice. Skipped (no events, no extra newId) unless
+   * both the advisor and the gate are wired and complexity ≥ MEDIUM; an advisor failure or fewer
+   * than two valid options also skips (fail-safe). On resume the logged request is reused.
+   */
+  private async proposePlanOptions(
+    sessionId: string,
+    missionId: string,
+    goal: Goal,
+    mission: Mission,
+    statements: readonly string[],
+    planResume: MissionAnalyzeOptions['resumePlanChoice'],
+  ): Promise<{ readonly kind: 'skipped' } | { readonly kind: 'cancelled' } | { readonly kind: 'chosen'; readonly chosen: ChosenApproach }> {
+    const gate = this.deps.planChoiceGate;
+    let request: PlanOptionsRequest;
+    if (planResume !== undefined) {
+      request = planResume.request;
+      this.quiet.delete(sessionId); // everything up to here is already in the log
+    } else {
+      const advisor = this.deps.approachAdvisor;
+      if (advisor === undefined || gate === undefined || !shouldProposePlanOptions(mission.complexity.level)) {
+        return { kind: 'skipped' };
+      }
+      let options;
+      try {
+        options = await advisor.propose(mission, statements);
+      } catch {
+        return { kind: 'skipped' }; // advisory LLM failure never breaks the run (MI-001/MI-002)
+      }
+      if (options.length < 2) return { kind: 'skipped' };
+      request = buildPlanOptionsRequest(this.deps.newId(), missionId, goal.goalId, options);
+      await this.emit(sessionId, 'PLAN_OPTIONS_PROPOSED', missionId, {
+        requestId: request.requestId,
+        missionId,
+        goalId: goal.goalId,
+        options: request.options,
+        recommendedOptionId: request.recommendedOptionId,
+      });
+    }
+    // Defensive: a resume without a wired gate cannot wait — take the recommendation (timeout).
+    const outcome: PlanChoiceOutcome = gate !== undefined ? await gate.awaitChoice(sessionId, request) : { kind: 'timeout' };
+    if (outcome.kind === 'cancelled') return { kind: 'cancelled' };
+    const chosen = resolveChosenApproach(request, outcome);
+    await this.emit(sessionId, 'PLAN_OPTION_CHOSEN', missionId, {
+      requestId: request.requestId,
+      optionId: chosen.option.id,
+      source: chosen.source,
+    });
+    return { kind: 'chosen', chosen };
   }
 
   // ── Goal ambiguity resolution ─────────────────────────────────────────────────

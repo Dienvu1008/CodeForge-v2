@@ -147,6 +147,11 @@
           "type": "boolean",
           "default": false,
           "description": "Ask clarifying questions in the Goals panel when a goal is ambiguous (starts the runtime with --mission on --clarify on)."
+        },
+        "codeforge.planOptions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Offer 2-4 approaches (with pros and cons) in the Goals panel for goals of medium or higher complexity, and plan with the one you pick (starts the runtime with --mission on --plan-options on)."
         }
       }
     }

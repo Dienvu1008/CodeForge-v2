@@ -21,6 +21,7 @@ import type { Session } from '../domain/session.js';
 import type { DomainEvent, EventType } from '../domain/event.js';
 import type { EventLog } from '../repositories/index.js';
 import type { ClarificationRequest } from '../mission/goal-clarification.js';
+import type { PlanOptionsRequest } from '../mission/plan-options.js';
 import type { SessionService } from './session-service.js';
 
 /** Everything the classifier needs to know about one orphaned session (read-only snapshot). */
@@ -28,6 +29,15 @@ export interface OrphanSnapshot {
   readonly session: Pick<Session, 'sessionId' | 'state' | 'createdAt' | 'metadata'>;
   /** The latest GOAL_CLARIFICATION_REQUESTED with no ANSWERED for the same requestId, if any. */
   readonly openClarification?: { readonly missionId: string; readonly request: ClarificationRequest };
+  /**
+   * Plan options: the latest PLAN_OPTIONS_PROPOSED with no PLAN_OPTION_CHOSEN, plus the statements
+   * already decided before that wait (from GOAL_CLARIFICATION_ANSWERED / MISSION_ASSUMPTIONS_MADE).
+   */
+  readonly openPlanChoice?: {
+    readonly missionId: string;
+    readonly request: PlanOptionsRequest;
+    readonly priorAssumptions: readonly string[];
+  };
   /** True when the current graph is still the empty seed (v1, no nodes) — planning never started. */
   readonly graphIsSeedOnly: boolean;
   /** True when the session's Goal was persisted (goal_queue row bound to the session). */
@@ -43,6 +53,8 @@ export type OrphanDecision =
 export interface RecoveryOptions {
   /** Whether this runtime has the clarification gate wired (--mission on --clarify on). */
   readonly clarifyEnabled: boolean;
+  /** Whether this runtime has plan options wired (--mission on --plan-options on). Default false. */
+  readonly planOptionsEnabled?: boolean;
 }
 
 function stateReason(state: string): string {
@@ -63,13 +75,19 @@ function stateReason(state: string): string {
 export function classifyOrphan(o: OrphanSnapshot, opts: RecoveryOptions): OrphanDecision {
   if (o.session.state !== 'AWAITING_HUMAN') return { kind: 'abort', reason: stateReason(o.session.state) };
   if (o.pendingToolApproval) return { kind: 'abort', reason: 'runtime restarted while awaiting tool approval' };
-  if (o.openClarification === undefined) {
+  if (o.openClarification === undefined && o.openPlanChoice === undefined) {
     return { kind: 'abort', reason: 'runtime restarted while awaiting a human decision' };
   }
   if (!o.graphIsSeedOnly) return { kind: 'abort', reason: 'runtime restarted after planning had started' };
   if (!o.goalPersisted) return { kind: 'abort', reason: 'goal was not persisted (session predates resume support)' };
-  if (!opts.clarifyEnabled) {
-    return { kind: 'abort', reason: 'clarification gate is disabled on this runtime (--clarify off)' };
+  if (o.openClarification !== undefined) {
+    if (!opts.clarifyEnabled) {
+      return { kind: 'abort', reason: 'clarification gate is disabled on this runtime (--clarify off)' };
+    }
+    return { kind: 'resume' };
+  }
+  if (opts.planOptionsEnabled !== true) {
+    return { kind: 'abort', reason: 'plan options are disabled on this runtime (--plan-options off)' };
   }
   return { kind: 'resume' };
 }
@@ -107,12 +125,23 @@ export interface OrphanSource {
   listOrphans(): Promise<readonly OrphanSnapshot[]>;
 }
 
-export interface ResumePlan {
-  readonly sessionId: string;
-  readonly missionId: string;
-  readonly request: ClarificationRequest;
-  readonly previousProcessId: number;
-}
+/** What to resume: an open clarification (Phase 1) or an open plan choice (Phase 2). */
+export type ResumePlan =
+  | {
+    readonly kind: 'clarification';
+    readonly sessionId: string;
+    readonly missionId: string;
+    readonly request: ClarificationRequest;
+    readonly previousProcessId: number;
+  }
+  | {
+    readonly kind: 'plan-choice';
+    readonly sessionId: string;
+    readonly missionId: string;
+    readonly request: PlanOptionsRequest;
+    readonly priorAssumptions: readonly string[];
+    readonly previousProcessId: number;
+  };
 
 export interface StartupRecoveryOutcome {
   readonly resume?: ResumePlan;
@@ -170,7 +199,7 @@ export class StartupRecovery {
     }
 
     const chosen = plan.find((p) => p.decision.kind === 'resume');
-    if (chosen !== undefined && chosen.snapshot.openClarification !== undefined) {
+    if (chosen !== undefined && (chosen.snapshot.openClarification !== undefined || chosen.snapshot.openPlanChoice !== undefined)) {
       const sid = chosen.snapshot.session.sessionId;
       const previousProcessId = chosen.snapshot.session.metadata.processId;
       try {
@@ -178,14 +207,21 @@ export class StartupRecovery {
           sessionId: sid, lockId: input.newLockId(), hostname: input.hostname, processId: input.processId,
         });
         await this.emit(sid, 'SESSION_RECOVERY_DECIDED', {
-          decision: 'resume', reason: 'awaiting goal clarification before planning', previousProcessId,
-        });
-        resume = {
-          sessionId: sid,
-          missionId: chosen.snapshot.openClarification.missionId,
-          request: chosen.snapshot.openClarification.request,
+          decision: 'resume',
+          reason: chosen.snapshot.openClarification !== undefined
+            ? 'awaiting goal clarification before planning'
+            : 'awaiting a plan choice before planning',
           previousProcessId,
-        };
+        });
+        const oc = chosen.snapshot.openClarification;
+        const op = chosen.snapshot.openPlanChoice;
+        resume = oc !== undefined
+          ? { kind: 'clarification', sessionId: sid, missionId: oc.missionId, request: oc.request, previousProcessId }
+          : {
+            kind: 'plan-choice', sessionId: sid, missionId: (op as NonNullable<typeof op>).missionId,
+            request: (op as NonNullable<typeof op>).request,
+            priorAssumptions: (op as NonNullable<typeof op>).priorAssumptions, previousProcessId,
+          };
       } catch (err) {
         // LOCK_HELD: a LIVE runtime owns this workspace — leave the session untouched (Req 2.2).
         skippedResume = { sessionId: sid, message: messageOf(err) };

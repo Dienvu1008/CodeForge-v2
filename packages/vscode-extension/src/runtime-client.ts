@@ -78,6 +78,17 @@ export interface ClarificationPostResult {
   };
 }
 
+/** Result of POST /plan-choice: the HTTP status (0 = unreachable) plus the parsed body. */
+export interface PlanChoicePostResult {
+  readonly status: number;
+  readonly body: {
+    readonly requestId?: string;
+    readonly optionId?: string;
+    readonly source?: string;
+    readonly error?: string;
+  };
+}
+
 export interface RuntimeClientOptions {
   /** Base URL of the runtime HTTP server, e.g. "http://127.0.0.1:9500". */
   readonly baseUrl: string;
@@ -185,6 +196,33 @@ export class RuntimeClient {
       const body = (await res.json()) as unknown;
       if (body !== null && typeof body === 'object' && !Array.isArray(body)) {
         return { status: res.status, body: body as ClarificationPostResult['body'] };
+      }
+    } catch { /* fall through */ }
+    return { status: res.status, body: { error: `HTTP ${res.status}` } };
+  }
+
+  /**
+   * POST /plan-choice — pick an approach (`optionId`) or let the agent decide (`useRecommended`).
+   * Never throws: same degradation rules as postClarification.
+   */
+  async postPlanChoice(
+    sessionId: string,
+    choice: { readonly optionId?: string; readonly useRecommended?: boolean },
+  ): Promise<PlanChoicePostResult> {
+    let res: Awaited<ReturnType<FetchLike>>;
+    try {
+      res = await this.fetchImpl(joinUrl(this.base, '/plan-choice'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, ...choice }),
+      });
+    } catch {
+      return { status: 0, body: { error: 'runtime unreachable' } };
+    }
+    try {
+      const body = (await res.json()) as unknown;
+      if (body !== null && typeof body === 'object' && !Array.isArray(body)) {
+        return { status: res.status, body: body as PlanChoicePostResult['body'] };
       }
     } catch { /* fall through */ }
     return { status: res.status, body: { error: `HTTP ${res.status}` } };

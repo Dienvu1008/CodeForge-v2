@@ -23,11 +23,18 @@ Observe and control a running CodeForge agent runtime from VS Code, using native
   with an accessible form: answer, pick a suggested option, or "Use defaults for all". Answers go
   to `POST /clarification`; the questions are derived from the session's events only. If the runtime
   restarts while waiting, it resumes the same session and the same form keeps working.
+- **Goals panel plan options** — when the runtime (started with `--mission on --plan-options on`)
+  offers approaches for a goal, the panel shows them as cards (`choose a plan`): title, summary,
+  pros, cons and a `recommended` badge, in a keyboard-friendly radio group. "Use this plan" sends the
+  selected one, "Let the agent decide" takes the recommendation (`POST /plan-choice`). A pending
+  clarification is always shown first.
 
 ## Settings
 
 - `codeforge.clarify` (default `false`) — when `true`, **Start Runtime Here** launches the runtime
   with `--mission on --clarify on` so ambiguous goals are asked about instead of assumed.
+- `codeforge.planOptions` (default `false`) — when `true`, the runtime is launched with
+  `--mission on --plan-options on` so goals of medium or higher complexity offer approaches to pick.
 - **Open Dashboard** — the full web dashboard in a webview panel (secondary view).
 
 ## Commands

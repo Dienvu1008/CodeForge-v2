@@ -21,6 +21,8 @@ import {
   SessionService,
   StartupRecovery,
   buildClarificationRequest,
+  buildPlanOptionsRequest,
+  classifyOrphan,
   type Session,
   type Goal,
   type OrphanSnapshot,
@@ -89,7 +91,7 @@ describe('StartupRecovery.recover()', () => {
     const out = await r.recover(INPUT);
 
     expect(svc.calls).toEqual(['ABORT:OLD', 'ABORT:RUN', 'ADOPT:NEW']);
-    expect(out.resume).toEqual({ sessionId: 'NEW', missionId: 'M', request: REQUEST, previousProcessId: 42 });
+    expect(out.resume).toEqual({ kind: 'clarification', sessionId: 'NEW', missionId: 'M', request: REQUEST, previousProcessId: 42 });
     expect(out.aborted).toEqual([
       { sessionId: 'OLD', reason: 'superseded by a newer resumable session' },
       { sessionId: 'RUN', reason: 'runtime restarted during execution' },
@@ -262,5 +264,62 @@ describe('SqliteOrphanSource', () => {
     expect(s?.state).toBe('AWAITING_HUMAN');
     expect(s?.metadata.processId).toBe(999);
     expect(await new SqliteWorkspaceLockService(db).getActive('W')).toMatchObject({ lockId: 'L-adopted', sessionId: 'S' });
+  });
+});
+
+// ── Plan options (Phase 2): resume an open plan choice ─────────────────────────
+describe('startup recovery — open plan choice', () => {
+  const OPTIONS = [
+    { id: 'o1', title: 'A', summary: 'a', pros: ['p'], cons: ['c'], recommended: false },
+    { id: 'o2', title: 'B', summary: 'b', pros: ['p'], cons: ['c'], recommended: true },
+  ];
+  const PREQ = buildPlanOptionsRequest('PR', 'M', 'G', OPTIONS);
+  const planSnap = (): OrphanSnapshot => ({
+    session: { sessionId: 'P', state: 'AWAITING_HUMAN', createdAt: 't', metadata: META },
+    openPlanChoice: { missionId: 'M', request: PREQ, priorAssumptions: ['[user-provided] q → a'] },
+    graphIsSeedOnly: true, goalPersisted: true, pendingToolApproval: false,
+  });
+
+  it('classifier: resumable only with --plan-options on', () => {
+    expect(classifyOrphan(planSnap(), { clarifyEnabled: false, planOptionsEnabled: true })).toEqual({ kind: 'resume' });
+    expect(classifyOrphan(planSnap(), { clarifyEnabled: true })).toEqual({
+      kind: 'abort', reason: 'plan options are disabled on this runtime (--plan-options off)',
+    });
+    expect(classifyOrphan({ ...planSnap(), graphIsSeedOnly: false }, { clarifyEnabled: true, planOptionsEnabled: true }))
+      .toEqual({ kind: 'abort', reason: 'runtime restarted after planning had started' });
+  });
+
+  it('recover(): a plan-choice resume plan carries the request and prior assumptions', async () => {
+    const svc = fakeSessionService();
+    const { r, events } = recovery([planSnap()], svc);
+    const out = await r.recover({ ...INPUT, planOptionsEnabled: true });
+    expect(out.resume).toEqual({
+      kind: 'plan-choice', sessionId: 'P', missionId: 'M', request: PREQ,
+      priorAssumptions: ['[user-provided] q → a'], previousProcessId: 42,
+    });
+    expect(events.events[0]!.payload).toMatchObject({ decision: 'resume', reason: 'awaiting a plan choice before planning' });
+  });
+
+  it('SqliteOrphanSource rebuilds the open plan choice + prior assumptions from the log', async () => {
+    await parkedSession('S', DEAD);
+    // The clarification was answered, then options were proposed (no choice yet).
+    await events.append({
+      eventId: 'ans', sessionId: 'S', type: 'GOAL_CLARIFICATION_ANSWERED', aggregate: { kind: 'mission', id: 'M-S' },
+      payload: { requestId: 'R-S', source: 'user', answers: [], skippedQuestionIds: [], assumptions: ['[user-provided] q → numpy'] },
+      at: 't', sequenceNumber: 0,
+    });
+    await events.append({
+      eventId: 'prop', sessionId: 'S', type: 'PLAN_OPTIONS_PROPOSED', aggregate: { kind: 'mission', id: 'M-S' },
+      payload: { requestId: 'PR-S', missionId: 'M-S', goalId: 'G-S', options: OPTIONS, recommendedOptionId: 'o2' },
+      at: 't', sequenceNumber: 0,
+    });
+    const [o] = await source().listOrphans();
+    expect(o!.openClarification).toBeUndefined();
+    expect(o!.openPlanChoice).toEqual({
+      missionId: 'M-S',
+      request: { requestId: 'PR-S', missionId: 'M-S', goalId: 'G-S', options: OPTIONS, recommendedOptionId: 'o2' },
+      priorAssumptions: ['[user-provided] q → numpy'],
+    });
+    expect(classifyOrphan(o!, { clarifyEnabled: false, planOptionsEnabled: true })).toEqual({ kind: 'resume' });
   });
 });

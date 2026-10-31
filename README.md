@@ -184,6 +184,7 @@ npm start -- \
 | `--mission <on\|off>` | `off` | Advisory Mission Intelligence stage before planning. |
 | `--learning <on\|off>` | `off` | Advisory learning plane for recovery ordering. |
 | `--clarify <on\|off>` | `off` | Goal clarification gate (needs `--mission on`): when a goal scores UNKNOWN, pause in `AWAITING_HUMAN`, ask the open questions (Goals panel / `POST /clarification`), then plan under the answers. Off ⇒ assume-and-state. |
+| `--plan-options <on\|off>` | `off` | Plan options (needs `--mission on`): for a goal of complexity MEDIUM or higher, propose 2–4 approaches with pros/cons, wait in `AWAITING_HUMAN` for a pick (Goals panel / `POST /plan-choice`), then plan with it. Timeout ⇒ the recommended option. Off ⇒ the Planner chooses. |
 | `--model-routes <path>` | — | JSON file routing each purpose to a provider/model (see below). Replaces `--provider`/`--model`/`--endpoint`. |
 | `--model-registry <path>` | — | JSON file listing multiple models (id + tier + capabilities) so `--mission on` can route by task complexity (see `examples/model-registry.example.json`). |
 
@@ -243,9 +244,10 @@ npm run bundle:cli    # → dist-cli/codeforge.cjs (native deps kept external)
 `packages/vscode-extension` is a native VS Code client for a running runtime: an activity-bar
 container with live tree views (Sessions / Task-Graph / Changes / Governance), native editor diffs
 per change, Approve/Deny notifications for pending tool calls, a Goals panel (conversational goal
-history + live status, plus an accessible answer form when the runtime asks clarifying questions),
-a model picker (`GET /models`), and a **Start Runtime Here** command that spawns the runtime in the
-open workspace (`codeforge.clarify: true` starts it with `--mission on --clarify on`). All decision logic lives in pure, unit-tested modules;
+history + live status, an accessible answer form when the runtime asks clarifying questions, and
+approach cards with pros/cons when it offers plan options), a model picker (`GET /models`), and a
+**Start Runtime Here** command that spawns the runtime in the open workspace (`codeforge.clarify` /
+`codeforge.planOptions` add `--clarify on` / `--plan-options on`, with `--mission on`). All decision logic lives in pure, unit-tested modules;
 the extension stays a client (reads over HTTP, controls via `POST /control`). Built as a `.vsix`
 (not yet published); the dashboard webview is kept as a secondary view.
 
@@ -305,8 +307,8 @@ Highest-value next work (evidence-gated by before/after benchmark runs):
    context pipeline; next is applying the routed model at execution time and letting the Planner
    consume planning-mode / expert-profile / architecture. (Step 2 → 3 of the autonomy path.)
 2. **Goal clarification** — detection (Tier A), assume-and-state (Tier B1/B2) and an opt-in
-   stop-and-ask gate (Tier C Phase 1, `--clarify on`) are done; next is Phase 2 (offer several plan
-   variants with trade-offs) and a before/after benchmark.
+   stop-and-ask gate (Tier C Phase 1, `--clarify on`) and opt-in plan options (Tier C Phase 2,
+   `--plan-options on`: pick one of 2–4 approaches) are done; next is a before/after benchmark.
 3. **Finish the recovery vocabulary** — implement REPLAN and ROLLBACK. (Toward step 3.)
 4. **Measure real-model task correctness** — run the benchmark against a live model so autonomy
    claims rest on evidence, not hope.

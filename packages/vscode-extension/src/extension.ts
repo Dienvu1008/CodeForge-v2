@@ -26,8 +26,8 @@ import {
   resolveRuntimeEntry, buildRuntimeArgv, runtimeUrlForPort, resolveNodeCommand,
 } from './runtime-launch.js';
 import {
-  newGoalEntry, withGoalId, reconcileHistory, findOpenClarification,
-  type GoalEntry, type OpenClarificationView,
+  newGoalEntry, withGoalId, reconcileHistory, findOpenClarification, findOpenPlanChoice,
+  type GoalEntry, type OpenClarificationView, type OpenPlanChoiceView,
 } from './goal-history.js';
 import { goalsPanelHtml, type GoalEntryView } from './goals-webview.js';
 
@@ -129,15 +129,19 @@ function activateInner(context: vscode.ExtensionContext): void {
   // Open clarification requests keyed by sessionId. VIEW-ONLY: rebuilt from the runtime's events on
   // every refresh and never persisted to globalState (the EventLog is the only authority).
   let openClarifications = new Map<string, OpenClarificationView>();
+  // Open plan choices keyed by sessionId — same VIEW-ONLY rule (derived from events every refresh).
+  let openPlanChoices = new Map<string, OpenPlanChoiceView>();
   // Last observed runtime connectivity (updated by refreshAll while the Goals panel is open).
   let goalsConnected = false;
 
   const toEntryView = (e: GoalEntry): GoalEntryView => {
     const clarification = e.sessionId !== undefined ? openClarifications.get(e.sessionId) : undefined;
+    const planChoice = e.sessionId !== undefined ? openPlanChoices.get(e.sessionId) : undefined;
     return {
       localId: e.localId, description: e.description, submittedAt: e.submittedAt,
       status: e.status, sessionId: e.sessionId, goalId: e.goalId,
       ...(clarification !== undefined ? { clarification } : {}),
+      ...(planChoice !== undefined ? { planChoice } : {}),
     };
   };
 
@@ -224,10 +228,18 @@ function activateInner(context: vscode.ExtensionContext): void {
       const awaiting = [...new Set(goalHistory
         .map((e) => e.sessionId)
         .filter((sid): sid is string => sid !== undefined && (stateById.get(sid) ?? '').toUpperCase() === 'AWAITING_HUMAN'))];
-      const found = await Promise.all(awaiting.map(async (sid) => [sid, findOpenClarification(await rc.getEvents(sid))] as const));
+      const found = await Promise.all(awaiting.map(async (sid) => {
+        const evs = await rc.getEvents(sid);
+        return [sid, findOpenClarification(evs), findOpenPlanChoice(evs)] as const;
+      }));
       const nextClarifications = new Map<string, OpenClarificationView>();
-      for (const [sid, view] of found) if (view !== null) nextClarifications.set(sid, view);
+      const nextPlanChoices = new Map<string, OpenPlanChoiceView>();
+      for (const [sid, view, plan] of found) {
+        if (view !== null) nextClarifications.set(sid, view);
+        if (plan !== null) nextPlanChoices.set(sid, plan);
+      }
       openClarifications = nextClarifications;
+      openPlanChoices = nextPlanChoices;
       goalsConnected = connected;
       pushGoalsToPanel(connected);
     }
@@ -315,6 +327,25 @@ function activateInner(context: vscode.ExtensionContext): void {
         if (client === null || !goalsConnected) { reply(false, 'runtime not connected'); return; }
         const res = await client.postClarification(sid, answers);
         if (res.status === 200) reply(true, `Answers sent (answered ${res.body.answered ?? 0}, skipped ${res.body.skipped ?? 0})`);
+        else reply(false, res.body.error ?? `HTTP ${res.status}`);
+        await refreshAll();
+        return;
+      }
+      if (m.type === 'planChoice') {
+        // Defensive shape check: the webview is untrusted input.
+        const pm = m as { sessionId?: unknown; requestId?: unknown; optionId?: unknown; useRecommended?: unknown };
+        if (typeof pm.sessionId !== 'string' || typeof pm.requestId !== 'string') return;
+        const rid = pm.requestId;
+        const reply = (ok: boolean, message: string): void => {
+          void panel.webview.postMessage({ type: 'planChoiceResult', requestId: rid, ok, message });
+        };
+        const choice = pm.useRecommended === true
+          ? { useRecommended: true }
+          : typeof pm.optionId === 'string' ? { optionId: pm.optionId } : null;
+        if (choice === null) { reply(false, 'pick an option first'); return; }
+        if (client === null || !goalsConnected) { reply(false, 'runtime not connected'); return; }
+        const res = await client.postPlanChoice(pm.sessionId, choice);
+        if (res.status === 200) reply(true, `Plan chosen (${res.body.optionId ?? '?'}${res.body.source === 'default' ? ', recommended' : ''})`);
         else reply(false, res.body.error ?? `HTTP ${res.status}`);
         await refreshAll();
         return;
@@ -515,6 +546,7 @@ function activateInner(context: vscode.ExtensionContext): void {
         ...(apiKey !== '' ? { apiKey } : {}),
         // Requirement 1.6: opt-in goal clarification gate.
         ...(cfg.get<boolean>('clarify', false) ? { clarify: true } : {}),
+        ...(cfg.get<boolean>('planOptions', false) ? { planOptions: true } : {}),
       });
       // Use the SYSTEM node (not process.execPath, which is VS Code's Electron) so native modules
       // like better-sqlite3 load against the ABI they were built for.

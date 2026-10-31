@@ -42,6 +42,11 @@ export interface RuntimeLaunchSpec {
    * `--mission on --clarify on` so ambiguous goals pause for questions in the Goals panel.
    */
   readonly clarify?: boolean;
+  /**
+   * Plan options (Goal Clarification Phase 2): when true the runtime is started with
+   * `--mission on --plan-options on` so goals of complexity >= MEDIUM offer 2-4 approaches to pick from.
+   */
+  readonly planOptions?: boolean;
 }
 
 /** Inputs we resolve the runtime entry path from. */
@@ -92,6 +97,11 @@ export function buildRuntimeArgv(spec: RuntimeLaunchSpec): string[] {
   if (spec.clarify === true) {
     if (!argv.includes('--mission')) argv.push('--mission', 'on');
     argv.push('--clarify', 'on');
+  }
+  // Plan options also need mission mode; never duplicate --mission.
+  if (spec.planOptions === true) {
+    if (!argv.includes('--mission')) argv.push('--mission', 'on');
+    argv.push('--plan-options', 'on');
   }
   return argv;
 }

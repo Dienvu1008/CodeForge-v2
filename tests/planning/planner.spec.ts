@@ -609,3 +609,35 @@ describe('P12.8 Planner — prompt shaping (expert persona + verbosity)', () => 
     expect(prompt).not.toContain('EXAMPLE');
   });
 });
+
+// ── Plan options (Goal Clarification Phase 2): CHOSEN_APPROACH section ──────────
+describe('Planner — chosenApproach', () => {
+  const option = {
+    id: 'o2', title: 'Module + tests', summary: 'A module plus pytest tests.',
+    pros: ['Verifiable'], cons: ['More files'], recommended: true,
+  };
+  it('adds a CHOSEN_APPROACH section when an approach was chosen', async () => {
+    const fake = new FakeModel();
+    fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+    const c = makeCounters();
+    const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+    await planner.plan('S', goal(), EMPTY_GRAPH, revision(), undefined, undefined, option);
+    expect(fake.lastPrompt).toContain('CHOSEN_APPROACH');
+    expect(fake.lastPrompt).toContain('Approach: Module + tests — A module plus pytest tests.');
+    expect(fake.lastPrompt).toContain('does not override the goal');
+  });
+  it('without a chosen approach the prompt is byte-identical to the plain call', async () => {
+    const run = async (withUndefined: boolean) => {
+      const fake = new FakeModel();
+      fake.setResponse(/PLANNING TASK/, MULTI_TASK_PLAN);
+      const c = makeCounters();
+      const planner = new Planner({ gateway: fake, now: c.now, nextId: c.nextId });
+      if (withUndefined) await planner.plan('S', goal(), EMPTY_GRAPH, revision(), undefined, undefined, undefined);
+      else await planner.plan('S', goal(), EMPTY_GRAPH, revision());
+      return fake.lastPrompt;
+    };
+    const plain = await run(false);
+    expect(await run(true)).toBe(plain);
+    expect(plain).not.toContain('CHOSEN_APPROACH');
+  });
+});

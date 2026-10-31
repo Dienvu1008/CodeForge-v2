@@ -92,7 +92,10 @@ export type KnownEventType =
   // session-resume v1: startup recovery of sessions orphaned by a dead runtime process
   | 'SESSION_RECOVERY_DECIDED'
   | 'SESSION_ADOPTED'
-  | 'SESSION_RESUMED';
+  | 'SESSION_RESUMED'
+  // plan-options (Goal Clarification Phase 2)
+  | 'PLAN_OPTIONS_PROPOSED'
+  | 'PLAN_OPTION_CHOSEN';
 
 export type EventType = KnownEventType | (string & {});
 

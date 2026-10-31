@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   newGoalEntry, withGoalId, reconcileHistory, statusFromSessionState, statusChip,
-  findOpenClarification,
+  findOpenClarification, findOpenPlanChoice,
   type GoalEntry, type BindableSession, type ClarificationEventLike,
 } from '../../packages/vscode-extension/src/goal-history.js';
 import { forAll, int, pick, bool, type Rng } from '../mission/clarification-generators.js';
@@ -245,5 +245,89 @@ describe('findOpenClarification', () => {
       questions: [{ id: 'q1', text: 'Which format?', suggestedOptions: ['json', 'csv'] }],
     });
     expect(findOpenClarification([requested, { type: 'GOAL_CLARIFICATION_ANSWERED', payload: '{"requestId":"r1"}' }])).toBeNull();
+  });
+});
+
+// ── Plan options projection (plan-options, Goal Clarification Phase 2) ─────────────────────────
+
+const OPT = (id: string, recommended = false) => ({ id, title: `T ${id}`, summary: 's', pros: ['p'], cons: ['c'], recommended });
+
+function genProposedPayload(rng: Rng): unknown {
+  const requestId = pick(rng, REQ_IDS);
+  const n = int(rng, 1, 4);
+  const options: unknown[] = Array.from({ length: n }, (_, i) => (bool(rng, 0.85) ? OPT(`o${i + 1}`, i === 0) : pick<unknown>(rng, [null, { id: 'x' }, { id: 'o9', title: 1 }])));
+  const rec = bool(rng, 0.85) ? 'o1' : pick(rng, ['o9', '']);
+  const valid = { requestId, missionId: 'm', goalId: 'g', options, recommendedOptionId: rec };
+  const r = rng();
+  if (r < 0.6) return valid;
+  if (r < 0.75) return JSON.stringify(valid);
+  return pick<unknown>(rng, [null, 'not json {', [valid], { requestId }, { requestId, options: 'x', recommendedOptionId: 'o1' }]);
+}
+
+function planOracle(events: readonly ClarificationEventLike[]): { requestId: string; ids: string[] } | null {
+  const toObj = (p: unknown): Record<string, unknown> | null => {
+    let v = p;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return null; } }
+    return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  };
+  const chosen = new Set<string>();
+  for (const e of events) {
+    if (e.type !== 'PLAN_OPTION_CHOSEN') continue;
+    const id = toObj(e.payload)?.['requestId'];
+    if (typeof id === 'string') chosen.add(id);
+  }
+  let found: { requestId: string; ids: string[] } | null = null;
+  for (const e of events) {
+    if (e.type !== 'PLAN_OPTIONS_PROPOSED') continue;
+    const p = toObj(e.payload);
+    if (!p) continue;
+    const rid = p['requestId'];
+    const rec = p['recommendedOptionId'];
+    const opts = p['options'];
+    if (typeof rid !== 'string' || rid === '' || typeof rec !== 'string' || !Array.isArray(opts) || opts.length < 2) continue;
+    const ok = opts.every((o) => {
+      if (o === null || typeof o !== 'object' || Array.isArray(o)) return false;
+      const r = o as Record<string, unknown>;
+      const list = (v: unknown) => Array.isArray(v) && v.every((x) => typeof x === 'string');
+      return typeof r['id'] === 'string' && r['id'] !== '' && typeof r['title'] === 'string' && typeof r['summary'] === 'string' && list(r['pros']) && list(r['cons']);
+    });
+    if (!ok || !opts.some((o) => (o as { id: string }).id === rec) || chosen.has(rid)) continue;
+    found = { requestId: rid, ids: opts.map((o) => (o as { id: string }).id) };
+  }
+  return found;
+}
+
+describe('findOpenPlanChoice', () => {
+  // Feature: plan-options, Property 5: Projection phương án đang mở
+  // **Validates: Requirements 7.1, 7.7**
+  it('Property 5: matches the reference oracle on random event sequences and never throws', () => {
+    forAll(0x91076, 300, (rng) => {
+      const len = int(rng, 0, 10);
+      const events: ClarificationEventLike[] = [];
+      for (let i = 0; i < len; i++) {
+        const r = rng();
+        if (r < 0.5) events.push({ type: 'PLAN_OPTIONS_PROPOSED', payload: genProposedPayload(rng) });
+        else if (r < 0.75) events.push({ type: 'PLAN_OPTION_CHOSEN', payload: bool(rng, 0.8) ? { requestId: pick(rng, REQ_IDS), optionId: 'o1' } : 'bad {' });
+        else events.push({ type: pick(rng, ['GOAL_CLARIFICATION_REQUESTED', 'TASK_STARTED', 'plan_option_chosen']), payload: { requestId: pick(rng, REQ_IDS) } });
+      }
+      let got: ReturnType<typeof findOpenPlanChoice> = null;
+      expect(() => { got = findOpenPlanChoice(events); }).not.toThrow();
+      const exp = planOracle(events);
+      const g = got as ReturnType<typeof findOpenPlanChoice>;
+      if (exp === null) expect(g).toBeNull();
+      else {
+        expect(g?.requestId).toBe(exp.requestId);
+        expect(g?.options.map((o) => o.id)).toEqual(exp.ids);
+      }
+    });
+  });
+
+  it('returns the open request with its recommendation and null once chosen', () => {
+    const proposed: ClarificationEventLike = {
+      type: 'PLAN_OPTIONS_PROPOSED',
+      payload: { requestId: 'r1', options: [OPT('o1'), OPT('o2', true)], recommendedOptionId: 'o2' },
+    };
+    expect(findOpenPlanChoice([proposed])).toEqual({ requestId: 'r1', options: [OPT('o1'), OPT('o2', true)], recommendedOptionId: 'o2' });
+    expect(findOpenPlanChoice([proposed, { type: 'PLAN_OPTION_CHOSEN', payload: { requestId: 'r1' } }])).toBeNull();
   });
 });

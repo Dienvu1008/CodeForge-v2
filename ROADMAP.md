@@ -149,7 +149,13 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
      other orphan is closed with a reason. Spec: `.kiro/specs/session-resume/`. Not yet resumable:
      sessions mid-execution, awaiting tool approval, or paused (they are closed, not resumed).
      Spec: `.kiro/specs/goal-clarification-gate/`.
-   - **Tier C Phase 2 (next):** present several plan variants with trade-offs for the user to pick.
+   - **Tier C Phase 2 — plan options (DONE, opt-in `--mission on --plan-options on`):** for goals of
+     complexity ≥ MEDIUM an `ApproachAdvisor` proposes 2–4 sanitized approaches (pros/cons, one
+     recommended); the user picks in the Goals panel (`POST /plan-choice`), timeout ⇒ recommended;
+     the pick reaches the Planner (`CHOSEN_APPROACH`) and the executor (`[chosen-approach]`). Shares
+     the waiting core with the clarification gate (`HumanDecisionWaiter`); resumable after a restart.
+     Spec: `.kiro/specs/plan-options/`. Next: before/after benchmark of Tier B2/C on vague and
+     multi-approach goals.
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.

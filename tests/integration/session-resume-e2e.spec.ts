@@ -197,6 +197,7 @@ describe('session resume — restart while awaiting clarification', () => {
     expect(recovered.aborted).toEqual([{ sessionId: 'RUN', reason: 'runtime restarted during execution' }]);
     expect((await sessions.getById('RUN'))?.state).toBe('ABORTED');
     const plan = recovered.resume!;
+    if (plan.kind !== 'clarification') throw new Error('expected a clarification resume');
     expect(plan.sessionId).toBe('S');
     expect((await sessions.getById('S'))?.metadata.processId).toBe(5151);
 
@@ -212,7 +213,7 @@ describe('session resume — restart while awaiting clarification', () => {
     const eventsBeforeResume = (await events.query({ sessionId: 'S' })).length;
     const resumed = orchB.resume({
       sessionId: 'S', goal: bound.goal, revision: REVISION, graphVersion: 1,
-      resumeClarification: { missionId: plan.missionId, request: plan.request },
+      resume: { resumeClarification: { missionId: plan.missionId, request: plan.request } },
     });
 
     // The Goals panel would now POST the answer: 409 until B's waiter is registered, then 200.

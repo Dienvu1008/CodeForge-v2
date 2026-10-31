@@ -25,6 +25,7 @@ import type { CheckpointService, CaptureInput }   from '../checkpoint/checkpoint
 import type { ContextPlan }             from '../mission/mission-context-strategy.js';
 import type { PromptPlan }              from '../mission/prompt-composer.js';
 import type { ClarificationRequest }    from '../mission/goal-clarification.js';
+import type { ChosenApproach, PlanOptionsRequest } from '../mission/plan-options.js';
 import { computeSchedule }              from '../scheduler/scheduler.js';
 import { isTerminalTaskState }          from '../state-machine/states.js';
 import type { FailureAnalyzer }          from '../recovery/failure-analyzer.js';
@@ -80,6 +81,8 @@ export const NOOP_CONTROL_GATE: ControlGate = {
 // even then it only causes the orchestrator to drive the session to AWAITING_HUMAN (MI-007). The
 // stage never mutates the Goal and never creates Tasks/Graph (MI-004).
 export interface MissionStageDecision {
+  /** Plan options (Goal Clarification Phase 2): the approach to steer the Planner with. Absent ⇒ none. */
+  readonly chosenApproach?: ChosenApproach;
   /** false ONLY on an ArchitectureGate BLOCK → orchestrator stops before planning (MI-007). */
   readonly proceed: boolean;
   readonly blockers: readonly string[];
@@ -129,6 +132,11 @@ export interface MissionStage {
 /** session-resume v1: resume an open goal clarification (structurally = MissionAnalyzeOptions). */
 export interface MissionStageAnalyzeOptions {
   readonly resumeClarification?: { readonly missionId: string; readonly request: ClarificationRequest };
+  readonly resumePlanChoice?: {
+    readonly missionId: string;
+    readonly request: PlanOptionsRequest;
+    readonly priorAssumptions: readonly string[];
+  };
 }
 
 /**
@@ -136,7 +144,8 @@ export interface MissionStageAnalyzeOptions {
  * open goal clarification (before planning). Same fields as a fresh run plus the open request.
  */
 export interface SessionOrchestratorResumeInput extends SessionOrchestratorRunInput {
-  readonly resumeClarification: { readonly missionId: string; readonly request: ClarificationRequest };
+  /** Exactly one of resumeClarification / resumePlanChoice is set (the open human decision). */
+  readonly resume: MissionStageAnalyzeOptions;
 }
 
 /**
@@ -295,7 +304,7 @@ export class SessionOrchestrator {
    * SESSION_READY replay (Req 4.3) — and shares every step after the mission stage with run().
    */
   async resume(input: SessionOrchestratorResumeInput): Promise<SessionOrchestratorResult> {
-    return this.continueRun(input, { resumeClarification: input.resumeClarification });
+    return this.continueRun(input, input.resume);
   }
 
   private async continueRun(
@@ -322,6 +331,8 @@ export class SessionOrchestrator {
     let contextPlan: ContextPlan | undefined;
     // P12.8: prompt-shaping hints from the stage (if any), threaded to each TaskExecutorRequest.
     let promptPlan: PromptPlan | undefined;
+    // Plan options: the approach the user chose (if any), passed to the Planner below.
+    let chosenApproach: ChosenApproach | undefined;
     if (this.deps.missionStage !== undefined) {
       let decision: MissionStageDecision | undefined;
       try {
@@ -341,6 +352,9 @@ export class SessionOrchestrator {
       }
       if (decision !== undefined && decision.promptPlan !== undefined) {
         promptPlan = decision.promptPlan;
+      }
+      if (decision !== undefined && decision.chosenApproach !== undefined) {
+        chosenApproach = decision.chosenApproach;
       }
       // P12.9: apply the mission-recommended model id, if any, to the active gateway (MI-006
       // advisory → runtime applies). Best-effort: a selector failure must not break the run.
@@ -368,7 +382,10 @@ export class SessionOrchestrator {
     const baseGraph = await this.deps.graphRepository.getCurrent(input.sessionId);
     let mutation;
     try {
-      mutation = await this.deps.planner.plan(input.sessionId, input.goal, baseGraph, input.revision, promptPlan, input.languageHint);
+      // The chosen approach is passed only when present, so the call is unchanged otherwise.
+      mutation = chosenApproach !== undefined
+        ? await this.deps.planner.plan(input.sessionId, input.goal, baseGraph, input.revision, promptPlan, input.languageHint, chosenApproach.option)
+        : await this.deps.planner.plan(input.sessionId, input.goal, baseGraph, input.revision, promptPlan, input.languageHint);
     } catch (err) {
       await this.abortSession(input.sessionId);
       throw new SessionOrchestratorError('PLAN_FAILED',

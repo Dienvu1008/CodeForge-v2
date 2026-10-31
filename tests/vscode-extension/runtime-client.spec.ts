@@ -119,3 +119,35 @@ describe('RuntimeClient.postClarification', () => {
     expect(await client.postClarification('S', { q1: 'x' })).toEqual({ status: 0, body: { error: 'runtime unreachable' } });
   });
 });
+
+describe('RuntimeClient.postPlanChoice', () => {
+  function scripted(status: number, body: unknown, opts: { nonJson?: boolean; throws?: boolean } = {}) {
+    const calls: { url: string; init?: { method?: string; body?: string } }[] = [];
+    const fetch: FetchLike = async (url, init) => {
+      calls.push({ url, init });
+      if (opts.throws) throw new Error('ECONNREFUSED');
+      return {
+        ok: status >= 200 && status < 300, status,
+        json: async () => { if (opts.nonJson) throw new SyntaxError('x'); return body; },
+        text: async () => JSON.stringify(body),
+      };
+    };
+    return { client: new RuntimeClient({ baseUrl: 'http://x:9500', fetch }), calls };
+  }
+  it('POSTs {sessionId, optionId} to /plan-choice', async () => {
+    const { client, calls } = scripted(200, { requestId: 'r', optionId: 'o1', source: 'user' });
+    expect(await client.postPlanChoice('S', { optionId: 'o1' })).toEqual({ status: 200, body: { requestId: 'r', optionId: 'o1', source: 'user' } });
+    expect(calls[0]!.url).toBe('http://x:9500/plan-choice');
+    expect(calls[0]!.init?.method).toBe('POST');
+    expect(JSON.parse(calls[0]!.init!.body!)).toEqual({ sessionId: 'S', optionId: 'o1' });
+  });
+  it('sends useRecommended and passes error statuses through', async () => {
+    const { client, calls } = scripted(409, { error: 'session not awaiting plan choice' });
+    expect(await client.postPlanChoice('S', { useRecommended: true })).toEqual({ status: 409, body: { error: 'session not awaiting plan choice' } });
+    expect(JSON.parse(calls[0]!.init!.body!)).toEqual({ sessionId: 'S', useRecommended: true });
+  });
+  it('degrades non-JSON and network errors', async () => {
+    expect(await scripted(501, null, { nonJson: true }).client.postPlanChoice('S', { optionId: 'o1' })).toEqual({ status: 501, body: { error: 'HTTP 501' } });
+    expect(await scripted(0, null, { throws: true }).client.postPlanChoice('S', { optionId: 'o1' })).toEqual({ status: 0, body: { error: 'runtime unreachable' } });
+  });
+});

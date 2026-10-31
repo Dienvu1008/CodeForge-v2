@@ -54,3 +54,19 @@ describe('goalsPanelHtml', () => {
     expect(() => new Function(body)).not.toThrow();
   });
 });
+
+describe('goalsPanelHtml — plan options', () => {
+  it('renders the plan chip, both buttons, and posts / handles plan-choice messages', () => {
+    expect(html).toContain('choose a plan');
+    expect(html).toContain('Use this plan');
+    expect(html).toContain('Let the agent decide');
+    expect(html).toContain("type: 'planChoice'");
+    expect(html).toContain("m.type === 'planChoiceResult'");
+    expect(html).toContain('Choose an approach');
+    expect(html).toContain('esc(o.title)');
+    expect(html).toContain('esc(o.summary)');
+  });
+  it('clarification takes precedence over the plan form', () => {
+    expect(html).toContain('const hasPlan = !hasClarify');
+  });
+});

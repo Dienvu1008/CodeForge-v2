@@ -47,6 +47,7 @@ import {
   buildInterventionRecord,
 } from '@codeforge/agent-core';
 import type { SubmitClarificationResult } from '../approval-runtime/clarification-coordinator.js';
+import type { SubmitPlanChoiceResult } from '../approval-runtime/plan-choice-coordinator.js';
 
 // ── Kernel ports the service needs to EXECUTE an admitted control action ────────
 // (Narrow structural interfaces so the service does not import concrete classes.)
@@ -70,6 +71,10 @@ export interface GoalIngressPort {
 /** Accepts clarification answers (POST /clarification). Optional; absent ⇒ 501. */
 export interface ClarificationIngressPort {
   submit(sessionId: string, rawAnswers: unknown): SubmitClarificationResult;
+}
+/** Accepts a plan choice (POST /plan-choice; --plan-options on). Optional; absent ⇒ 501. */
+export interface PlanChoiceIngressPort {
+  submit(sessionId: string, rawChoice: unknown): SubmitPlanChoiceResult;
 }
 
 /** Progress update for a model pull (mirrors OllamaModelAdmin.PullProgress structurally). */
@@ -104,6 +109,8 @@ export interface ObservabilityServiceDeps {
   readonly goalIngress?: GoalIngressPort;
   /** Goal clarification answers (POST /clarification; --clarify on). Optional. */
   readonly clarification?: ClarificationIngressPort;
+  /** Plan options choice (POST /plan-choice; --plan-options on). Optional. */
+  readonly planChoice?: PlanChoiceIngressPort;
   /** Model management (list + pull local Ollama models). Optional; no runtime authority. */
   readonly modelAdmin?: ModelAdminPort;
   /** Lists the files currently in the agent's workspace (so the UI can show the RESULT). Optional. */
@@ -173,7 +180,7 @@ export interface SubmitControlResult {
 }
 
 export class ObservabilityServiceError extends Error {
-  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED' | 'GOAL_INGRESS_UNSUPPORTED' | 'MODEL_ADMIN_UNSUPPORTED' | 'CLARIFICATION_UNSUPPORTED';
+  public readonly code: 'SESSION_NOT_FOUND' | 'CONTROL_UNSUPPORTED' | 'CONTROL_FAILED' | 'GOAL_INGRESS_UNSUPPORTED' | 'MODEL_ADMIN_UNSUPPORTED' | 'CLARIFICATION_UNSUPPORTED' | 'PLAN_OPTIONS_UNSUPPORTED';
   constructor(code: ObservabilityServiceError['code'], message?: string) {
     super(message ?? code);
     this.name = 'ObservabilityServiceError';
@@ -354,6 +361,20 @@ export class ObservabilityService {
     const session = await this.deps.sessions.getById(sessionId);
     if (session === null) throw new ObservabilityServiceError('SESSION_NOT_FOUND', sessionId);
     return this.deps.clarification.submit(sessionId, rawAnswers);
+  }
+
+  /**
+   * Deliver a plan choice to the waiting PlanChoiceCoordinator. A courier only — validation and
+   * at-most-once acceptance live in the port, which never writes events (OB-009). Throws when not
+   * wired or when the session is unknown.
+   */
+  async submitPlanChoice(sessionId: string, rawChoice: unknown): Promise<SubmitPlanChoiceResult> {
+    if (this.deps.planChoice === undefined) {
+      throw new ObservabilityServiceError('PLAN_OPTIONS_UNSUPPORTED', 'plan options not enabled');
+    }
+    const session = await this.deps.sessions.getById(sessionId);
+    if (session === null) throw new ObservabilityServiceError('SESSION_NOT_FOUND', sessionId);
+    return this.deps.planChoice.submit(sessionId, rawChoice);
   }
 
   /** List the files in the agent's workspace (the tangible RESULT). Empty when not wired. */

@@ -12,9 +12,11 @@
 // Message protocol (extension ⇄ webview):
 //   extension → webview: { type:'history', entries: GoalEntryView[], connected: boolean, url }
 //                         { type:'clarifyResult', requestId, ok: boolean, message: string }
+//                         { type:'planChoiceResult', requestId, ok: boolean, message: string }
 //   webview → extension: { type:'submit', description: string }
 //                         { type:'clarify', sessionId, requestId, answers: Record<qid, string> }
 //                           (every question id present; '' = skipped → runtime default assumption)
+//                         { type:'planChoice', sessionId, requestId, optionId?, useRecommended? }
 //                         { type:'ready' }   (sent once on load so the extension pushes state)
 //
 // Goal clarification (goal-clarification-gate, Phase 1): when an entry carries `clarification`
@@ -22,7 +24,7 @@
 // form under the reply with a `needs input` chip. Typed values survive re-renders; the first input
 // is focused once per requestId; buttons are disabled while a submission is in flight.
 
-import type { OpenClarificationView } from './goal-history.js';
+import type { OpenClarificationView, OpenPlanChoiceView } from './goal-history.js';
 
 /** The minimal entry shape the webview renders (subset of GoalEntry + display fields). */
 export interface GoalEntryView {
@@ -34,6 +36,8 @@ export interface GoalEntryView {
   readonly goalId?: string;
   /** Open clarification request for this entry's session (AWAITING_HUMAN), if any. */
   readonly clarification?: OpenClarificationView;
+  /** Open plan choice for this entry's session (AWAITING_HUMAN), if any. Ignored while clarifying. */
+  readonly planChoice?: OpenPlanChoiceView;
 }
 
 /** Build the full HTML document for the Goals panel. `nonce` secures the inline script (CSP). */
@@ -84,6 +88,16 @@ export function goalsPanelHtml(nonce: string): string {
   .clarify button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
   .clarify button:disabled { opacity: .5; cursor: default; }
   .clarify [role="status"] { font-size: 11px; opacity: .85; min-height: 1em; }
+  .chip.choose-plan { background: var(--vscode-inputValidation-infoBackground, #39f6);
+                      border: 1px solid var(--vscode-inputValidation-infoBorder, #39f); }
+  .plan .card { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--vscode-panel-border);
+                border-radius: 6px; padding: 6px 8px; margin: 4px 0; }
+  .plan .card input[type="radio"] { margin-top: 3px; }
+  .plan .card .title { font-weight: 600; }
+  .plan .card .rec { font-size: 10px; padding: 0 6px; border-radius: 8px; margin-left: 6px;
+                     background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+  .plan .card ul { margin: 2px 0 0 0; padding-left: 18px; }
+  .plan .card .lbl { font-size: 11px; opacity: .8; }
 </style>
 </head>
 <body>
@@ -153,6 +167,51 @@ export function goalsPanelHtml(nonce: string): string {
     return h;
   }
 
+  // ── Plan options form (Goal Clarification Phase 2) ──
+  const planSel = new Map();       // requestId → selected optionId (survives re-renders)
+
+  function listHtml(label, items) {
+    let h = '<div class="lbl">' + esc(label) + '</div><ul>';
+    for (const it of items) h += '<li>' + esc(it) + '</li>';
+    return h + '</ul>';
+  }
+
+  function planFormHtml(e) {
+    const p = e.planChoice;
+    const req = p.requestId;
+    const selected = planSel.get(req) || p.recommendedOptionId;
+    let h = '<form data-plan="' + escAttr(req) + '" data-session="' + escAttr(e.sessionId || '') + '">';
+    h += '<fieldset><legend>Choose an approach</legend>';
+    p.options.forEach((o) => {
+      const rid = 'cfp-' + safeId(req) + '-' + safeId(o.id);
+      h += '<div class="card"><input type="radio" name="cfp-' + safeId(req) + '" id="' + rid + '" value="' + escAttr(o.id) + '"' +
+           (o.id === selected ? ' checked' : '') + ' /><label for="' + rid + '"><span class="title">' + esc(o.title) + '</span>' +
+           (o.recommended ? '<span class="rec">recommended</span>' : '') + '<div>' + esc(o.summary) + '</div>' +
+           listHtml('Pros', o.pros) + listHtml('Cons', o.cons) + '</label></div>';
+    });
+    h += '</fieldset>';
+    h += '<div class="actions"><button type="submit" data-action="plan-use">Use this plan</button>' +
+         '<button type="button" class="secondary" data-action="plan-default">Let the agent decide</button></div>';
+    h += '<div role="status" aria-live="polite">' + esc(statusMsgs.get('plan:' + req) || '') + '</div>';
+    h += '</form>';
+    return h;
+  }
+
+  function sendPlanChoice(form, useRecommended) {
+    const req = form.getAttribute('data-plan');
+    const key = 'plan:' + req;
+    if (inFlight.has(key)) return;
+    const checked = form.querySelector('input[type="radio"]:checked');
+    const msg = { type: 'planChoice', sessionId: form.getAttribute('data-session'), requestId: req };
+    if (useRecommended || !checked) msg.useRecommended = true; else msg.optionId = checked.value;
+    inFlight.add(key);
+    setBusy(form, true);
+    statusMsgs.set(key, 'Sending choice…');
+    const live = form.querySelector('[role="status"]');
+    if (live) live.textContent = 'Sending choice…';
+    vscode.postMessage(msg);
+  }
+
   function setBusy(form, busy) {
     for (const b of form.querySelectorAll('button')) b.disabled = busy;
   }
@@ -197,11 +256,14 @@ export function goalsPanelHtml(nonce: string): string {
   // Event delegation on #log: listeners survive innerHTML re-renders.
   log.addEventListener('submit', (ev) => {
     const form = ev.target;
+    if (form && form.matches && form.matches('form[data-plan]')) { ev.preventDefault(); sendPlanChoice(form, false); return; }
     if (!form || !form.matches || !form.matches('form[data-req]')) return;
     ev.preventDefault();
     sendClarify(form, false);
   });
   log.addEventListener('click', (ev) => {
+    const planBtn = ev.target && ev.target.closest ? ev.target.closest('button[data-action="plan-default"]') : null;
+    if (planBtn) { const pf = planBtn.closest('form[data-plan]'); if (pf) sendPlanChoice(pf, true); return; }
     const btn = ev.target && ev.target.closest ? ev.target.closest('button[data-action="defaults"]') : null;
     if (!btn) return;
     const form = btn.closest('form[data-req]');
@@ -210,6 +272,8 @@ export function goalsPanelHtml(nonce: string): string {
   log.addEventListener('change', (ev) => {
     const r = ev.target;
     if (!r || r.type !== 'radio' || !r.checked) return;
+    const pf = r.closest ? r.closest('form[data-plan]') : null;
+    if (pf) { planSel.set(pf.getAttribute('data-plan'), r.value); return; }
     const target = document.getElementById(r.getAttribute('data-target'));
     if (target) { target.value = r.value; drafts.set(target.getAttribute('data-req') + '/' + target.getAttribute('data-qid'), r.value); }
   });
@@ -234,10 +298,14 @@ export function goalsPanelHtml(nonce: string): string {
 
       const hasClarify = !!(e.clarification && e.clarification.requestId && Array.isArray(e.clarification.questions) &&
                             e.clarification.questions.length > 0);
+      // Clarification always comes first; the plan choice is shown only when nothing is being clarified.
+      const hasPlan = !hasClarify && !!(e.planChoice && e.planChoice.requestId && Array.isArray(e.planChoice.options) &&
+                      e.planChoice.options.length >= 2);
       const r = document.createElement('div');
       r.className = 'msg reply';
       r.innerHTML = esc(replyText(e)) + '<span class="chip ' + esc(e.status) + '">' + esc(e.status) + '</span>' +
-                    (hasClarify ? '<span class="chip needs-input">needs input</span>' : '');
+                    (hasClarify ? '<span class="chip needs-input">needs input</span>' : '') +
+                    (hasPlan ? '<span class="chip choose-plan">choose a plan</span>' : '');
       log.appendChild(r);
 
       if (hasClarify) {
@@ -248,6 +316,14 @@ export function goalsPanelHtml(nonce: string): string {
         const form = c.querySelector('form');
         if (form && inFlight.has(e.clarification.requestId)) setBusy(form, true);
       }
+      if (hasPlan) {
+        const c = document.createElement('div');
+        c.className = 'msg reply clarify plan';
+        c.innerHTML = planFormHtml(e);
+        log.appendChild(c);
+        const form = c.querySelector('form');
+        if (form && inFlight.has('plan:' + e.planChoice.requestId)) setBusy(form, true);
+      }
     }
     restoreDrafts();
     log.scrollTop = log.scrollHeight;
@@ -257,6 +333,13 @@ export function goalsPanelHtml(nonce: string): string {
         el.focus();
         if (sel && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(sel[0], sel[1]); } catch (_) { /* radio */ } }
       }
+    }
+    for (const f of log.querySelectorAll('form[data-plan]')) {
+      const key = 'plan:' + f.getAttribute('data-plan');
+      if (focusedReqs.has(key)) continue;
+      focusedReqs.add(key);
+      const sel = f.querySelector('input[type="radio"]:checked') || f.querySelector('input[type="radio"]');
+      if (sel && !activeId) sel.focus();
     }
     // Focus the first answer field exactly once per new requestId.
     for (const f of log.querySelectorAll('form[data-req]')) {
@@ -280,6 +363,19 @@ export function goalsPanelHtml(nonce: string): string {
     if (!m.ok) setBusy(form, false);
   }
 
+  function onPlanChoiceResult(m) {
+    const key = 'plan:' + m.requestId;
+    const msg = typeof m.message === 'string' ? m.message : (m.ok ? 'Choice sent.' : 'Failed to send the choice.');
+    statusMsgs.set(key, msg);
+    if (!m.ok) inFlight.delete(key);
+    let form = null;
+    for (const f of log.querySelectorAll('form[data-plan]')) if (f.getAttribute('data-plan') === m.requestId) form = f;
+    if (!form) return;
+    const live = form.querySelector('[role="status"]');
+    if (live) live.textContent = msg;
+    if (!m.ok) setBusy(form, false);
+  }
+
   function submit() {
     const text = input.value.trim();
     if (text === '') return;
@@ -297,6 +393,7 @@ export function goalsPanelHtml(nonce: string): string {
     const m = ev.data;
     if (m && m.type === 'history') render(m.entries, m.connected, m.url);
     else if (m && m.type === 'clarifyResult') onClarifyResult(m);
+    else if (m && m.type === 'planChoiceResult') onPlanChoiceResult(m);
   });
 
   vscode.postMessage({ type: 'ready' });

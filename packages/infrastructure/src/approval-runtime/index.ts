@@ -9,3 +9,5 @@ export * from './approval-coordinator.js';
 // Goal clarification gate — pauses the session to AWAITING_HUMAN and waits for
 // POST /clarification answers (at-most-once per request).
 export * from './clarification-coordinator.js';
+export * from './human-decision-waiter.js';
+export * from './plan-choice-coordinator.js';

@@ -202,3 +202,79 @@ export function findOpenClarification(events: readonly ClarificationEventLike[])
     return null;
   }
 }
+
+// ── Plan options (Goal Clarification Phase 2) ──────────────────────────────────────────────────
+// Same projection rule: the latest PLAN_OPTIONS_PROPOSED (valid payload) whose requestId has no
+// PLAN_OPTION_CHOSEN. Self-contained and defensive; never throws.
+
+/** One proposed approach as rendered by the Goals panel. */
+export interface PlanOptionView {
+  readonly id: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly pros: readonly string[];
+  readonly cons: readonly string[];
+  readonly recommended: boolean;
+}
+
+/** The open plan choice for a session, if any. */
+export interface OpenPlanChoiceView {
+  readonly requestId: string;
+  readonly options: readonly PlanOptionView[];
+  readonly recommendedOptionId: string;
+}
+
+function stringList(v: unknown): string[] | null {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : null;
+}
+
+function parseOption(raw: unknown): PlanOptionView | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const pros = stringList(o['pros']);
+  const cons = stringList(o['cons']);
+  if (typeof o['id'] !== 'string' || o['id'] === '' || typeof o['title'] !== 'string' || typeof o['summary'] !== 'string') return null;
+  if (pros === null || cons === null) return null;
+  return { id: o['id'], title: o['title'], summary: o['summary'], pros, cons, recommended: o['recommended'] === true };
+}
+
+function parseProposed(payload: unknown): OpenPlanChoiceView | null {
+  const p = asRecord(payload);
+  if (p === null) return null;
+  const requestId = p['requestId'];
+  const rec = p['recommendedOptionId'];
+  const raw = p['options'];
+  if (typeof requestId !== 'string' || requestId === '' || typeof rec !== 'string' || !Array.isArray(raw) || raw.length < 2) return null;
+  const options: PlanOptionView[] = [];
+  for (const item of raw) {
+    const o = parseOption(item);
+    if (o === null) return null; // a malformed option invalidates the whole request
+    options.push(o);
+  }
+  if (!options.some((o) => o.id === rec)) return null;
+  return { requestId, options, recommendedOptionId: rec };
+}
+
+/**
+ * The latest PLAN_OPTIONS_PROPOSED (valid payload) with no PLAN_OPTION_CHOSEN for the same
+ * requestId, or null. Never throws.
+ */
+export function findOpenPlanChoice(events: readonly ClarificationEventLike[]): OpenPlanChoiceView | null {
+  try {
+    const chosen = new Set<string>();
+    for (const e of events) {
+      if (e?.type !== 'PLAN_OPTION_CHOSEN') continue;
+      const id = asRecord(e.payload)?.['requestId'];
+      if (typeof id === 'string') chosen.add(id);
+    }
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e?.type !== 'PLAN_OPTIONS_PROPOSED') continue;
+      const view = parseProposed(e.payload);
+      if (view !== null && !chosen.has(view.requestId)) return view;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

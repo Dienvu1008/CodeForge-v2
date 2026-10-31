@@ -83,3 +83,6 @@ export {
   type MissionIntelligenceDeps,
   type MissionStageOutcome,
 } from './mission-intelligence.js';
+// Goal Clarification Phase 2 — plan options (pure core).
+export * from './plan-options.js';
+export * from './approach-advisor.js';

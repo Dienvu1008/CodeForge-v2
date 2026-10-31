@@ -20,6 +20,8 @@ import type {
   OpenQuestion,
   OrphanSnapshot,
   OrphanSource,
+  PlanOption,
+  PlanOptionsRequest,
   TaskGraphRepository,
 } from '@codeforge/agent-core';
 import type { DatabaseAdapter } from '../sqlite/types.js';
@@ -55,9 +57,11 @@ export class SqliteOrphanSource implements OrphanSource {
       if (isAlive(s.metadata.processId)) continue;    // live owner — not orphaned
       const events = await this.opts.events.query({ sessionId: sid });
       const openClarification = findOpenClarification(events);
+      const openPlanChoice = findOpenPlanChoice(events);
       out.push({
         session: { sessionId: s.sessionId, state: s.state, createdAt: s.createdAt, metadata: s.metadata },
         ...(openClarification !== undefined ? { openClarification } : {}),
+        ...(openPlanChoice !== undefined ? { openPlanChoice } : {}),
         graphIsSeedOnly: await this.isSeedOnly(sid),
         goalPersisted: db.query<{ c: number }>('SELECT COUNT(*) AS c FROM goal_queue WHERE session_id = ?', [sid])[0]?.c === 1,
         pendingToolApproval: (db.query<{ c: number }>(
@@ -113,6 +117,70 @@ export function findOpenClarification(
     if (questions.some((q) => q === null)) continue;
     if (answered.has(requestId)) continue;
     return { missionId, request: { requestId, missionId, goalId, openQuestions: questions as OpenQuestion[] } };
+  }
+  return undefined;
+}
+
+function parseOption(raw: unknown): PlanOption | null {
+  const o = asRecord(raw);
+  if (o === null) return null;
+  const strList = (v: unknown): string[] | null =>
+    Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : null;
+  const pros = strList(o['pros']);
+  const cons = strList(o['cons']);
+  if (typeof o['id'] !== 'string' || typeof o['title'] !== 'string' || typeof o['summary'] !== 'string' || pros === null || cons === null) {
+    return null;
+  }
+  return { id: o['id'], title: o['title'], summary: o['summary'], pros, cons, recommended: o['recommended'] === true };
+}
+
+/** Statements decided BEFORE a plan-choice wait: the latest clarification answer list, else Tier B1 assumptions. */
+function priorAssumptionsFrom(events: readonly DomainEvent[]): string[] {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i] as DomainEvent;
+    if (e.type !== 'GOAL_CLARIFICATION_ANSWERED') continue;
+    const a = asRecord(e.payload)?.['assumptions'];
+    if (Array.isArray(a)) return a.filter((x): x is string => typeof x === 'string');
+  }
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i] as DomainEvent;
+    if (e.type !== 'MISSION_ASSUMPTIONS_MADE') continue;
+    const a = asRecord(e.payload)?.['assumptions'];
+    if (Array.isArray(a)) {
+      return a.map((x) => asRecord(x)?.['assumption']).filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+    }
+  }
+  return [];
+}
+
+/** Latest PLAN_OPTIONS_PROPOSED (valid payload) with no PLAN_OPTION_CHOSEN for its requestId. */
+export function findOpenPlanChoice(
+  events: readonly DomainEvent[],
+): { readonly missionId: string; readonly request: PlanOptionsRequest; readonly priorAssumptions: readonly string[] } | undefined {
+  const chosen = new Set<string>();
+  for (const e of events) {
+    if (e.type !== 'PLAN_OPTION_CHOSEN') continue;
+    const id = asRecord(e.payload)?.['requestId'];
+    if (typeof id === 'string') chosen.add(id);
+  }
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i] as DomainEvent;
+    if (e.type !== 'PLAN_OPTIONS_PROPOSED') continue;
+    const p = asRecord(e.payload);
+    if (p === null) continue;
+    const { requestId, missionId, goalId, options, recommendedOptionId } = p;
+    if (typeof requestId !== 'string' || requestId === '' || typeof missionId !== 'string' || typeof goalId !== 'string') continue;
+    if (typeof recommendedOptionId !== 'string' || !Array.isArray(options) || options.length < 2) continue;
+    const parsed = options.map(parseOption);
+    if (parsed.some((o) => o === null)) continue;
+    const opts = parsed as PlanOption[];
+    if (!opts.some((o) => o.id === recommendedOptionId)) continue;
+    if (chosen.has(requestId)) continue;
+    return {
+      missionId,
+      request: { requestId, missionId, goalId, options: opts, recommendedOptionId },
+      priorAssumptions: priorAssumptionsFrom(events.slice(0, i)),
+    };
   }
   return undefined;
 }

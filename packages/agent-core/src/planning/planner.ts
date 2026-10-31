@@ -41,6 +41,7 @@ import type { TaskStrategy, AcceptanceCriterion } from '../domain/common.js';
 import type { PlanCritic, CritiqueResult } from './plan-critic.js';
 import type { PromptPlan } from '../mission/prompt-composer.js';
 import { renderLanguageDirective, type LanguageHint } from './language-inference.js';
+import { renderChosenApproachSection, type PlanOption } from '../mission/plan-options.js';
 
 // ── Strategy taxonomy (fail-safe normalization) ────────────────────────────────
 
@@ -157,6 +158,11 @@ export class Planner {
      * language-neutral prompt.
      */
     languageHint?: LanguageHint,
+    /**
+     * Plan options (Goal Clarification Phase 2): the approach the user chose. Rendered as a bounded,
+     * already-normalized CHOSEN_APPROACH section; absent ⇒ the prompt is byte-identical.
+     */
+    chosenApproach?: PlanOption,
   ): Promise<GraphMutation> {
     // 1. Build context snapshot (CX-003: workspace items marked untrusted).
     const ctxRequest: BuildContextRequest = {
@@ -169,7 +175,7 @@ export class Planner {
     const snapshot = this.contextBuilder.build(ctxRequest);
 
     // 2. Generate the first plan.
-    let rawPlan = await this.generatePlan(goal, graph, snapshot.snapshotId, undefined, promptPlan, languageHint);
+    let rawPlan = await this.generatePlan(goal, graph, snapshot.snapshotId, undefined, promptPlan, languageHint, chosenApproach);
 
     // 2b. P10.4: optional bounded refinement driven by the advisory PlanCritic (MG-006).
     //     The critic cannot reject or commit — if it flags a weak plan, the Planner
@@ -188,7 +194,7 @@ export class Planner {
         }
         if (critique.score >= threshold && critique.issues.length === 0) break; // good enough
         const feedback = this.formatCritique(critique);
-        const refined = await this.generatePlan(goal, graph, snapshot.snapshotId, feedback, promptPlan, languageHint);
+        const refined = await this.generatePlan(goal, graph, snapshot.snapshotId, feedback, promptPlan, languageHint, chosenApproach);
         // Keep the refined plan only if it is non-empty (generatePlan guarantees this).
         rawPlan = refined;
       }
@@ -210,8 +216,9 @@ export class Planner {
     critique?:  string,
     promptPlan?: PromptPlan,
     languageHint?: LanguageHint,
+    chosenApproach?: PlanOption,
   ): Promise<RawPlan> {
-    const taskPrompt = this.buildPlanPrompt(goal, graph, critique, promptPlan, languageHint);
+    const taskPrompt = this.buildPlanPrompt(goal, graph, critique, promptPlan, languageHint, chosenApproach);
     const request = modelRequest(
       'plan',
       BOUNDARY_SYSTEM_PREAMBLE + planVerbosityAddendum(promptPlan?.verbosity),
@@ -269,7 +276,7 @@ export class Planner {
    * per-task acceptance criteria. `critique` (optional) carries a prior PlanCritic's
    * feedback for a bounded refinement round (MG-006 — advisory, not authority).
    */
-  private buildPlanPrompt(goal: Goal, graph: TaskGraph, critique?: string, promptPlan?: PromptPlan, languageHint?: LanguageHint): string {
+  private buildPlanPrompt(goal: Goal, graph: TaskGraph, critique?: string, promptPlan?: PromptPlan, languageHint?: LanguageHint, chosenApproach?: PlanOption): string {
     const graphSummary = `Current graph: ${graph.nodes.length} tasks, version ${graph.version}.`;
     const acBlock = goal.acceptanceCriteria.length > 0
       ? `Acceptance criteria:\n${goal.acceptanceCriteria.map((ac) => `  - ${ac.description}`).join('\n')}`
@@ -290,6 +297,10 @@ export class Planner {
     if (languageHint !== undefined) {
       const directive = renderLanguageDirective(languageHint);
       if (directive !== '') sections.push({ label: 'TARGET_LANGUAGE', content: directive, trust: 'trusted' });
+    }
+    // Plan options: the user-approved approach (advisor text, sanitized to bounded one-line fields).
+    if (chosenApproach !== undefined) {
+      sections.push({ label: 'CHOSEN_APPROACH', content: renderChosenApproachSection(chosenApproach), trust: 'trusted' });
     }
 
     sections.push({

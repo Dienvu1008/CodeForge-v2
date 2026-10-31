@@ -22,6 +22,8 @@
 //   POST /goal     {description, acceptanceCriteria?} -> { goalId, position } (P10.9)
 //   POST /clarification {sessionId, answers} -> { requestId, answered, skipped } (goal clarification;
 //                                   400 invalid input, 404 unknown session, 409 not awaiting, 501 off)
+//   POST /plan-choice {sessionId, optionId | useRecommended:true} -> { requestId, optionId, source }
+//                                   (plan options; 400 invalid, 404 unknown session, 409 not awaiting, 501 off)
 //   GET  /models                    -> { models: OllamaModelInfo[] } (model management)
 //   POST /models/pull {name}        -> text/event-stream pull progress (model download)
 //   GET  /                          -> dashboard HTML (static client)
@@ -223,6 +225,37 @@ export class HttpTransport {
           case 'EMPTY_ANSWERS': return this.sendJson(res, 400, { error: 'answers required' });
           default: return this.sendJson(res, 400, { error: 'invalid answers' });
         }
+      }
+
+      if (method === 'POST' && path === '/plan-choice') {
+        // Plan options choice. Transport only — the service/coordinator validates and accepts at
+        // most once; this route never writes events (OB-009).
+        const body = await readBody(req);
+        let payload: unknown;
+        try { payload = JSON.parse(body); }
+        catch { return this.sendJson(res, 400, { error: 'invalid JSON body' }); }
+        const fields = isPlainObject(payload) ? payload : {};
+        const sessionId = fields['sessionId'];
+        if (typeof sessionId !== 'string' || sessionId === '') {
+          return this.sendJson(res, 400, { error: 'sessionId required' });
+        }
+        let result;
+        try {
+          result = await this.opts.service.submitPlanChoice(sessionId, fields);
+        } catch (err) {
+          if (err instanceof ObservabilityServiceError && err.code === 'PLAN_OPTIONS_UNSUPPORTED') {
+            return this.sendJson(res, 501, { error: 'plan options not enabled' });
+          }
+          if (err instanceof ObservabilityServiceError && err.code === 'SESSION_NOT_FOUND') {
+            return this.sendJson(res, 404, { error: 'session not found' });
+          }
+          throw err;
+        }
+        if (result.ok) {
+          return this.sendJson(res, 200, { requestId: result.requestId, optionId: result.optionId, source: result.source });
+        }
+        if (result.code === 'NOT_AWAITING') return this.sendJson(res, 409, { error: 'session not awaiting plan choice' });
+        return this.sendJson(res, 400, { error: result.message });
       }
 
       // Model management: list installed models + stream a pull (download) with progress.

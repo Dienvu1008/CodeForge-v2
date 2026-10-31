@@ -50,6 +50,10 @@
 //                        on, an UNKNOWN goal pauses the session (AWAITING_HUMAN) and asks the
 //                        user via POST /clarification; skipped questions get stated defaults.
 //                        Off = assume-and-state (Tier B1) behavior, unchanged.
+//   --plan-options <on|off>  Plan options (default: off; requires --mission on). When on, a goal
+//                        of complexity >= MEDIUM gets 2-4 proposed approaches (pros/cons) and the
+//                        session waits for the user's pick via POST /plan-choice; timeout = the
+//                        recommended option. Off = the Planner chooses, unchanged.
 import { resolve, join, relative, sep } from 'node:path';
 import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -88,7 +92,7 @@ import { inspectProject }                 from '../verification-runtime/index.js
 import { WorkspaceProcessSupervisor }     from '../verification-runtime/index.js';
 import { ContextCollector }               from '../context-runtime/index.js';
 import { LspPool }                         from '../code-intelligence/index.js';
-import { NodeApprovalCoordinator, ClarificationCoordinator } from '../approval-runtime/index.js';
+import { NodeApprovalCoordinator, ClarificationCoordinator, PlanChoiceCoordinator } from '../approval-runtime/index.js';
 
 // Agent-core (pure domain)
 import {
@@ -125,6 +129,7 @@ import {
   MissionIntelligence,
   MissionArchitect,
   AssumptionAdvisor,
+  ApproachAdvisor,
   CapabilityDiscovery,
   ModelRegistry,
   type Session,
@@ -213,6 +218,12 @@ async function main(): Promise<void> {
   const clarifyOn = clarifyArg && missionOn;
   if (clarifyArg && !missionOn) {
     console.warn('  ⚠ --clarify on requires --mission on — clarification disabled');
+  }
+  // Plan options (Goal Clarification Phase 2): OFF by default; also needs the mission stage.
+  const planOptionsArg = (args['plan-options'] ?? 'off').toLowerCase() === 'on';
+  const planOptionsOn = planOptionsArg && missionOn;
+  if (planOptionsArg && !missionOn) {
+    console.warn('  ⚠ --plan-options on requires --mission on — plan options disabled');
   }
   // Multi-provider: default 'ollama' (local). 'openai-compatible' targets any OpenAI Chat
   // Completions API (OpenAI, OpenRouter, Groq, Together, DeepSeek, LM Studio, …). For a cloud
@@ -453,6 +464,14 @@ async function main(): Promise<void> {
         sessions,
       })
     : undefined;
+  // With --plan-options on, a goal of complexity >= MEDIUM waits for the user's approach pick
+  // (POST /plan-choice) via the PlanChoiceCoordinator (same waiting mechanics, DC-002).
+  const planChoiceCoordinator = planOptionsOn
+    ? new PlanChoiceCoordinator({
+        sessionService: { transition: (id, ev, ctx) => sessionSvc.transition(id, ev as never, ctx as never) },
+        sessions,
+      })
+    : undefined;
   const missionStage = missionOn
     ? new MissionIntelligence({
         events,
@@ -481,10 +500,14 @@ async function main(): Promise<void> {
         // of stopping to ask — shown in the dashboard as the agent's reasoning.
         assumptionAdvisor: new AssumptionAdvisor({ gateway: model, now: rt.now, newProvenanceId: rt.nextId }),
         ...(clarificationCoordinator !== undefined ? { clarificationGate: clarificationCoordinator } : {}),
+        ...(planChoiceCoordinator !== undefined
+          ? { approachAdvisor: new ApproachAdvisor({ gateway: model }), planChoiceGate: planChoiceCoordinator }
+          : {}),
       })
     : undefined;
   console.log(`  Mission:    ${missionOn ? 'ON (advisory pre-planning: preflight + model routing + architecture gate)' : 'off (Phase 11 behavior)'}`);
   console.log(`  Clarify:    ${clarifyOn ? 'ON (ask the user when a goal is UNKNOWN)' : 'off (assume-and-state)'}`);
+  console.log(`  Plan opts:  ${planOptionsOn ? 'ON (offer 2-4 approaches when complexity >= MEDIUM)' : 'off (the Planner chooses)'}`);
 
   // 8e. P12.9 mission-driven model routing. When the mission stage is ON and we're on the
   // switchable gateway (i.e. NOT --model-routes, where per-purpose routing already governs the
@@ -552,6 +575,7 @@ async function main(): Promise<void> {
     goalIngress,
     // Goal clarification (POST /clarification): courier to the waiting coordinator. Absent ⇒ 501.
     ...(clarificationCoordinator !== undefined ? { clarification: clarificationCoordinator } : {}),
+    ...(planChoiceCoordinator !== undefined ? { planChoice: planChoiceCoordinator } : {}),
     // Model management (GET /models, POST /models/pull): list + download Ollama models.
     modelAdmin: new OllamaModelAdmin({ endpoint }),
     // Workspace files (GET /workspace/files): read-only listing so the dashboard shows the RESULT
@@ -652,7 +676,12 @@ async function main(): Promise<void> {
     try {
       const runInput = { sessionId: sid, goal, revision, graphVersion: 1, ...(languageHint !== undefined ? { languageHint } : {}) };
       const result = resume !== undefined
-        ? await orchestrator.resume({ ...runInput, resumeClarification: { missionId: resume.missionId, request: resume.request } })
+        ? await orchestrator.resume({
+          ...runInput,
+          resume: resume.kind === 'clarification'
+            ? { resumeClarification: { missionId: resume.missionId, request: resume.request } }
+            : { resumePlanChoice: { missionId: resume.missionId, request: resume.request, priorAssumptions: resume.priorAssumptions } },
+        })
         : await orchestrator.run(runInput);
       console.log(`  < Result:   ${result.sessionState} | tasks ${result.taskRunCount}, passed ${result.passedTaskIds.length}, non-passed ${result.nonPassedTaskIds.length} (${(result.durationMs / 1000).toFixed(1)}s)`);
 
@@ -713,7 +742,9 @@ async function main(): Promise<void> {
     } catch { /* audit append is best-effort */ }
     console.log('');
     console.log(`  ↻ Resumed:  ${bound.goal.description}`);
-    console.log(`    Session:  ${sid} (awaiting clarification — answer in the Goals panel or POST /clarification)`);
+    console.log(plan.kind === 'clarification'
+      ? `    Session:  ${sid} (awaiting clarification — answer in the Goals panel or POST /clarification)`
+      : `    Session:  ${sid} (awaiting a plan choice — pick one in the Goals panel or POST /plan-choice)`);
     if (workspaceChanged) {
       console.warn('    ⚠ The workspace changed while the runtime was down; resuming anyway (workspaceChanged: true).');
     }
@@ -739,7 +770,7 @@ async function main(): Promise<void> {
     sessionService: sessionSvc, events, now: rt.now, nextId: rt.nextId,
   });
   const recovered = await startupRecovery.recover({
-    clarifyEnabled: clarifyOn, hostname: hostname(), processId: process.pid, newLockId: () => 'L-' + randomUUID(),
+    clarifyEnabled: clarifyOn, planOptionsEnabled: planOptionsOn, hostname: hostname(), processId: process.pid, newLockId: () => 'L-' + randomUUID(),
   });
   for (const a of recovered.aborted) console.log(`  ↺ Closed orphaned session ${a.sessionId}: ${a.reason}`);
   for (const e of recovered.errors) console.error(`  ⚠ Recovery of session ${e.sessionId} failed: ${e.message}`);
@@ -747,7 +778,8 @@ async function main(): Promise<void> {
     console.warn(`  ⚠ Not resuming ${recovered.skippedResume.sessionId}: ${recovered.skippedResume.message}`);
   }
   if (recovered.resume !== undefined) {
-    console.log(`  Resume:     session ${recovered.resume.sessionId} awaiting clarification — answer in the Goals panel`);
+    const what = recovered.resume.kind === 'clarification' ? 'awaiting clarification' : 'awaiting a plan choice';
+    console.log(`  Resume:     session ${recovered.resume.sessionId} ${what} — answer in the Goals panel`);
   }
 
   // 13. Seed the first goal from --goal (if any), then run the queue worker (stays alive).
