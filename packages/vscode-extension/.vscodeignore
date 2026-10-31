@@ -1,0 +1,8 @@
+# Ship only the esbuild bundle + manifest/README (src is bundled into dist/extension.cjs).
+src/**
+node_modules/**
+tsconfig.json
+tsconfig.tsbuildinfo
+package-lock.json
+*.vsix
+**/*.map

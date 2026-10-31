@@ -219,3 +219,50 @@ proven need, which is exactly what Phase 12's five laws forbid.
 (Counts are the WSL authoritative figures; the Windows PowerShell host garbles vitest's summary
 line via the worker-title spinner, so Windows runs are confirmed by exit code 0 and cross-checked
 against WSL for the exact numbers.)
+
+---
+
+## Addendum — post-sign-off increments (P12.9 – P12.36 + clarification gate)
+
+Phase 12 was signed off at P12.8. Work continued on the same branch as small, individually
+verified increments; each landed with build + full suite + lint + depcruise green. This table is
+the index (one commit each unless noted); behavior detail and current status live in
+`PROJECT_STATUS.md`, measurements in `.agents/` bench logs and `.agents/failure-taxonomy.md`.
+
+| Step | Commit | What landed |
+|---|---|---|
+| Tier B1 | `4e49e89` | `AssumptionAdvisor`: assume-and-state for vague goals + `MISSION_ASSUMPTIONS_MADE` |
+| P12.9 | `7c4cb01` | Apply the mission's routed model at runtime (`RuntimeModelSelector`) |
+| P12.10 | `e8a338f` | Complexity analyzer recognizes structural refactors |
+| P12.11 | `996843a` | Executor challenges a premature "done" before any write |
+| P12.12 | `cb77452` | `edit_file` tool (surgical find/replace) |
+| P12.13 | `1dc616c` | Multi-file half-done guard |
+| P12.14 | `3c2962a` | Real ROLLBACK recovery (revert to last clean checkpoint) |
+| P12.15 | `77d9ba6` | First-class `grep` + `glob` tools |
+| P12.16–17 | `b0a1d4a`, `b14dab9` | LSP server registry; LspPool in ContextCollector (`--lsp`) |
+| P12.18–21 | `183e9c7` … `d7a49d6` | Dashboard: task-graph DAG, change transcript + diffs, governance timeline, approval banner |
+| P12.22–23 | `b319371`, `6ecced7`, `02709ff` | VS Code extension: tree views, editor diff, approvals, Start Runtime Here, Goals panel, model picker |
+| P12.24 | `e0629e7` | Target-language inference (removes TypeScript bias) |
+| P12.25 | `c52bed4` | Multi-language verification (Dart/Rust/Go/Python/C++) |
+| P12.26–27 | `8726839`, `f295481` | Multi-language progressive benchmark cases; portable check tokens; MQL5 |
+| P12.28 | `b18f86b` | Docs synced to code through P12.27 |
+| P12.29 | `35dc603` | Harness fixes: toolchain env passthrough, C++ run, MQL5 BOM |
+| P12.30 | `4b9f71d` | Cross-file import wiring hint in the executor prompt |
+| P12.31 | `92861a6` | 27 new benchmark cases (security/perf/TS/testing/concurrency) |
+| P12.32 | `86dfc0b` | Failure taxonomy (6 classes) + held-out split (HO-01..15) |
+| P12.33 | `bdc2154` | Recovery ablation runner |
+| P12.34 | `405c81b` | Harness: `flutter analyze` classification, pubspec wiring, benchmark fixes |
+| P12.35–36 | `55b5472`, `1e3b7f7` | VS Code provider picker + cloud settings; API key in SecretStorage + console deep links |
+| Tier C Phase 1 | `4343a6d` | Opt-in goal clarification gate (`--clarify on`); spec `.kiro/specs/goal-clarification-gate/` |
+| Gate | `ff7809e` | Versioned pre-push gate (docs-sync, build, lint, depcruise, invariants) + commit-gate steering |
+
+**Measured (local Qwen3.5, progressive benchmark, after P12.34):** 38/65 overall — training 31/50,
+held-out 7/13 (HO-14 Ruby / HO-15 Swift skipped: toolchains absent). Ablation with
+`--no-recovery`: 24/50 on training, i.e. the recovery loop is worth ~10 cases. qwen2.5-coder
+(P12.33): 18/50. Held-out cases were never used to justify a fix (overfitting discipline:
+only VERIFICATION / GOVERNANCE / INTERACTION failures are fixed in the harness; MODEL_CAPABILITY
+failures are recorded, not patched).
+
+**Still open after the addendum:** before/after benchmarks for Tier B2 and Tier C, real-model
+SWE-bench, resuming a session across a runtime restart, and Tier C Phase 2 (plan variants).
+Test count at the end of the addendum: 2007 tests / 213 files (WSL).

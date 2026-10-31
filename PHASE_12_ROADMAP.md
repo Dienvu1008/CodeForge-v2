@@ -180,6 +180,14 @@ Toàn bộ test §31 + dogfood §32 (7 mission tăng dần) + `PHASE_12_SIGNOFF.
 
 ---
 
+### P12.9 – P12.36 — sau sign-off
+
+Phase 12 đã sign-off ở P12.8. Các bước tăng dần sau đó (áp dụng model routing lúc chạy, guard cho
+executor, ROLLBACK, grep/glob, LSP, dashboard + VS Code extension, đa ngôn ngữ, benchmark/taxonomy/
+ablation, provider settings) và goal clarification gate (Tier C Phase 1) được ghi lại ở
+`PHASE_12_SIGNOFF.md` → "Addendum — post-sign-off increments". Trạng thái hiện tại luôn nằm ở
+`PROJECT_STATUS.md`.
+
 ## 5. Phase gate (exit criteria — §33/§39)
 
 1. Toàn bộ invariant `MI-*` có test và xanh (CRITICAL 100%).

@@ -5,3 +5,5 @@ coverage/
 *.tsbuildinfo
 .DS_Store
 _mmout.txt
+# VS Code extension packages are build artifacts
+*.vsix
