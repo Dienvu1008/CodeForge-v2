@@ -1,0 +1,382 @@
+{
+  "pbtResults": {
+    "1.2 Write `tests/observability-server/server-security-config.spec.ts`": {
+      "status": "passed",
+      "lastRunTimestamp": 1793454561848
+    }
+  },
+  "executionHistory": {
+    "1.1 Write `tests/observability-server/http-security.spec.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453735755
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453747037
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454272538
+      }
+    ],
+    "1.2 Write `tests/observability-server/server-security-config.spec.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453735815
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453747987
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454272905
+      }
+    ],
+    "2.1 Implement `packages/infrastructure/src/observability-server/http-security.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453735868
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454280664
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454408695
+      }
+    ],
+    "2.2 Wire the gate into `http-transport.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453735912
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454416015
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454811011
+      }
+    ],
+    "2.3 Run `http-security.spec.ts`, `http-transport.spec.ts`, `model-admin.spec.ts` and make them pass": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453735976
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454819748
+      },
+      {
+        "executionId": "d9654e18-b2f8-4bf2-bee1-3ae67142e7b6",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793587810865
+      }
+    ],
+    "3.1 Implement `packages/infrastructure/src/observability-server/server-security-config.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736019
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454416943
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454812171
+      }
+    ],
+    "3.2 Wire `runtime-cli.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736057
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454820156
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793584978341
+      }
+    ],
+    "3.3 Run `server-security-config.spec.ts` and make it pass": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736099
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793584983548
+      },
+      {
+        "executionId": "d9654e18-b2f8-4bf2-bee1-3ae67142e7b6",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793586790372
+      }
+    ],
+    "4. Checkpoint: transport and CLI": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736140
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793591353990
+      }
+    ],
+    "5.1 Rewrite the HTML sinks": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736184
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454417785
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454812863
+      }
+    ],
+    "5.2 Add token entry, `api()` wrapper and fetch-based SSE": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736224
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454821255
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793584978581
+      }
+    ],
+    "6.1 Extend `tests/observability-server/dashboard-xss.spec.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736288
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793584983962
+      },
+      {
+        "executionId": "d9654e18-b2f8-4bf2-bee1-3ae67142e7b6",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793589370160
+      }
+    ],
+    "6.2 Write `tests/observability-server/dashboard-auth.spec.ts`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736330
+      },
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793584984350
+      },
+      {
+        "executionId": "d9654e18-b2f8-4bf2-bee1-3ae67142e7b6",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793589375158
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793591087075
+      }
+    ],
+    "7.1 Run the existing suites and fix regressions in the transport/dashboard code only": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736376
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793591103301
+      }
+    ],
+    "8.1 Update `README.md`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736419
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793591668797
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793595677711
+      }
+    ],
+    "8.2 Update `SECURITY_MODEL.md` and `INFRASTRUCTURE_SPEC.md`": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736469
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793591678962
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793596848856
+      }
+    ],
+    "8.3 Update `PROJECT_STATUS.md`, `PHASE_12_SIGNOFF.md` and stale claims": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453736509
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793591684640
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793595694561
+      }
+    ],
+    "9.1 Run `npm run build`, `eslint .` (0 problems) and `depcruise` (0 violations)": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453737598
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793596857092
+      },
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793596936782
+      },
+      {
+        "executionId": "5c15d20e-e732-4280-8dc9-214e96199e16",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793599165552
+      }
+    ],
+    "9.2 Run the WSL suite `scripts/_wsl-tmp.sh` in the background (~200 s), read the output, and compare with": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793453737767
+      },
+      {
+        "executionId": "5c15d20e-e732-4280-8dc9-214e96199e16",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793599472935
+      },
+      {
+        "executionId": "5c15d20e-e732-4280-8dc9-214e96199e16",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793599586475
+      }
+    ],
+    "1. Transport and config security tests (written first, expected to fail)": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793454272963
+      }
+    ],
+    "5. Dashboard hardening (`dashboard-assets.ts`)": [
+      {
+        "executionId": "cb68f4b8-2c7c-4bc7-8ef0-9b21d6b30b08",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793584978664
+      }
+    ],
+    "3. CLI host, token and allowlist configuration": [
+      {
+        "executionId": "d9654e18-b2f8-4bf2-bee1-3ae67142e7b6",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793586790534
+      }
+    ],
+    "2. HTTP transport security layer": [
+      {
+        "executionId": "d9654e18-b2f8-4bf2-bee1-3ae67142e7b6",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793587810924
+      }
+    ],
+    "6. Dashboard XSS and auth tests": [
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793591087138
+      }
+    ],
+    "8. Docs sync": [
+      {
+        "executionId": "3ca20c78-853e-47c4-984f-bb861ceff357",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793596848936
+      }
+    ],
+    "9. Final verification": [
+      {
+        "executionId": "5c15d20e-e732-4280-8dc9-214e96199e16",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793599586540
+      }
+    ]
+  }
+}

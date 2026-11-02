@@ -178,6 +178,11 @@ npm start -- \
 | `--endpoint <url>` | provider default | Ollama server URL, or the cloud provider's `…/v1` base URL. |
 | `--api-key <key>` | — | API key for a cloud provider. Prefer the `CODEFORGE_API_KEY` env var. Never logged. |
 | `--port <number>` | `9500` | Dashboard HTTP port. |
+| `--host <address>` | `127.0.0.1` | Network address the runtime binds to. Loopback by default; an off-loopback host requires an auth token or the runtime exits before listening (fail closed). |
+| `--auth-token-file <path>` | — | File whose trimmed contents are the shared bearer token (≥ 16 chars). Use this *or* `CODEFORGE_AUTH_TOKEN`, not both. |
+| `--allowed-hosts <name,…>` | — | Extra `Host` header values accepted (added to the loopback names), each combined with the bound port. Needed when a non-loopback bind is reached through a LAN name or IP. |
+| `--allowed-origins <origin,…>` | — | Exact cross-origin origins (`http`/`https`) allowed by CORS and the Origin check. Default: same-origin only. `*` and non-`http(s)` values are rejected at startup. |
+| `CODEFORGE_AUTH_TOKEN` (env) | — | Shared bearer token (≥ 16 chars). When set, every data/control route requires `Authorization: Bearer <token>`; static assets and `/health` stay open. |
 | `--db <path>` | `.codeforge/runtime.db` | SQLite database file. |
 | `--max-steps <n>` | `40` | Max orchestrator iterations. |
 | `--autonomy <level>` | `edits` | `full` / `edits` / `readonly` — which tool risk classes auto-approve vs. require a human decision. |
@@ -191,6 +196,17 @@ npm start -- \
 > Tip for a smooth demo with a small local model: `--autonomy full` avoids approval prompts for
 > commands. With weaker models, prefer concrete, well-specified goals (acceptance criteria the
 > runtime can verify) — see the limitations below.
+
+#### Remote access
+
+The runtime binds to `127.0.0.1` (loopback) by default, so it is reachable only from the local
+machine. To expose it on a network, pass `--host 0.0.0.0` (or a specific address) **and** supply a
+token via `CODEFORGE_AUTH_TOKEN` or `--auth-token-file` — an off-loopback bind without a token exits
+with an error before the server starts (fail closed). With auth active the dashboard prompts for the
+token (stored in memory / `sessionStorage` per tab, never in URLs or `localStorage`) and sends it as
+a `Bearer` header on every request. Use `--allowed-hosts` to list the names browsers will use to
+reach the server, and `--allowed-origins` for any cross-origin front-end. The token is a single shared
+secret, not per-user.
 
 ### Per-purpose model routing (cost/quality split)
 
@@ -342,6 +358,12 @@ does today, verified against the source tree).
 - **Product surface is still maturing** — a functional dashboard (task-graph DAG, change/diff
   transcript, governance timeline, approval banner) and a native VS Code extension exist, but it is
   not yet a polished, published IDE experience.
+- **No TLS.** The runtime serves plain HTTP; put a TLS-terminating reverse proxy in front for
+  remote access over an untrusted network.
+- **Single shared token, not per-user.** Auth is one bearer secret shared by everyone who connects;
+  there are no identities, roles, or audit of who made a request.
+- **The VS Code extension is tokenless and loopback only.** It starts the runtime on `127.0.0.1`
+  without a token and needs no change; passing a token from the extension is a later (P1) item.
 
 None of these violate a kernel invariant — they are intelligence/product gaps, which is exactly the
 distinction the two-axis model exists to make.

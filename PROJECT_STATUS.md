@@ -4,7 +4,7 @@
 > A phase passing its tests does NOT mean CodeForge is complete. This file records what the
 > software *actually does today*, verified against the source tree, not against phase labels.
 >
-> Last updated: 2026-10-31 · interaction benchmark harness (Tier B2/C evidence) · 2131 tests / 226 files green (WSL).
+> Last updated: 2026-11-02 · P0 security hardening (HTTP runtime + dashboard) · 2189 tests / 230 files green (full WSL suite: build, typecheck, vitest, eslint 0, depcruise 0 violations).
 > Companion: `ROADMAP.md` (what's next) · per-phase detail in `PHASE_*_ROADMAP.md` / `PHASE_*_SIGNOFF.md`.
 
 ## What CodeForge is
@@ -122,7 +122,7 @@ next investment.
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| Observability dashboard (HTTP + SSE) | PARTIAL | Single-page view (`observability-server/dashboard-assets.ts`): read projection + POST /control, SSE live activity (MISSION_* reasoning lines), approval card, goals chat, model admin, **a task-graph DAG (P12.18)** (SVG, nodes by state, edges = `depends_on`, dependency-layered), and **a change transcript + diffs (P12.19)** — `GET /changes` reconstructs the diffs the agent produced from each mutating tool call's arguments (edit_file → −old/+new hunk, write_file → new content, delete/move → summary), rendered as reviewable change cards updated live, and **a governance timeline (P12.20)** — verification verdicts (PASS/FAIL), failure classifications, recovery actions (RETRY/FIX/REPLAN/ROLLBACK/ESCALATE), completion-gate challenges, and tool approvals/denials, as a colored vertical thread reconstructed from `/events` (frontend-only; makes the kernel's distinctive governance visible), and **a prominent approval banner (P12.21)** — a pulsing top-of-page alert when a tool call is APPROVAL_PENDING, naming WHAT the agent wants to run (tool + path/command, enriched from `/changes`) with large Approve/Deny buttons, so a blocked run is impossible to miss. Still missing: nothing major — the dashboard now covers graph, diffs, governance, approval, activity, goals, models. |
+| Observability dashboard (HTTP + SSE) | PARTIAL | Single-page view (`observability-server/dashboard-assets.ts`): read projection + POST /control, SSE live activity (MISSION_* reasoning lines), approval card, goals chat, model admin, **a task-graph DAG (P12.18)** (SVG, nodes by state, edges = `depends_on`, dependency-layered), and **a change transcript + diffs (P12.19)** — `GET /changes` reconstructs the diffs the agent produced from each mutating tool call's arguments (edit_file → −old/+new hunk, write_file → new content, delete/move → summary), rendered as reviewable change cards updated live, and **a governance timeline (P12.20)** — verification verdicts (PASS/FAIL), failure classifications, recovery actions (RETRY/FIX/REPLAN/ROLLBACK/ESCALATE), completion-gate challenges, and tool approvals/denials, as a colored vertical thread reconstructed from `/events` (frontend-only; makes the kernel's distinctive governance visible), and **a prominent approval banner (P12.21)** — a pulsing top-of-page alert when a tool call is APPROVAL_PENDING, naming WHAT the agent wants to run (tool + path/command, enriched from `/changes`) with large Approve/Deny buttons, so a blocked run is impossible to miss. Still missing: nothing major — the dashboard now covers graph, diffs, governance, approval, activity, goals, models. **P0 security hardening:** loopback-only bind by default (`127.0.0.1`), optional bearer-token auth (required off-loopback), Host-header allowlist (DNS-rebinding guard), exact-origin CORS (no wildcard `*`), JSON-content-type CSRF guard, secret redaction in errors, `X-Content-Type-Options: nosniff` + CSP on static assets, and dashboard output encoding (`textContent` / allowlisted classes — XSS hardened) with token entry + fetch-based SSE when auth is on. |
 | Runtime controls (pause/resume/stop/approve) | DONE | ControlPlane + admitted control path (OB-006); exercised by dashboard/VS Code/Telegram. |
 | VS Code extension | DONE (native UI) | **P12.22: native VS Code UI** (not just an iframe) — an activity-bar container with four live tree views (Sessions / Task-Graph-as-tree / Changes / Governance, polled ~2s), a status-bar item (session state + passed/total + budget), Submit-Goal, control commands on view title bars + context menus, **native editor diff** per change (`vscode.diff` over a `codeforge-diff:` virtual document) and **approval as a native notification** (Approve/Deny when a tool call is APPROVAL_PENDING). **P12.23:** a **Start-Runtime-Here** command (spawns `runtime-cli.js` as a separate child process in the open workspace, polls `/health`, auto-connects; Stop-Runtime kills it), a **Goals webview panel** (conversational history of goals + live status chips, bound to `/sessions`, persisted in globalState), and a **model picker** (`GET /models`). The CJS-activation bug (`"type":"module"` + a `.js` CJS bundle) is fixed: bundle → `dist/extension.cjs`, `activationEvents: onStartupFinished`. Logic in pure, unit-tested modules (`runtime-client`, `view-model`, `vscode-control-mapper`, `runtime-launch`, `goal-history`, `goals-webview`; 52 tests); `extension.ts` only binds to the VS Code API. Build-verified (tsc --noEmit + esbuild + vsce); the interactive UI is click-tested by the user (no Extension Host here). |
 | Mission submission / goal queue | DONE | `POST /goal` → `GoalIngressService` FIFO; worker routes through Planner → GraphCommit (GI-009). |
@@ -242,6 +242,15 @@ next investment.
     Separately, a goal that says both "refactor" and "add tests" still classifies as TESTING in
     mission-intake (TESTING precedes REFACTOR in the taxonomy); complexity is now correct regardless
     because structural signals are type-independent, but the type label itself is still off.
+11. **P0 security hardening shipped, with deliberate P0 limits.** The HTTP runtime now binds
+    loopback by default (`127.0.0.1`), gates every data/control route behind a single shared
+    bearer token when exposed off-loopback (fail closed otherwise), validates the Host header,
+    drops wildcard CORS, requires JSON content types on mutations, redacts secrets in errors, and
+    serves static assets with CSP + `nosniff`; the dashboard renders all untrusted data as text
+    (XSS hardened) and prompts for a token when auth is on. Limits that remain (P1 or later):
+    **no TLS termination** (run behind a TLS reverse proxy), a **single shared token** (no
+    per-user identities or roles), and the **VS Code extension is tokenless / loopback-only**
+    (it launches the runtime itself on `127.0.0.1` with no token).
 
 None of these violate a kernel invariant — they are intelligence/product gaps, not integrity
 gaps. That distinction is the whole point of the two-axis model.
@@ -249,6 +258,16 @@ gaps. That distinction is the whole point of the two-axis model.
 ## Recent hardening (post-eval dogfood cycle)
 
 Driven by running the real runtime against live goals:
+- **P0 security hardening (HTTP runtime + dashboard)** — loopback-only bind by default
+  (`127.0.0.1`); a single shared bearer token (`CODEFORGE_AUTH_TOKEN` / `--auth-token-file`)
+  required to expose the runtime off-loopback (fail closed otherwise); Host-header allowlist
+  (DNS-rebinding guard); exact-origin CORS (wildcard `*` removed); JSON-content-type CSRF guard;
+  secret redaction in errors; `500 { error: "internal error" }` (no `err.message`); static assets
+  get `X-Content-Type-Options: nosniff` + a `Content-Security-Policy`. Dashboard: all untrusted
+  data rendered as `textContent` / allowlisted classes (XSS hardened), a token-entry form (password
+  input, `sessionStorage` only) shown on 401, and fetch-based SSE (carrying the `Authorization`
+  header) when a token is in use. No new dependencies; no change behind `ObservabilityService`;
+  loopback + tokenless workflows unchanged. Spec: `.kiro/specs/p0-security-hardening/`.
 - **Reasoning-model JSON** — `extractJson` (strip `<think>`/fences/prose) + `think:false` to Ollama.
   Fixes "model output is not valid JSON" when using qwen3 / deepseek-r1.
 - **Anti-loop** — `detectExplorationLoop` + a "bias to action" executor prompt.

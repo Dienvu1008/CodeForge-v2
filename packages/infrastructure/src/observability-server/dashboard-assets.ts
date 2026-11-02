@@ -11,6 +11,12 @@
 // Kept as inline string constants so the server has nothing to read from disk (zero file
 // I/O, easy to package). Strict: no external scripts, no inline event handlers in HTML
 // (handlers are attached in app.js), no secrets.
+//
+// Auth (P0 security hardening): when the server requires a bearer token, the first 401 reveals
+// #authForm; the typed token lives in memory + sessionStorage only and is sent as an
+// `Authorization: Bearer` header by api() — never in a URL, localStorage or a cookie. With a token,
+// /stream is read through fetch + a body reader (EventSource cannot send headers); without one
+// (loopback default) the dashboard keeps using EventSource.
 
 export const DASHBOARD_HTML = `<!doctype html>
 <html lang="en">
@@ -41,6 +47,10 @@ export const DASHBOARD_HTML = `<!doctype html>
   .bar { height:6px; background:#30363d; border-radius:3px; overflow:hidden; }
   .bar > span { display:block; height:100%; background:#58a6ff; }
   #status { color:#8b949e; }
+  /* Access-token entry: hidden until a request is answered with 401 (P0 security hardening). */
+  #authForm { display:flex; gap:6px; align-items:center; }
+  #authForm[hidden] { display:none; }
+  #authStatus { color:#d29922; }
   /* Goals chat panel */
   #chatLog { max-height:360px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
   .msg { border:1px solid #222; border-radius:8px; padding:8px 10px; background:#0e1116; }
@@ -127,6 +137,12 @@ export const DASHBOARD_HTML = `<!doctype html>
   <input id="session" placeholder="session id" size="22" />
   <button id="connect">Connect</button>
   <span id="status">disconnected</span>
+  <form id="authForm" hidden>
+    <label for="authToken">Access token</label>
+    <input id="authToken" type="password" autocomplete="off" />
+    <button type="submit">Unlock</button>
+    <span id="authStatus" role="status" aria-live="polite"></span>
+  </form>
   <span style="margin-left:auto; display:flex; gap:8px; align-items:center">
     <span id="workspace" title="agent workspace">workspace: —</span>
     <label>model:
@@ -224,21 +240,239 @@ export const DASHBOARD_JS = `"use strict";
 
   function setStatus(s) { $("status").textContent = s; }
 
-  function kv(obj) {
-    var html = "";
-    Object.keys(obj).forEach(function (k) {
-      html += "<b>" + k + "</b><span>" + String(obj[k]) + "</span>";
+  // ── Access token (P0 security hardening, Requirement 9) ──
+  // The token is typed by the operator after a 401 and kept in memory + sessionStorage (per tab)
+  // ONLY: never in a URL or any long-lived browser storage. Every request goes through api(), which adds
+  // "Authorization: Bearer <token>" while a token is stored. Without a token (loopback default,
+  // VS Code webview) requests are plain fetches with no Authorization header, as before.
+  var TOKEN_KEY = "codeforge.authToken";
+  function readStoredToken() {
+    try { var t = sessionStorage.getItem(TOKEN_KEY); return t ? String(t) : ""; } catch (_e) { return ""; }
+  }
+  function storeToken(t) {
+    try { sessionStorage.setItem(TOKEN_KEY, t); } catch (_e) { /* storage unavailable: memory only */ }
+  }
+  function forgetToken() {
+    try { sessionStorage.removeItem(TOKEN_KEY); } catch (_e) { /* storage unavailable */ }
+  }
+  var authToken = readStoredToken();
+
+  function authHeaders(extra) {
+    var h = {};
+    Object.keys(extra || {}).forEach(function (k) { h[k] = extra[k]; });
+    if (authToken) h["authorization"] = "Bearer " + authToken;
+    return h;
+  }
+  // The single network entry point of the dashboard.
+  function api(path, init) {
+    var opts = {};
+    Object.keys(init || {}).forEach(function (k) { opts[k] = init[k]; });
+    opts.headers = authHeaders(opts.headers);
+    var sentToken = authToken;
+    return fetch(path, opts).then(function (r) {
+      if (r.status === 401) onUnauthorized(sentToken);
+      return r;
     });
-    return html;
+  }
+  // A 401 means the server requires a token we do not have (or the stored one is wrong). Clear the
+  // stored token and show the entry form. A 401 for a request sent with an OLDER token (or none)
+  // than the current one is stale and must not discard a freshly entered token.
+  function onUnauthorized(sentToken) {
+    if (sentToken !== authToken) return;
+    var hadToken = !!authToken;
+    if (hadToken) { authToken = ""; forgetToken(); }
+    closeStream();
+    setStatus("unauthorized");
+    $("authStatus").textContent = hadToken
+      ? "Access token rejected. Enter a valid token."
+      : "This server requires an access token.";
+    var form = $("authForm");
+    if (form.hidden) {
+      form.hidden = false;
+      var input = $("authToken");
+      if (typeof input.focus === "function") input.focus();
+    }
+  }
+  function submitToken() {
+    var input = $("authToken");
+    var value = String(input.value || "").trim();
+    if (!value) { $("authStatus").textContent = "Enter the access token."; return; }
+    authToken = value;
+    storeToken(value);
+    input.value = "";
+    $("authStatus").textContent = "";
+    $("authForm").hidden = true;
+    // Retry the loads that failed with 401.
+    loadConfig();
+    refreshModels();
+    captureBaseline();
+    if ($("session").value.trim()) connect();
+  }
+
+  // ── Live stream (/stream) ──
+  // No token: EventSource (unchanged loopback behaviour). Token: EventSource cannot send headers and
+  // tokens must not go into URLs, so read the SSE body through fetch + a stream reader instead.
+  var streamCtl = null;      // AbortController of the active fetch stream
+  var reconnectTimer = null; // pending fetch-stream reconnect
+  var lastSeq = 0;           // last received SSE id (event sequenceNumber); resume cursor
+
+  function closeStream() {
+    if (es) { es.close(); es = null; }
+    if (streamCtl) { var c = streamCtl; streamCtl = null; try { c.abort(); } catch (_e) {} }
+    if (reconnectTimer !== null) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  }
+
+  function noteSeq(id) {
+    var n = Number(id);
+    if (id !== null && id !== undefined && id !== "" && isFinite(n)) lastSeq = n;
+  }
+
+  function onStreamData(data) {
+    try {
+      var e = JSON.parse(data);
+      // Render the event as a reasoning line (expands MISSION_* payloads into readable thinking).
+      var ul = $("activity");
+      ul.appendChild(activityItem(e.type, e.at, e.payload));
+      ul.scrollTop = ul.scrollHeight;
+      refreshState();
+    } catch (_e) {}
+  }
+
+  function openEventSource(sid) {
+    es = new EventSource("/stream?session=" + encodeURIComponent(sid));
+    es.onopen = function () { setStatus("connected"); };
+    es.onerror = function () { setStatus("stream error"); };
+    es.onmessage = function (ev) {
+      noteSeq(ev.lastEventId);
+      onStreamData(ev.data);
+    };
+  }
+
+  // One SSE frame (text between blank lines) -> { id, data }. Comment lines (":") are ignored.
+  function parseSseFrame(frame) {
+    var id = null;
+    var data = [];
+    frame.split("\\n").forEach(function (line) {
+      if (!line || line.charAt(0) === ":") return;
+      var c = line.indexOf(":");
+      var field = c < 0 ? line : line.slice(0, c);
+      var value = c < 0 ? "" : line.slice(c + 1);
+      if (value.charAt(0) === " ") value = value.slice(1);
+      if (field === "id") id = value;
+      else if (field === "data") data.push(value);
+    });
+    return { id: id, data: data.join("\\n") };
+  }
+
+  function openFetchStream(sid) {
+    var ctl = typeof AbortController === "function" ? new AbortController() : null;
+    // The handle identifies THIS stream; connect()/closeStream() replace or clear it, which
+    // stops the pump and suppresses reconnects of a superseded stream.
+    var handle = ctl || { abort: function () {} };
+    streamCtl = handle;
+    function current() { return streamCtl === handle && sid === sessionId && !!authToken; }
+    function reconnectLater() {
+      if (!current()) return;
+      setStatus("stream error");
+      reconnectTimer = setTimeout(function () {
+        reconnectTimer = null;
+        if (current()) openStream(sid);
+      }, 2000);
+    }
+    var init = ctl ? { signal: ctl.signal } : {};
+    api("/stream?session=" + encodeURIComponent(sid) + "&from=" + lastSeq, init)
+      .then(function (r) {
+        if (streamCtl !== handle) return;
+        if (r.status === 401) { streamCtl = null; return; } // api() already showed the token form
+        if (!r.ok || !r.body) { reconnectLater(); return; }
+        setStatus("connected");
+        var reader = r.body.getReader();
+        var dec = new TextDecoder();
+        var buf = "";
+        function pump() {
+          return reader.read().then(function (chunk) {
+            if (streamCtl !== handle) { try { reader.cancel(); } catch (_e) {} return; }
+            if (chunk.done) { reconnectLater(); return; }
+            buf += dec.decode(chunk.value, { stream: true });
+            buf = buf.replace(/\\r\\n?/g, "\\n");
+            var idx = buf.indexOf("\\n\\n");
+            while (idx >= 0) {
+              var f = parseSseFrame(buf.slice(0, idx));
+              buf = buf.slice(idx + 2);
+              noteSeq(f.id);
+              if (f.data) onStreamData(f.data);
+              idx = buf.indexOf("\\n\\n");
+            }
+            return pump();
+          });
+        }
+        return pump();
+      })
+      .catch(function () { reconnectLater(); });
+  }
+
+  function openStream(sid) {
+    if (!authToken) return openEventSource(sid); // unchanged behaviour on loopback
+    return openFetchStream(sid);
+  }
+
+  // ── Output encoding (P0 security hardening, Requirement 10) ──
+  // Every value that comes from the runtime (model output, workspace paths, tool args, session
+  // metadata, model names, error strings) is UNTRUSTED. Render it through the DOM: createElement +
+  // textContent / setAttribute / DOM properties. escText / escAttr exist only for a renderer that
+  // must keep a string template (text vs quoted-attribute context — not one universal escaper).
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function txt(s) { return document.createTextNode(String(s)); }
+  // Append a list of children: DOM nodes as-is, anything else as an inert text node.
+  function append(parent, items) {
+    items.forEach(function (it) {
+      if (it === null || it === undefined || it === "") return;
+      parent.appendChild(typeof it === "object" ? it : txt(it));
+    });
+    return parent;
+  }
+  function escText(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function escAttr(s) {
+    return escText(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function safeClass(value, allowed, fallback) {
+    return Object.prototype.hasOwnProperty.call(allowed, value) ? value : fallback;
+  }
+  function safeUrl(u) {
+    var s = String(u).trim();
+    if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return /^https?:/i.test(s) ? s : "";
+    return s;
+  }
+  function clear(node) { node.textContent = ""; }
+  function muted(text) { var n = el("div", null, text); n.style.color = "#8b949e"; return n; }
+  // Class allowlists, built from the CSS in DASHBOARD_HTML. Unknown values get a neutral fallback.
+  var TASK_STATE_CLASS = { pending: 1, ready: 1, active: 1, blocked: 1, passed: 1, failed: 1, verifying: 1, superseded: 1 };
+  var CHANGE_KIND_CLASS = { edit: 1, write: 1, "delete": 1, move: 1 };
+  var GOV_LEVEL_CLASS = { pass: 1, fail: 1, recover: 1, gate: 1, approve: 1, deny: 1 };
+  var CHIP_STATUS_CLASS = { queued: 1, running: 1, completed: 1, aborted: 1, failed: 1, awaiting_human: 1 };
+
+  function kv(host, obj) {
+    clear(host);
+    Object.keys(obj).forEach(function (k) {
+      host.appendChild(el("b", null, k));
+      host.appendChild(el("span", null, obj[k]));
+    });
   }
 
   function refreshState() {
     if (!sessionId) return;
-    fetch("/state?session=" + encodeURIComponent(sessionId))
+    api("/state?session=" + encodeURIComponent(sessionId))
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (st) {
-        if (!st) { $("agentState").innerHTML = "<b>session</b><span>not found</span>"; return; }
-        $("agentState").innerHTML = kv({
+        if (!st) { kv($("agentState"), { session: "not found" }); return; }
+        kv($("agentState"), {
           session: st.sessionId, state: st.sessionState, graph: "v" + st.graphVersion,
           model: st.model || "-", provider: st.provider || "-",
           tasks: st.counts.total, passed: st.counts.passed, active: st.counts.active,
@@ -264,45 +498,55 @@ export const DASHBOARD_JS = `"use strict";
   // classifications, recovery actions (RETRY/FIX/REPLAN/ROLLBACK/ESCALATE), completion-gate
   // challenges, and tool approvals/denials. This is the kernel's distinctive value made visible:
   // the agent's output is GOVERNED, not just produced. Reconstructed from /events (no new API).
+  // Each governance line is { cls, icon, parts } where parts are DOM nodes or plain text.
+  function sub(text) { return el("span", "sub", text); }
   function govLine(e) {
     var p = e.payload || {};
     var t = e.type;
     if (t === "VERIFICATION_ENDED") {
       var ok = p.status === "PASS";
       return { cls: ok ? "pass" : "fail", icon: ok ? "✓" : "✗",
-        html: "verification <b>" + esc2(p.status) + "</b> <span class='sub'>" + esc2(p.scope || "") + "</span>" };
+        parts: ["verification ", el("b", null, p.status), " ", sub(p.scope || "")] };
     }
     if (t === "TASK_FAILED" || t === "FAILURE_DETECTED") {
-      return { cls: "fail", icon: "⚠", html: "failure <b>" + esc2(p.class || "UNKNOWN") + "</b> <span class='sub'>" + esc2(p.stage || "") + "</span>" };
+      return { cls: "fail", icon: "⚠", parts: ["failure ", el("b", null, p.class || "UNKNOWN"), " ", sub(p.stage || "")] };
     }
     if (t === "RECOVERY_ACTION_TAKEN" || t === "RECOVERY_ACTION_CHOSEN") {
       return { cls: "recover", icon: "↻",
-        html: "recovery <b>" + esc2(p.action || "?") + "</b>" + (p.outcome ? " <span class='sub'>→ " + esc2(p.outcome) + "</span>" : "") +
-          (p.reason ? " <span class='sub'>" + esc2(String(p.reason).slice(0, 80)) + "</span>" : "") };
+        parts: ["recovery ", el("b", null, p.action || "?"),
+          p.outcome ? " " : "", p.outcome ? sub("→ " + String(p.outcome)) : null,
+          p.reason ? " " : "", p.reason ? sub(String(p.reason).slice(0, 80)) : null] };
     }
     if (t === "DECISION_COMPLETED" && typeof p.decision === "string" && p.decision.indexOf("done_rejected") === 0) {
       var why = p.decision === "done_rejected_missing_paths" ? "named files not written" : "no change made";
-      return { cls: "gate", icon: "⛔", html: "completion gate challenged <b>done</b> <span class='sub'>(" + why + ")</span>" };
+      return { cls: "gate", icon: "⛔", parts: ["completion gate challenged ", el("b", null, "done"), " ", sub("(" + why + ")")] };
     }
-    if (t === "TOOL_CALL_APPROVED") return { cls: "approve", icon: "👍", html: "tool call <b>approved</b> <span class='sub'>" + esc2(p.toolCallId || "") + "</span>" };
-    if (t === "TOOL_CALL_DENIED")   return { cls: "deny", icon: "👎", html: "tool call <b>denied</b> <span class='sub'>" + esc2(p.toolCallId || "") + "</span>" };
-    if (t === "MISSION_ARCHITECTURE_GATE_BLOCKED") return { cls: "gate", icon: "⛔", html: "architecture gate <b>BLOCKED</b>" };
+    if (t === "TOOL_CALL_APPROVED") return { cls: "approve", icon: "👍", parts: ["tool call ", el("b", null, "approved"), " ", sub(p.toolCallId || "")] };
+    if (t === "TOOL_CALL_DENIED")   return { cls: "deny", icon: "👎", parts: ["tool call ", el("b", null, "denied"), " ", sub(p.toolCallId || "")] };
+    if (t === "MISSION_ARCHITECTURE_GATE_BLOCKED") return { cls: "gate", icon: "⛔", parts: ["architecture gate ", el("b", null, "BLOCKED")] };
     return null; // not a governance event
   }
   function refreshGovernance() {
-    if (!sessionId) { $("governance").innerHTML = ""; return; }
-    fetch("/events?session=" + encodeURIComponent(sessionId))
+    if (!sessionId) { clear($("governance")); return; }
+    api("/events?session=" + encodeURIComponent(sessionId))
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (events) {
-        var rows = [];
+        var host = $("governance");
+        clear(host);
+        var count = 0;
         events.forEach(function (e) {
           var g = govLine(e);
-          if (g) rows.push("<div class='gov " + g.cls + "'><span class='gi'>" + g.icon + "</span>" +
-            "<span class='gt'>" + esc2((e.at || "").slice(11, 19)) + "</span>" +
-            "<span class='gm'>" + g.html + "</span></div>");
+          if (!g) return;
+          var lvl = safeClass(g.cls, GOV_LEVEL_CLASS, "");
+          var row = el("div", lvl ? "gov " + lvl : "gov");
+          row.appendChild(el("span", "gi", g.icon));
+          row.appendChild(el("span", "gt", String(e.at || "").slice(11, 19)));
+          row.appendChild(append(el("span", "gm"), g.parts));
+          host.appendChild(row);
+          count++;
         });
-        $("governance").innerHTML = rows.length ? rows.join("") : "<div style='color:#8b949e'>(no governance events yet)</div>";
-        var el = $("governance"); el.scrollTop = el.scrollHeight;
+        if (!count) host.appendChild(muted("(no governance events yet)"));
+        host.scrollTop = host.scrollHeight;
       })
       .catch(function () {});
   }
@@ -311,32 +555,39 @@ export const DASHBOARD_JS = `"use strict";
   // the "what did the agent actually do" view — write_file shows new content, edit_file shows a
   // -old/+new hunk, delete/move a one-line summary.
   function renderDiff(diff) {
-    return diff.split("\\n").map(function (l) {
+    var pre = el("pre");
+    String(diff).split("\\n").forEach(function (l, i) {
+      if (i > 0) pre.appendChild(txt("\\n"));
       var cls = l.charAt(0) === "+" ? "add" : (l.charAt(0) === "-" ? "del" : "");
-      return "<span class='" + cls + "'>" + esc2(l) + "</span>";
-    }).join("\\n");
+      pre.appendChild(el("span", cls, l));
+    });
+    return pre;
   }
   function refreshChanges() {
-    if (!sessionId) { $("changes").innerHTML = ""; return; }
-    fetch("/changes?session=" + encodeURIComponent(sessionId))
+    if (!sessionId) { clear($("changes")); return; }
+    api("/changes?session=" + encodeURIComponent(sessionId))
       .then(function (r) { return r.ok ? r.json() : { changes: [] }; })
       .then(function (b) {
+        var host = $("changes");
         var changes = (b.changes || []);
-        if (changes.length === 0) { $("changes").innerHTML = "<div style='color:#8b949e'>(no changes yet)</div>"; return; }
+        clear(host);
+        if (changes.length === 0) { host.appendChild(muted("(no changes yet)")); return; }
         // Newest first — the most recent edit is the most interesting.
-        $("changes").innerHTML = changes.slice().reverse().map(function (c) {
-          var head =
-            "<div class='chd'><span class='k " + esc2(c.kind) + "'>" + esc2(c.kind) + "</span>" +
-            "<span class='p'>" + esc2(c.path || c.summary) + "</span>" +
-            "<span class='t'>" + esc2(c.state) + " · " + esc2((c.at || "").slice(11, 19)) + "</span></div>";
-          var body = c.diff ? "<pre>" + renderDiff(c.diff) + "</pre>" : "";
-          return "<div class='change'>" + head + body + "</div>";
-        }).join("");
+        changes.slice().reverse().forEach(function (c) {
+          var kind = c.kind == null ? "" : String(c.kind);
+          var kcls = safeClass(kind, CHANGE_KIND_CLASS, "");
+          var head = el("div", "chd");
+          head.appendChild(el("span", kcls ? "k " + kcls : "k", kind));
+          head.appendChild(el("span", "p", c.path || c.summary || ""));
+          head.appendChild(el("span", "t", String(c.state == null ? "" : c.state) + " · " + String(c.at || "").slice(11, 19)));
+          var box = el("div", "change");
+          box.appendChild(head);
+          if (c.diff) box.appendChild(renderDiff(c.diff));
+          host.appendChild(box);
+        });
       })
       .catch(function () {});
   }
-
-  function gesc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   // Map a task projection to a CSS state class for the graph node (mirrors the old list marks).
   function taskClass(t, sessionDone) {
@@ -356,7 +607,13 @@ export const DASHBOARD_JS = `"use strict";
   // carries dependsOn); no backend change. Degrades to "(no tasks)" when empty.
   function renderTaskGraph(tasks, sessionDone) {
     var host = $("taskGraph");
-    if (!tasks || tasks.length === 0) { host.innerHTML = "<div style='color:#8b949e'>(no tasks)</div>"; return; }
+    clear(host);
+    if (!tasks || tasks.length === 0) { host.appendChild(muted("(no tasks)")); return; }
+    tasks = tasks.map(function (t) {
+      // Normalise ids to strings so layout keys and labels never depend on payload types.
+      var deps = Array.isArray(t.dependsOn) ? t.dependsOn.map(String) : [];
+      return { taskId: String(t.taskId), state: t.state, isActive: t.isActive, isBlocked: t.isBlocked, dependsOn: deps };
+    });
 
     var byId = {};
     tasks.forEach(function (t) { byId[t.taskId] = t; });
@@ -395,36 +652,48 @@ export const DASHBOARD_JS = `"use strict";
     var width = PADX * 2 + maxCols * NW + (maxCols - 1) * GAPX;
     var height = PADY * 2 + layers.length * NH + (layers.length - 1) * GAPY;
 
+    // SVG built through the DOM: geometry is numeric, classes come from the allowlist, labels
+    // are textContent. No runtime value is ever parsed as markup.
+    var SVGNS = "http://www.w3.org/2000/svg";
+    function svg(tag, attrs, text) {
+      var n = document.createElementNS(SVGNS, tag);
+      Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, String(attrs[k])); });
+      if (text !== undefined) n.textContent = String(text);
+      return n;
+    }
+    var root = svg("svg", { width: width, height: height, viewBox: "0 0 " + width + " " + height });
+    var defs = svg("defs");
+    var marker = svg("marker", { id: "arrow", viewBox: "0 0 8 8", refX: 7, refY: 4, markerWidth: 6, markerHeight: 6, orient: "auto" });
+    marker.appendChild(svg("path", { d: "M0 0 L8 4 L0 8 z", fill: "#30363d" }));
+    defs.appendChild(marker);
+    root.appendChild(defs);
+
     // Edges (depends_on): dependency (top) -> dependent (bottom).
-    var edgesSvg = "";
     tasks.forEach(function (t) {
-      ((t.dependsOn) || []).forEach(function (p) {
+      t.dependsOn.forEach(function (p) {
         if (!pos[p] || !pos[t.taskId]) return;
         var x1 = pos[p].x + NW / 2, y1 = pos[p].y + NH;
         var x2 = pos[t.taskId].x + NW / 2, y2 = pos[t.taskId].y;
         var my = (y1 + y2) / 2;
-        edgesSvg += "<path class='edge' d='M" + x1 + " " + y1 + " C" + x1 + " " + my + " " + x2 + " " + my + " " + x2 + " " + y2 + "' marker-end='url(#arrow)'/>";
+        root.appendChild(svg("path", { "class": "edge", "marker-end": "url(#arrow)",
+          d: "M" + x1 + " " + y1 + " C" + x1 + " " + my + " " + x2 + " " + my + " " + x2 + " " + y2 }));
       });
     });
 
     // Nodes.
-    var nodesSvg = tasks.map(function (t) {
-      var p = pos[t.taskId]; if (!p) return "";
-      var cls = taskClass(t, sessionDone);
+    tasks.forEach(function (t) {
+      var p = pos[t.taskId]; if (!p) return;
+      var cls = safeClass(taskClass(t, sessionDone), TASK_STATE_CLASS, "pending");
       var shortId = t.taskId.length > 18 ? t.taskId.slice(0, 17) + "…" : t.taskId;
-      var stLabel = (sessionDone && t.state === "VERIFYING") ? "done (unverified)" : t.state;
-      return "<g class='node " + cls + "'>" +
-        "<rect x='" + p.x + "' y='" + p.y + "' width='" + NW + "' height='" + NH + "'/>" +
-        "<text x='" + (p.x + 8) + "' y='" + (p.y + 15) + "'>" + gesc(shortId) + "</text>" +
-        "<text class='st' x='" + (p.x + 8) + "' y='" + (p.y + 29) + "'>" + gesc(stLabel) + "</text>" +
-      "</g>";
-    }).join("");
+      var stLabel = (sessionDone && t.state === "VERIFYING") ? "done (unverified)" : String(t.state == null ? "" : t.state);
+      var g = svg("g", { "class": "node " + cls });
+      g.appendChild(svg("rect", { x: p.x, y: p.y, width: NW, height: NH }));
+      g.appendChild(svg("text", { x: p.x + 8, y: p.y + 15 }, shortId));
+      g.appendChild(svg("text", { "class": "st", x: p.x + 8, y: p.y + 29 }, stLabel));
+      root.appendChild(g);
+    });
 
-    host.innerHTML =
-      "<svg width='" + width + "' height='" + height + "' viewBox='0 0 " + width + " " + height + "'>" +
-      "<defs><marker id='arrow' viewBox='0 0 8 8' refX='7' refY='4' markerWidth='6' markerHeight='6' orient='auto'>" +
-      "<path d='M0 0 L8 4 L0 8 z' fill='#30363d'/></marker></defs>" +
-      edgesSvg + nodesSvg + "</svg>";
+    host.appendChild(root);
   }
 
   // Approval: when a tool call is APPROVAL_PENDING the agent is BLOCKED at AWAITING_HUMAN until a
@@ -436,18 +705,23 @@ export const DASHBOARD_JS = `"use strict";
     $("approvalBanner").className = "";
     $("approval").textContent = "none";
   }
-  function showApprovalBanner(pending, detailHtml) {
-    $("abDetail").innerHTML = detailHtml;
+  function showApprovalBanner(pending, detailParts) {
+    var detail = $("abDetail");
+    clear(detail);
+    append(detail, detailParts);
     $("approvalBanner").className = "show";
     $("approval").innerHTML = "<b>1 pending</b> — see the banner at the top";
-    // Rebind buttons each render (innerHTML of detail doesn't touch the buttons, but the pending
+    // Rebind buttons each render (re-rendering the detail doesn't touch the buttons, but the pending
     // id changes, so re-wire with the current id).
     $("abApprove").onclick = function () { decideTool("approve", pending); };
     $("abDeny").onclick = function () { decideTool("deny", pending); };
   }
+  function bareApprovalDetail(pending) {
+    return ["Tool call ", el("code", null, pending), " is awaiting your decision."];
+  }
   function refreshApproval() {
     if (!sessionId) { hideApprovalBanner(); return; }
-    fetch("/events?session=" + encodeURIComponent(sessionId))
+    api("/events?session=" + encodeURIComponent(sessionId))
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (events) {
         var pending = null;
@@ -464,29 +738,32 @@ export const DASHBOARD_JS = `"use strict";
         if (!pending) { hideApprovalBanner(); return; }
         // Enrich with the tool details from /changes (toolName/kind/path/summary) so the human sees
         // exactly what will run. Fail-safe: on any error, fall back to the bare id.
-        fetch("/changes?session=" + encodeURIComponent(sessionId))
+        api("/changes?session=" + encodeURIComponent(sessionId))
           .then(function (r) { return r.ok ? r.json() : { changes: [] }; })
           .then(function (b) {
             var c = (b.changes || []).filter(function (x) { return x.toolCallId === pending; })[0];
             var detail;
             if (c) {
-              var what = c.summary || (c.toolName + (c.path ? " " + c.path : ""));
-              detail = "The agent wants to run <code>" + esc2(c.toolName || c.kind) + "</code>" +
-                (c.path ? " on <code>" + esc2(c.path) + "</code>" : "") +
-                "<span class='ab-risk'>needs approval</span>" +
-                "<div style='margin-top:6px;color:#8b949e'>" + esc2(what) + " · <code>" + esc2(pending) + "</code></div>";
+              var what = c.summary || (String(c.toolName) + (c.path ? " " + String(c.path) : ""));
+              var info = el("div");
+              info.style.marginTop = "6px";
+              info.style.color = "#8b949e";
+              append(info, [String(what) + " · ", el("code", null, pending)]);
+              detail = ["The agent wants to run ", el("code", null, c.toolName || c.kind),
+                c.path ? " on " : "", c.path ? el("code", null, c.path) : null,
+                el("span", "ab-risk", "needs approval"), info];
             } else {
-              detail = "Tool call <code>" + esc2(pending) + "</code> is awaiting your decision.";
+              detail = bareApprovalDetail(pending);
             }
             showApprovalBanner(pending, detail);
           })
-          .catch(function () { showApprovalBanner(pending, "Tool call <code>" + esc2(pending) + "</code> is awaiting your decision."); });
+          .catch(function () { showApprovalBanner(pending, bareApprovalDetail(pending)); });
       })
       .catch(function () {});
   }
 
   function decideTool(intent, toolCallId) {
-    fetch("/control", {
+    api("/control", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ intent: intent, sessionId: sessionId, toolCallId: toolCallId,
         requestedBy: { kind: "user", id: "dashboard", surface: "dashboard" } })
@@ -503,94 +780,94 @@ export const DASHBOARD_JS = `"use strict";
   // Show the tangible RESULT: the files currently in the workspace (what the agent produced).
   // The runtime has one workspace, so this reflects the latest run's effect.
   function refreshResult() {
-    fetch("/workspace/files")
+    api("/workspace/files")
       .then(function (r) { return r.ok ? r.json() : { files: [] }; })
       .then(function (b) {
         var files = b.files || [];
         $("resultSummary").textContent = files.length
           ? (files.length + " file(s) in the workspace")
           : "no files yet (agent has not written anything, or workspace is empty)";
-        $("files").innerHTML = files.map(function (f) {
-          return "<li>" + f.path + " <span class='cat'>" + f.sizeBytes + " B</span></li>";
-        }).join("");
+        var list = $("files");
+        clear(list);
+        files.forEach(function (f) {
+          var size = Number(f.sizeBytes);
+          var li = el("li", null, String(f.path) + " ");
+          li.appendChild(el("span", "cat", (isFinite(size) ? size : "?") + " B"));
+          list.appendChild(li);
+        });
       })
       .catch(function () {});
   }
 
-  function esc2(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-
   // Turn a raw DomainEvent into a human-readable "reasoning" line (commercial-agent style). The
   // MISSION_* events carry the agent's thinking in their payload; render it, not just the type.
-  // Returns an HTML string for one <li>, or "" to render the plain type.
+  // Returns the line's parts (DOM nodes / plain text), or null to render the plain type.
+  function str(x) { return x === null || x === undefined ? "" : String(x); }
+  function joinList(x, sep) { return Array.isArray(x) ? x.map(str).join(sep) : str(x); }
+  function subList(items) { return items.length ? append(el("ul", "reasoning-sub"), items) : null; }
   function reasoningLine(type, p) {
     p = p || {};
     switch (type) {
-      case "MISSION_RECEIVED":            return "🧠 received goal: " + esc2(p.description);
-      case "MISSION_CLASSIFIED":          return "🧠 classified as <b>" + esc2(p.missionType) + "</b>" + (p.matchedKeyword ? " (" + esc2(p.matchedKeyword) + ")" : "");
-      case "MISSION_COMPLEXITY_ESTIMATED":return "🧠 complexity <b>" + esc2(p.level) + "</b>" + (p.reasons && p.reasons.length ? " — " + esc2(p.reasons.join(", ")) : "");
-      case "MISSION_RISK_ASSESSED":       return "🧠 risk <b>" + esc2(p.level) + "</b>" + (p.factors && p.factors.length ? " (" + esc2(p.factors.join(", ")) + ")" : "");
+      case "MISSION_RECEIVED":            return ["🧠 received goal: " + str(p.description)];
+      case "MISSION_CLASSIFIED":          return ["🧠 classified as ", el("b", null, str(p.missionType)), p.matchedKeyword ? " (" + str(p.matchedKeyword) + ")" : ""];
+      case "MISSION_COMPLEXITY_ESTIMATED":return ["🧠 complexity ", el("b", null, str(p.level)), p.reasons && p.reasons.length ? " — " + joinList(p.reasons, ", ") : ""];
+      case "MISSION_RISK_ASSESSED":       return ["🧠 risk ", el("b", null, str(p.level)), p.factors && p.factors.length ? " (" + joinList(p.factors, ", ") + ")" : ""];
       case "MISSION_UNCERTAINTY_ASSESSED": {
-        var q = (p.openQuestions || []).map(function (x) { return "<li>" + esc2(x) + "</li>"; }).join("");
-        return "🧠 goal clarity: <b>" + esc2(p.level) + "</b>" + (q ? "<ul class='reasoning-sub'>" + q + "</ul>" : "");
+        var q = (Array.isArray(p.openQuestions) ? p.openQuestions : []).map(function (x) { return el("li", null, str(x)); });
+        return ["🧠 goal clarity: ", el("b", null, str(p.level)), subList(q)];
       }
       case "MISSION_ASSUMPTIONS_MADE": {
-        var head = "💡 made assumptions (goal was under-specified): <i>" + esc2(p.clarifiedGoal) + "</i>";
-        var items = (p.assumptions || []).map(function (a) {
-          return "<li><b>" + esc2(a.assumption) + "</b>" + (a.acceptance ? " <span class='cat'>✓ " + esc2(a.acceptance) + "</span>" : "") + "</li>";
-        }).join("");
-        return head + (items ? "<ul class='reasoning-sub'>" + items + "</ul>" : "");
+        var items = (Array.isArray(p.assumptions) ? p.assumptions : []).map(function (a) {
+          a = a || {};
+          return append(el("li"), [el("b", null, str(a.assumption)),
+            a.acceptance ? " " : "", a.acceptance ? el("span", "cat", "✓ " + str(a.acceptance)) : null]);
+        });
+        return ["💡 made assumptions (goal was under-specified): ", el("i", null, str(p.clarifiedGoal)), subList(items)];
       }
-      case "MISSION_MODEL_SELECTED":          return "🧠 model: <b>" + esc2(p.modelId || p.kind) + "</b>" + (p.reason ? " — " + esc2(p.reason) : "");
-      case "MISSION_PLANNING_MODE_SELECTED":  return "🧠 planning mode: <b>" + esc2(p.mode) + "</b>";
-      case "MISSION_ARCHITECTURE_PROPOSED":   return "🧠 proposed architecture: " + esc2(p.summary);
-      case "MISSION_ARCHITECTURE_GATE_BLOCKED": return "⛔ architecture gate BLOCKED: " + esc2((p.blockers || []).join("; "));
-      case "MISSION_CAPABILITY_VERIFIED":     return "✓ capability verified: <b>" + esc2(p.name) + "</b>" + (p.version ? " " + esc2(p.version) : "");
-      default: return "";
+      case "MISSION_MODEL_SELECTED":          return ["🧠 model: ", el("b", null, str(p.modelId || p.kind)), p.reason ? " — " + str(p.reason) : ""];
+      case "MISSION_PLANNING_MODE_SELECTED":  return ["🧠 planning mode: ", el("b", null, str(p.mode))];
+      case "MISSION_ARCHITECTURE_PROPOSED":   return ["🧠 proposed architecture: " + str(p.summary)];
+      case "MISSION_ARCHITECTURE_GATE_BLOCKED": return ["⛔ architecture gate BLOCKED: " + joinList(p.blockers || [], "; ")];
+      case "MISSION_CAPABILITY_VERIFIED":     return ["✓ capability verified: ", el("b", null, str(p.name)), p.version ? " " + str(p.version) : ""];
+      default: return null;
     }
   }
 
-  function activityHtml(type, at, payload) {
+  // One <li> for the Live Activity list, built through the DOM (time and type are text).
+  function activityItem(type, at, payload) {
     var reasoning = reasoningLine(type, payload);
-    var time = (at || "").slice(11, 19);
-    if (reasoning) return "<li class='reasoning'>" + time + " " + reasoning + "</li>";
-    return "<li>" + time + " <span class='cat'>" + esc2(type) + "</span></li>";
+    var time = str(at).slice(11, 19);
+    if (reasoning) return append(el("li", "reasoning"), [time + " "].concat(reasoning));
+    return append(el("li"), [time + " ", el("span", "cat", str(type))]);
   }
 
   function renderActivity(events) {
     // The /trace endpoint returns {category,eventType}; the raw event stream returns {type,payload}.
-    $("activity").innerHTML = events.slice(-200).map(function (e) {
+    var ul = $("activity");
+    clear(ul);
+    events.slice(-200).forEach(function (e) {
       var type = e.type || e.eventType;
-      return activityHtml(type, e.at, e.payload);
-    }).join("");
-    var ul = $("activity"); ul.scrollTop = ul.scrollHeight;
+      ul.appendChild(activityItem(type, e.at, e.payload));
+    });
+    ul.scrollTop = ul.scrollHeight;
   }
 
   function connect() {
     sessionId = $("session").value.trim();
     if (!sessionId) return;
-    if (es) { es.close(); es = null; }
+    closeStream(); // aborts a previous fetch stream / closes a previous EventSource
+    lastSeq = 0;
     refreshState();
-    fetch("/trace?session=" + encodeURIComponent(sessionId))
-      .then(function (r) { return r.json(); })
-      .then(function (t) { renderActivity(t.entries || []); });
-
-    es = new EventSource("/stream?session=" + encodeURIComponent(sessionId));
-    es.onopen = function () { setStatus("connected"); };
-    es.onerror = function () { setStatus("stream error"); };
-    es.onmessage = function (ev) {
-      try {
-        var e = JSON.parse(ev.data);
-        // Render the event as a reasoning line (expands MISSION_* payloads into readable thinking).
-        $("activity").insertAdjacentHTML("beforeend", activityHtml(e.type, e.at, e.payload));
-        var ul = $("activity"); ul.scrollTop = ul.scrollHeight;
-        refreshState();
-      } catch (_e) {}
-    };
+    api("/trace?session=" + encodeURIComponent(sessionId))
+      .then(function (r) { return r.ok ? r.json() : { entries: [] }; })
+      .then(function (t) { renderActivity(t.entries || []); })
+      .catch(function () {});
+    openStream(sessionId);
   }
 
   function sendControl(intent) {
     if (!sessionId) return;
-    fetch("/control", {
+    api("/control", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ intent: intent, sessionId: sessionId, requestedBy: { kind: "user", id: "dashboard", surface: "dashboard" } })
@@ -613,25 +890,31 @@ export const DASHBOARD_JS = `"use strict";
   var boundSessions = {}; // sessionId -> true once attached to a goal
   var nextLocalId = 1;
 
-  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-
-  function statusClass(s) { return String(s || "queued").toLowerCase(); }
+  function statusClass(s) { return safeClass(String(s || "queued").toLowerCase(), CHIP_STATUS_CLASS, ""); }
 
   function renderChat() {
     var log = $("chatLog");
-    log.innerHTML = goals.map(function (g) {
-      var sess = g.sessionId
-        ? "<a class='view' data-sid='" + g.sessionId + "'>view session " + g.sessionId.slice(0, 8) + "</a>"
-        : "<span>waiting in queue…</span>";
-      return "<div class='msg'>" +
-        "<div class='goalText'>" + esc(g.text) + "</div>" +
-        "<div class='meta'><span class='chip " + statusClass(g.status) + "'>" + esc(g.status) + "</span>" +
-        "<span>" + g.at.slice(11, 19) + "</span>" + sess + "</div>" +
-      "</div>";
-    }).join("");
-    // Wire the view links (attach activity panel to that session).
-    Array.prototype.forEach.call(log.querySelectorAll("a.view"), function (a) {
-      a.addEventListener("click", function () { $("session").value = a.getAttribute("data-sid"); connect(); });
+    clear(log);
+    goals.forEach(function (g) {
+      var sess;
+      if (g.sessionId) {
+        var sid = String(g.sessionId);
+        sess = el("a", "view", "view session " + sid.slice(0, 8));
+        sess.setAttribute("data-sid", sid);
+        // Attach the view link's listener directly (attach activity panel to that session).
+        sess.addEventListener("click", function () { $("session").value = sid; connect(); });
+      } else {
+        sess = el("span", null, "waiting in queue…");
+      }
+      var sc = statusClass(g.status);
+      var meta = el("div", "meta");
+      meta.appendChild(el("span", sc ? "chip " + sc : "chip", str(g.status)));
+      meta.appendChild(el("span", null, str(g.at).slice(11, 19)));
+      meta.appendChild(sess);
+      var msg = el("div", "msg");
+      msg.appendChild(el("div", "goalText", g.text));
+      msg.appendChild(meta);
+      log.appendChild(msg);
     });
     log.scrollTop = log.scrollHeight;
   }
@@ -643,7 +926,7 @@ export const DASHBOARD_JS = `"use strict";
     goals.push(entry);
     $("goalInput").value = "";
     renderChat();
-    fetch("/goal", {
+    api("/goal", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ description: desc })
@@ -660,7 +943,7 @@ export const DASHBOARD_JS = `"use strict";
   // freshly-submitted goal only ever binds to a genuinely new session (not a prior run).
   var baselineCaptured = false;
   function captureBaseline() {
-    return fetch("/sessions?limit=50")
+    return api("/sessions?limit=50")
       .then(function (r) { return r.ok ? r.json() : { sessions: [] }; })
       .then(function (b) { (b.sessions || []).forEach(function (s) { boundSessions[s.sessionId] = true; }); baselineCaptured = true; })
       .catch(function () { baselineCaptured = true; });
@@ -669,7 +952,7 @@ export const DASHBOARD_JS = `"use strict";
   // One poller binds new sessions to queued goals (FIFO) and refreshes each goal's status.
   function pollGoals() {
     if (!baselineCaptured || goals.length === 0) return;
-    fetch("/sessions?limit=50")
+    api("/sessions?limit=50")
       .then(function (r) { return r.ok ? r.json() : { sessions: [] }; })
       .then(function (b) {
         var sessions = (b.sessions || []); // newest first
@@ -694,7 +977,8 @@ export const DASHBOARD_JS = `"use strict";
 
   function humanBytes(n) {
     if (!n && n !== 0) return "";
-    var u = ["B", "KB", "MB", "GB", "TB"]; var i = 0; var v = n;
+    var u = ["B", "KB", "MB", "GB", "TB"]; var i = 0; var v = Number(n);
+    if (!isFinite(v)) return "";
     while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
     return v.toFixed(1) + " " + u[i];
   }
@@ -702,7 +986,7 @@ export const DASHBOARD_JS = `"use strict";
   var activeModel = "";
 
   function loadConfig() {
-    fetch("/config")
+    api("/config")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (cfg) {
         if (!cfg) return;
@@ -719,33 +1003,43 @@ export const DASHBOARD_JS = `"use strict";
     var sel = $("modelSelect");
     var opts = modelNames.slice();
     if (activeModel && opts.indexOf(activeModel) < 0) opts.unshift(activeModel);
-    sel.innerHTML = opts.map(function (n) {
-      return "<option value='" + n + "'" + (n === activeModel ? " selected" : "") + ">" + n + "</option>";
-    }).join("") || "<option value=''>—</option>";
+    clear(sel);
+    function option(value, label, selected) {
+      var o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      if (selected) o.selected = true;
+      sel.appendChild(o);
+    }
+    opts.forEach(function (n) { option(str(n), str(n), n === activeModel); });
+    if (opts.length === 0) option("", "—", false);
   }
 
   function refreshModels() {
-    fetch("/models")
+    var list = $("models");
+    api("/models")
       .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
       .then(function (res) {
-        if (!res.ok) { $("models").innerHTML = "<li>" + (res.body && res.body.error || "model admin unavailable") + "</li>"; return; }
+        clear(list);
+        if (!res.ok) { list.appendChild(el("li", null, (res.body && res.body.error) || "model admin unavailable")); return; }
         var models = (res.body && res.body.models) || [];
         modelNames = models.map(function (m) { return m.name; });
         syncModelSelect();
-        $("models").innerHTML = models.length
-          ? models.map(function (m) {
-              var meta = [m.parameterSize, m.quantization, humanBytes(m.sizeBytes)].filter(Boolean).join(" · ");
-              var isActive = m.name === activeModel ? " <span class='chip running'>active</span>" : "";
-              return "<li>" + m.name + (meta ? " <span class='cat'>" + meta + "</span>" : "") + isActive + "</li>";
-            }).join("")
-          : "<li>(no models installed)</li>";
+        if (models.length === 0) { list.appendChild(el("li", null, "(no models installed)")); return; }
+        models.forEach(function (m) {
+          var meta = [m.parameterSize, m.quantization, humanBytes(m.sizeBytes)].filter(Boolean).map(str).join(" · ");
+          var li = el("li", null, str(m.name));
+          if (meta) append(li, [" ", el("span", "cat", meta)]);
+          if (m.name === activeModel) append(li, [" ", el("span", "chip running", "active")]);
+          list.appendChild(li);
+        });
       })
-      .catch(function (e) { $("models").innerHTML = "<li>error " + e + "</li>"; });
+      .catch(function (e) { clear(list); list.appendChild(el("li", null, "error " + e)); });
   }
 
   function switchModel(name) {
     if (!name || name === activeModel) return;
-    fetch("/config/model", {
+    api("/config/model", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: name })
     })
@@ -764,11 +1058,12 @@ export const DASHBOARD_JS = `"use strict";
     $("pullStatus").textContent = "starting download of " + name + " ...";
     $("pullBar").style.width = "0%";
     // POST that returns an SSE stream: use fetch + manual reader (EventSource is GET-only).
-    fetch("/models/pull", {
+    api("/models/pull", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: name })
     }).then(function (res) {
+      if (res.status === 401) { $("pullStatus").textContent = "unauthorized: enter the access token"; return; }
       if (!res.ok || !res.body) { $("pullStatus").textContent = "pull failed to start"; return; }
       var reader = res.body.getReader();
       var dec = new TextDecoder();
@@ -803,6 +1098,7 @@ export const DASHBOARD_JS = `"use strict";
   }
 
   $("connect").addEventListener("click", connect);
+  $("authForm").addEventListener("submit", function (ev) { ev.preventDefault(); submitToken(); });
   Array.prototype.forEach.call(document.querySelectorAll(".controls button[data-intent]"), function (b) {
     b.addEventListener("click", function () { sendControl(b.getAttribute("data-intent")); });
   });

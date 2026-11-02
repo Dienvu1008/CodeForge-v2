@@ -36,6 +36,19 @@
 //   --goal <description> The FIRST goal. The runtime stays alive after it; POST /goal
 //                        {"description":"..."} enqueues more goals (P10.9).
 //   --port <number>      HTTP server port for the dashboard (default: 9500)
+//   --host <addr>        Bind address for the HTTP server (default: 127.0.0.1, loopback only).
+//                        Any non-loopback address (0.0.0.0, a LAN IP, a hostname) REQUIRES an auth
+//                        token; without one the runtime exits 1 before opening the DB.
+//   --auth-token-file <path>  File holding the shared bearer token (trimmed, >= 16 chars). When a
+//                        token is set, every protected route needs `Authorization: Bearer <token>`.
+//                        Alternative: the CODEFORGE_AUTH_TOKEN env var (use one source, not both).
+//                        There is deliberately no `--auth-token <value>` flag (shell history).
+//   --allowed-hosts <a,b>     Extra Host header names accepted besides the loopback names (e.g.
+//                        the machine's LAN name), DNS-rebinding protection.
+//   --allowed-origins <o1,o2> Exact http(s) origins allowed cross-origin (CORS). Default: none;
+//                        `*` is rejected.
+//   env CODEFORGE_AUTH_TOKEN  The shared bearer token (see --auth-token-file). Never logged.
+//                        Not to be confused with CODEFORGE_API_KEY (the model provider key).
 //   --db <path>          SQLite database file (default: .codeforge/runtime.db)
 //   --max-steps <n>      Max orchestrator iterations (default: 40)
 //   --autonomy <level>   full | edits | readonly (default: edits). Controls which tool
@@ -55,7 +68,7 @@
 //                        session waits for the user's pick via POST /plan-choice; timeout = the
 //                        recommended option. Off = the Planner chooses, unchanged.
 import { resolve, join, relative, sep } from 'node:path';
-import { mkdirSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 
@@ -87,6 +100,13 @@ import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
 import { ObservabilityService }           from '../observability-server/observability-service.js';
 import { HttpTransport }                  from '../observability-server/http-transport.js';
+import { isLoopbackAddress, isWildcardAddress } from '../observability-server/http-security.js';
+import {
+  resolveServerSecurityConfig,
+  describeServerSecurity,
+  ServerSecurityConfigError,
+  type ServerSecurityConfig,
+} from '../observability-server/server-security-config.js';
 import { SessionStateControlGate }        from '../observability-server/session-state-control-gate.js';
 import { inspectProject }                 from '../verification-runtime/index.js';
 import { WorkspaceProcessSupervisor }     from '../verification-runtime/index.js';
@@ -188,8 +208,45 @@ function listWorkspaceFiles(root: string): { path: string; sizeBytes: number }[]
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+/**
+ * Resolve the HTTP server security flags (P0 security hardening, design C3). Runs FIRST in
+ * main(), before the DB, model gateway or workspace lock exist, so a misconfiguration exits 1
+ * with no side effects. The error message never contains the token (Requirement 8.3).
+ */
+function resolveSecurityOrExit(args: Record<string, string>): ServerSecurityConfig {
+  try {
+    return resolveServerSecurityConfig({
+      ...(args['host'] !== undefined ? { host: args['host'] } : {}),
+      ...(args['auth-token-file'] !== undefined ? { authTokenFile: args['auth-token-file'] } : {}),
+      ...(args['allowed-hosts'] !== undefined ? { allowedHosts: args['allowed-hosts'] } : {}),
+      ...(args['allowed-origins'] !== undefined ? { allowedOrigins: args['allowed-origins'] } : {}),
+      env: process.env,
+      readFile: (p) => readFileSync(p, 'utf8'),
+    });
+  } catch (err) {
+    if (err instanceof ServerSecurityConfigError) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+
+/**
+ * The URL to open the dashboard at. Loopback and wildcard binds → a loopback URL; otherwise the
+ * bind host. Never includes the token (the dashboard prompts for it).
+ */
+function dashboardUrl(host: string, port: number): string {
+  const h = host.trim().replace(/^\[|\]$/g, '');
+  if (isWildcardAddress(h) || (isLoopbackAddress(h) && !h.includes(':'))) {
+    return `http://127.0.0.1:${port}/`;
+  }
+  return h.includes(':') ? `http://[${h}]:${port}/` : `http://${h}:${port}/`;
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
+  const security = resolveSecurityOrExit(args);
   const workspaceRoot = resolve(args['workspace'] ?? process.cwd());
   let modelName       = args['model']    ?? 'qwen2.5-coder';
   const endpoint      = args['endpoint'] ?? 'http://localhost:11434';
@@ -596,9 +653,16 @@ async function main(): Promise<void> {
     },
     now: rt.now, nextId: rt.nextId,
   });
-  const http = new HttpTransport({ service: obService, streamPollMs: 300 });
-  const actualPort = await http.listen(port, '0.0.0.0');
-  console.log(`  Dashboard:  http://localhost:${actualPort}/`);
+  const http = new HttpTransport({
+    service: obService,
+    streamPollMs: 300,
+    ...(security.authToken !== undefined ? { authToken: security.authToken } : {}),
+    allowedHosts: security.allowedHosts,
+    allowedOrigins: security.allowedOrigins,
+  });
+  const actualPort = await http.listen(port, security.host);
+  for (const line of describeServerSecurity(security, actualPort)) console.log(line);
+  console.log(`  Dashboard:  ${dashboardUrl(security.host, actualPort)}`);
   console.log('');
 
   // 12. Per-goal runner: a goal → a fresh session → seed graph → orchestrator.run().

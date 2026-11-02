@@ -258,7 +258,8 @@ the index (one commit each unless noted); behavior detail and current status liv
 | Session resume v1 | `d885bed` | Durable goal queue (migration 0007) + startup recovery: resume a session parked on an open clarification before planning, close other orphans with a reason; spec `.kiro/specs/session-resume/` |
 | Tier C Phase 2 | `ca34b2c` | Opt-in plan options (`--plan-options on`): 2–4 sanitized approaches, pick in the Goals panel / `POST /plan-choice`, `CHOSEN_APPROACH` in the Planner prompt, resumable; spec `.kiro/specs/plan-options/` |
 | Interaction benchmark | `059708b` | `benchmarks/codeforge-interaction` (12 cases, hidden checks), deterministic simulated user, `run-progressive.mjs --interaction off\|assume\|ask` |
-| Interaction benchmark, first run | *(this commit)* | Qwen3.5: off 0/12, assume 0/12, ask 0/12 (re-run 1/12); failure-taxonomy analysis + new sub-classes; `CF_DEBUG` diagnostics in the runner |
+| Interaction benchmark, first run | `acf006f` | Qwen3.5: off 0/12, assume 0/12, ask 0/12 (re-run 1/12); failure-taxonomy analysis + new sub-classes; `CF_DEBUG` diagnostics in the runner |
+| P0 security hardening | *(this commit)* | Loopback-only bind, bearer-token auth, Host allowlist, exact-origin CORS, JSON CSRF guard, secret redaction, CSP+nosniff, dashboard XSS hardening + token entry; spec `.kiro/specs/p0-security-hardening/` |
 
 **Measured (local Qwen3.5, progressive benchmark, after P12.34):** 38/65 overall — training 31/50,
 held-out 7/13 (HO-14 Ruby / HO-15 Swift skipped: toolchains absent). Ablation with

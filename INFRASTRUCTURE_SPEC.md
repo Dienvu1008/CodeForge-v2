@@ -25,7 +25,8 @@ Infrastructure là **lớp adapter** giữa domain và môi trường vật lý:
 - Ollama (LLM);
 - Tree-sitter / LSP (Phase 6);
 - Package managers;
-- OS.
+- OS;
+- Observability HTTP transport & dashboard (P0 security hardening).
 
 Nguyên tắc trung tâm:
 
@@ -159,6 +160,11 @@ packages/infrastructure/
       env-adapter.ts
     vscode/
       vscode-bridge.ts
+    observability-server/
+      http-transport.ts
+      http-security.ts
+      server-security-config.ts
+      dashboard-assets.ts
     index.ts
 ```
 
@@ -1056,9 +1062,89 @@ Tham chiếu: `INVARIANTS.md` → **HI-001..HI-006, SE-* (VS Code)**.
 
 ---
 
-## 15. Dependency Direction Enforcement
+## 15. Observability HTTP Transport & Dashboard (P0 Security Hardening)
 
-### 15.1 Rule
+### 15.1 Vai trò
+
+`HttpTransport` (`observability-server/http-transport.ts`) là **cổng duy nhất** giữa browser / VS Code extension và `ObservabilityService`. Mọi read và mutation runtime đều đi qua transport. Dashboard (`dashboard-assets.ts`) là web client tĩnh serve tại `/` và `/app.js`.
+
+P0 Security Hardening thêm một **security gate thuần (pure policy)** chạy trước routing: Host → method → preflight → Origin → auth → content-type (threat model + check order chi tiết: `SECURITY_MODEL.md` §2.4–§2.8). Request bị reject không `readBody`, không gọi `ObservabilityService`. Gate nằm trong `http-security.ts` (pure function, test không cần socket); transport chỉ feed request metadata và write decision ra.
+
+Nguyên tắc:
+
+- **Fail closed.** Bind non-loopback mà không token → lỗi startup (CLI) và lỗi `listen` (transport).
+- **Zero change on loopback.** Mặc định bind `127.0.0.1`, không token → VS Code extension (`RuntimeClient`: Node fetch, JSON, không Origin) và dashboard iframe (same-origin) pass mọi check, workflow unchanged.
+- **No new dependencies.** Chỉ `node:crypto` (`createHash`, `timingSafeEqual`) và `node:fs`.
+
+### 15.2 Interface
+
+```typescript
+export interface HttpTransportOptions {
+  readonly service: ObservabilityService;
+  readonly streamPollMs?: number;
+
+  /** Shared bearer token. Khi set, Protected_Route request yêu cầu token. */
+  readonly authToken?: string;
+
+  /** Force auth kể cả trên loopback. Mặc định: true khi authToken được set. Yêu cầu authToken. */
+  readonly requireAuth?: boolean;
+
+  /** Extra Host header hostnames (không kèm port) được chấp nhận ngoài loopback names. */
+  readonly allowedHosts?: readonly string[];
+
+  /** Exact cross-origin origins được phép (CORS + Origin check). Mặc định: none. */
+  readonly allowedOrigins?: readonly string[];
+}
+```
+
+- `listen(port = 0, host = '127.0.0.1')`:
+  - Reject khi `!isLoopbackAddress(host) && authToken === undefined` → `Error('auth token required to bind non-loopback host <host>')`.
+  - Reject khi `requireAuth === true && authToken === undefined`.
+  - Reject khi một entry `allowedOrigins` fail `normalizeOrigin` hoặc bằng `*`.
+  - Sau khi bind, build `SecurityPolicy` với port thật (port 0 trong test). Request chỉ đến sau bind, nên policy luôn có khi `handle` chạy.
+- `handle(req, res)`:
+  1. Build `RequestMeta` từ headers + parsed path (không touch body).
+  2. `decision = evaluateRequest(meta, policy)`.
+  3. `reject` → `sendJson(status, { error })` (+ `WWW-Authenticate: Bearer` cho 401), return. Không `readBody`, không gọi `ObservabilityService`.
+  4. `preflight` → 204 + `Access-Control-Allow-Origin: <origin>` + `Vary: Origin` + `Access-Control-Allow-Methods: GET, POST, OPTIONS` + `Access-Control-Allow-Headers: authorization, content-type` + `Access-Control-Max-Age: 600`.
+  5. `allow` + `corsOrigin` → set `Access-Control-Allow-Origin: <origin>` + `Vary: Origin`. Existing routing unchanged. Block `Access-Control-Allow-Origin: *` cũ và `OPTIONS → 204` unconditional được remove.
+
+### 15.3 Security gate & status codes
+
+Gate order (first failing check wins; `SECURITY_MODEL.md` §2.5): Host → method → preflight → public route → Origin → auth → content-type.
+
+| Status | Khi nào | Body |
+|---|---|---|
+| 401 | Missing / invalid bearer token (protected route, Auth_Required on) | `{ "error": "unauthorized" }` + `WWW-Authenticate: Bearer` |
+| 403 | Host not allowed; Origin not allowed (foreign origin / preflight denied) | `{ "error": "host not allowed" }` / `{ "error": "origin not allowed" }` |
+| 405 | Method not GET/POST/OPTIONS | `{ "error": "method not allowed" }` |
+| 415 | POST với content-type ≠ `application/json` | `{ "error": "content-type must be application/json" }` |
+| 500 | Unexpected exception trong route | `{ "error": "internal error" }` (không echo `err.message`) |
+
+- `sendJson` redact mọi string value của body qua `redactSecret` khi status ≥ 400. `streamModelPull` redact `error` field của SSE error frame. Outer `catch` → `500 { error: 'internal error' }` thay vì `err.message`.
+- Expected 501 messages (`/config/model`, `/goal`, `/models`) giữ nguyên text, pass qua `redactSecret`.
+- CORS: không bao giờ `Access-Control-Allow-Origin: *`; chỉ exact origin từ `allowedOrigins` + `Vary: Origin` (xem §15.2).
+
+### 15.4 CSP & static asset headers
+
+Static asset responses (`sendHtml` / `sendJs`, tức `GET /` và `GET /app.js`):
+
+```
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'
+```
+
+- Không có `frame-ancestors` directive: VS Code webview (`vscode-webview://`) embed page trong iframe và phải tiếp tục hoạt động.
+- Dashboard chỉ dùng `<script src="/app.js">` + property-assigned handlers → `script-src 'self'` không break; inline `style` attributes covered bởi `'unsafe-inline'` cho styles.
+- Public route vẫn subject Host validation; không chứa runtime data / credential.
+
+Tham chiếu: `SECURITY_MODEL.md` §2.4–§2.8 (HTTP runtime threat model, gate order, routes, token, design decisions), `INVARIANTS.md` → **SE-005, SE-010** (redaction, untrusted output).
+
+---
+
+## 16. Dependency Direction Enforcement
+
+### 16.1 Rule
 
 - `agent-core` không import infrastructure.
 - `agent-core` không import Ollama client.
@@ -1066,13 +1152,13 @@ Tham chiếu: `INVARIANTS.md` → **HI-001..HI-006, SE-* (VS Code)**.
 - `agent-core` không import fs.
 - `agent-core` không import child_process.
 
-### 15.2 Enforcement
+### 16.2 Enforcement
 
 - Dependency-cruiser rule trong CI.
 - ESLint rule `no-restricted-imports`.
 - Fail build nếu vi phạm.
 
-### 15.3 Configuration
+### 16.3 Configuration
 
 ```json
 {
@@ -1100,7 +1186,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 
 ---
 
-## 16. Invariant Mapping
+## 17. Invariant Mapping
 
 | Invariant | Enforcement |
 |---|---|
@@ -1125,17 +1211,17 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | MG-005 | §9.5 error mapping |
 | OB-001 | §4 append on transition |
 | OB-002 | §4 append on tool call |
-| DC-001 | §15 enforcement |
+| DC-001 | §16 enforcement |
 | DC-002 | §1.1 adapter pattern |
-| DC-003 | §15 rule |
-| DC-004 | §15 rule |
-| DC-005 | §15 rule |
+| DC-003 | §16 rule |
+| DC-004 | §16 rule |
+| DC-005 | §16 rule |
 
 ---
 
-## 17. Test Matrix
+## 18. Test Matrix
 
-### 17.1 SQLite tests
+### 18.1 SQLite tests
 
 | Test | Target |
 |---|---|
@@ -1148,7 +1234,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | `parameterized-query` | SQL injection safe |
 | `file-permissions` | 0600 |
 
-### 17.2 EventLog tests
+### 18.2 EventLog tests
 
 | Test | Target |
 |---|---|
@@ -1159,7 +1245,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | `redaction` | secret removed |
 | `concurrent-append` | unique constraint |
 
-### 17.3 ArtifactStore tests
+### 18.3 ArtifactStore tests
 
 | Test | Target |
 |---|---|
@@ -1170,7 +1256,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | `permissions` | 0600 |
 | `list-by-session` | correct |
 
-### 17.4 ProcessSupervisor tests
+### 18.4 ProcessSupervisor tests
 
 | Test | Target |
 |---|---|
@@ -1183,7 +1269,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | `cwd-boundary` | enforced |
 | `no-shell` | enforced |
 
-### 17.5 Filesystem tests
+### 18.5 Filesystem tests
 
 | Test | Target |
 |---|---|
@@ -1193,7 +1279,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | `atomic-write` | atomic |
 | `case-collision` | detected |
 
-### 17.6 Git tests
+### 18.6 Git tests
 
 | Test | Target |
 |---|---|
@@ -1203,7 +1289,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | `no-write` | adapter read-only |
 | `secret-redact` | URL redacted |
 
-### 17.7 Ollama tests
+### 18.7 Ollama tests
 
 | Test | Target |
 |---|---|
@@ -1214,7 +1300,7 @@ Tham chiếu: `INVARIANTS.md` → **DC-001..DC-005**.
 | `context-overflow` | MODEL_CONTEXT_OVERFLOW |
 | `invalid-json` | MODEL_OUTPUT_INVALID |
 
-### 17.8 OS adapter tests
+### 18.8 OS adapter tests
 
 | Test | Target |
 |---|---|
