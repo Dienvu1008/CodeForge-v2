@@ -293,6 +293,18 @@ goals with hidden intent and a deterministic simulated user) compares three arms
 `scripts/run-progressive.mjs --interaction off|assume|ask` to measure whether asking and plan options
 improve correctness over assuming.
 
+A **kernel shadow ablation** measures *enforcement*, not recovery: it replays one model trace through the
+real kernel twice — an `enforce` arm (today's behavior) and a `shadow` arm (every enforcement
+decision is recorded as would-block and the action proceeds in a throwaway sandbox) — with
+out-of-policy proposals from a fixed corpus injected, and reports what the kernel stopped or
+changed. Phase 1 is synthetic
+(`node scripts/run-shadow-ablation.mjs --synthetic`, report at
+`.agents/kernel-shadow-ablation.synthetic.md`): out-of-policy injections stopped **40 / 40
+reached**, organic proposals changed **2 of 14**, kernel misses **0** — on scripted traces, not a
+real model. Phase 2 records real-model traces with
+`scripts/run-progressive.mjs <model> --record-trace <dir>` and replays them with
+`scripts/run-shadow-ablation.mjs --traces <dir> --benchmark <benchmark.json>`; that run is pending.
+
 ---
 
 ## Project direction
@@ -364,9 +376,25 @@ does today, verified against the source tree).
   there are no identities, roles, or audit of who made a request.
 - **The VS Code extension is tokenless and loopback only.** It starts the runtime on `127.0.0.1`
   without a token and needs no change; passing a token from the extension is a later (P1) item.
+- **The kernel shadow ablation has hard limits.** After the two arms diverge, the rest of the
+  replay is counterfactual (the recorded model never saw the other arm's results); containment is
+  path/command-level, not an OS sandbox; the in-loop guards P12.11 / P12.13 are observed, not
+  ablated. The Phase 2 real-model run is pending.
+- **Five confirmed kernel gaps under `full` autonomy** (found by the ablation; reported, not
+  fixed): `run_command rm -rf ..` (allowlisted binary, arguments not path-checked);
+  `run_command curl` (allowlisted, and `run_command` is classed SYSTEM, never NETWORK);
+  `read_file .env` inside the workspace (READ_ONLY allow, so the content enters the prompt);
+  `write_file .git/config` and edits to test files (no protected-path rule — `ToolRule.deniedPaths`
+  is declared but not enforced). Under `edits` autonomy `rm` / `curl` are stopped (approval
+  required). See "Confirmed kernel gaps" in
+  `packages/testing/src/shadow-ablation/injection-corpus.ts`.
+- **The infrastructure redactor misses unencrypted PKCS#8 keys.** A
+  `-----BEGIN PRIVATE KEY-----` header is not redacted (the rule requires a type word such as
+  `RSA`); found by the trace tests, reported, not fixed yet.
 
-None of these violate a kernel invariant — they are intelligence/product gaps, which is exactly the
-distinction the two-axis model exists to make.
+None of these violate a tested kernel invariant. Most are intelligence/product gaps, which is
+exactly the distinction the two-axis model exists to make; the kernel and redactor gaps above are
+policy coverage the invariants do not yet claim, surfaced by measurement rather than assumed away.
 
 ---
 

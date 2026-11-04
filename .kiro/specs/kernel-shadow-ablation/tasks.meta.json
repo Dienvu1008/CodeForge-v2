@@ -1,0 +1,632 @@
+{
+  "pbtResults": {
+    "4.2 Write `tests/shadow-ablation/injection-corpus.spec.ts`": {
+      "status": "passed",
+      "lastRunTimestamp": 1793696666738
+    },
+    "3.6 Write `tests/shadow-ablation/observers.spec.ts`": {
+      "status": "passed",
+      "lastRunTimestamp": 1793696804048
+    },
+    "6.6 Write `tests/shadow-ablation/comparison.spec.ts`": {
+      "status": "passed",
+      "lastRunTimestamp": 1793699089610
+    }
+  },
+  "executionHistory": {
+    "1.1 Scaffold the subpath, test config, ignore rule and dependency rule": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780376
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694787557
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694880434
+      }
+    ],
+    "1.2 Export the core modules and add invariant SA-001": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780432
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695924571
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696356648
+      }
+    ],
+    "2.1 Implement `packages/testing/src/shadow-ablation/trace-format.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780474
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694886978
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695124779
+      }
+    ],
+    "2.2 Implement `RecordingModelGateway` and `writeTraceFile`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780516
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695131690
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695549538
+      }
+    ],
+    "2.3 Implement `ReplayModelGateway`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780549
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695132916
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695549697
+      }
+    ],
+    "2.4 Write `tests/shadow-ablation/trace-format.spec.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780586
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696370107
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696840741
+      }
+    ],
+    "2.5 Write `tests/shadow-ablation/record-replay.spec.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780621
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696371077
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696840789
+      }
+    ],
+    "3.1 Implement `decision-ledger.ts` and `sandbox.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780657
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694887794
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695125084
+      }
+    ],
+    "3.2 Implement `AblationWorkspaceManager` (EP-PATH + containment)": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780689
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695134104
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695549639
+      }
+    ],
+    "3.3 Implement `AblationToolGateway`, `SHADOW_PASS_POLICY` and `ShadowApprovalCoordinator`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780743
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695135688
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695549588
+      }
+    ],
+    "3.4 Implement `AblationToolExecutor`, `ALLOW_ANY_COMMAND` and `ContainedProcessSupervisor`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780772
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695558238
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695915802
+      }
+    ],
+    "3.5 Implement `AblationVerificationEngine` and `AblationCompletionGate`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780803
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695558866
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695916707
+      }
+    ],
+    "3.6 Write `tests/shadow-ablation/observers.spec.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780833
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696372298
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696841616
+      }
+    ],
+    "3.7 Write `tests/shadow-ablation/containment.spec.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780865
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696373536
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696842855
+      }
+    ],
+    "4.1 Implement `packages/testing/src/shadow-ablation/injection-corpus.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780896
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695136514
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793695549744
+      }
+    ],
+    "4.2 Write `tests/shadow-ablation/injection-corpus.spec.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780927
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696374693
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696843844
+      }
+    ],
+    "5. Checkpoint: building blocks": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694780963
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699555840
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699693820
+      }
+    ],
+    "6.1 Implement `arm.ts` (`runArm`, `assertReplayable`)": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781010
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696863225
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793697427473
+      }
+    ],
+    "6.2 Implement `synthetic-traces.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781040
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793697435938
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793697885279
+      }
+    ],
+    "6.3 Implement `comparison.ts` (`findDivergence`, `compareArms`)": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781072
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793697436182
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793697886148
+      }
+    ],
+    "6.4 Implement `report.ts` (`buildReport`, `renderMarkdown`)": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781106
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793697893881
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793698324903
+      }
+    ],
+    "6.5 Export the arm, synthetic, comparison and report modules from the subpath barrel": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781137
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793698331496
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793698502652
+      }
+    ],
+    "6.6 Write `tests/shadow-ablation/comparison.spec.ts`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781167
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793698512429
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699542129
+      }
+    ],
+    "6.7 Write `tests/shadow-ablation/harness-e2e.spec.ts` and settle the corpus labels": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781205
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793698513293
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699542897
+      }
+    ],
+    "7. Checkpoint: Phase 1 complete": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781251
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699555987
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699692797
+      }
+    ],
+    "8.1 Add `--record-trace <dir>` to `scripts/run-progressive.mjs`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781279
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699702666
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754356387
+      }
+    ],
+    "8.2 Implement `scripts/run-shadow-ablation.mjs` and produce the synthetic report": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781329
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699703131
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754356492
+      }
+    ],
+    "9.1 Update `EVALUATION_MODEL.md` and `.agents/failure-taxonomy.md`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781370
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754367824
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754602602
+      }
+    ],
+    "9.2 Update `README.md`": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781405
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754368524
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754603072
+      }
+    ],
+    "9.3 Update `PROJECT_STATUS.md`, `PHASE_12_SIGNOFF.md` and stale claims": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781438
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754369802
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754604507
+      }
+    ],
+    "10.1 Run `npm run build`, `eslint .` (0 problems), `npm run depcruise` (0 violations), and confirm": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781489
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754613233
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754693315
+      }
+    ],
+    "10.2 Run the WSL suite `scripts/_wsl-tmp.sh` in the background (~200 s), read the output, and compare with the": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781523
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754694400
+      },
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793755209197
+      }
+    ],
+    "11.1 Record real traces — ask the user to start Ollama and confirm before running; never start Ollama or any": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781560
+      }
+    ],
+    "11.2 Replay the recorded traces and write the report (no model needed)": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781590
+      }
+    ],
+    "11.3 Write the analysis and sync the results into the docs": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793694781622
+      }
+    ],
+    "1. Production isolation scaffold": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696356703
+      }
+    ],
+    "3. Decision ledger, sandbox and enforcement-point observers": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696842919
+      }
+    ],
+    "4. Injection corpus": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793696843882
+      }
+    ],
+    "6. Arm runner, synthetic traces, comparison and report": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793699542947
+      }
+    ],
+    "8. Phase 2 tooling (offline-buildable; no model needed)": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754356543
+      }
+    ],
+    "9. Docs sync": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793754604589
+      }
+    ],
+    "10. Final verification": [
+      {
+        "executionId": "4be512da-62c5-439d-b27e-a58905722004",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793755209248
+      }
+    ]
+  }
+}

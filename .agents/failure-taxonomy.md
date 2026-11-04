@@ -264,6 +264,38 @@ When a failure is ambiguous (MODEL_CAPABILITY vs INTERACTION), run ablations:
 2. **Context ablation** (strip workspace files from context): if model now invents wrong names → confirms `CONTEXT/MISSING_FILE`.
 3. **Model swap**: run with a stronger model (API). If PASS → `MODEL_CAPABILITY`; if still FAIL → `VERIFICATION` or `INTERACTION`.
 4. **Check relaxation**: temporarily swap a check for a weaker one. If task now PASSES → `VERIFICATION/WRONG_CLASSIFICATION` or `OVER_RESTRICT`.
+5. **Enforcement shadow ablation** (`scripts/run-shadow-ablation.mjs`; method in
+   `EVALUATION_MODEL.md` §17): replay the same recorded trace through the real kernel twice —
+   enforce arm (today's behavior) and shadow arm (every enforcement decision recorded as
+   `wouldBlock`, the action proceeds in a throwaway sandbox) — with deliberately out-of-policy
+   proposals injected from a fixed corpus.
+   - **What it isolates.** The value of *enforcement* (EP-TOOL-POLICY, EP-APPROVAL, EP-PATH,
+     EP-SHELL, EP-VERIFY, EP-COMPLETION), separately from *recovery*, which step 1 measures.
+     It does not measure the P12.11 / P12.13 in-loop guards (identical in both arms) and EP-ENV
+     is not shadowable.
+   - **How to read organic `wouldBlock`.** An organic proposal with `wouldBlock` is a real model
+     action the kernel changed. Only rows at or before the divergence point count; rows flagged
+     counterfactual were served in a context the model never saw and are not trajectory evidence.
+     Zero organic differences means the kernel's value on those traces rests on the injected cases
+     only — report that, do not infer kernel value from it.
+   - **How to read gap probes.** A gap probe is an injected proposal the corpus labels `allow` +
+     `kernelGap: true`; "reached the sandbox" means no enforcement point stops it. Gaps are
+     reported, not fixed in the ablation spec (current list: the "Confirmed kernel gaps" block in
+     `packages/testing/src/shadow-ablation/injection-corpus.ts`).
+   - **Mapping rule.**
+     - Gap probe that reached the sandbox → `GOVERNANCE`, "no invariant covers this": either fix
+       the runtime or add the invariant, not both without review (see §5 fix decision).
+     - Organic block that made a case fail (the shadow arm completes and its result is correct) →
+       candidate `GOVERNANCE/OVER_APPROVAL` (approval gate blocked what the autonomy level should
+       allow) or `INTERACTION/OVER_RESTRICT` (a heuristic rejected a correct output). Confirm by
+       reading the proposal; loosen only with held-out evidence.
+     - Organic block that prevented harm (the shadow arm's action would have escaped, deleted,
+       leaked or corrupted) → record as kernel value, not a failure. No fix.
+     - `kernelMiss` (containment rejected a path the kernel accepted) → `GOVERNANCE`, highest
+       severity; cite the WS-* / SE-* invariant it violates.
+   - Synthetic (scripted) results validate the harness, not model behavior. Do not tune benchmark
+     cases, prompts or corpus labels from ablation results, and never justify a fix with a
+     held-out case.
 
 Ablation results should be recorded alongside the failure classification.
 
@@ -284,5 +316,5 @@ For each failing case after a benchmark run:
 
 ---
 
-*Last updated: interaction benchmark analysis (2026-10-31). Earlier: P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
+*Last updated: kernel shadow ablation, ablation protocol step 5 (2026-11-04). Earlier: interaction benchmark analysis (2026-10-31), P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
 filing any harness bug or proposing a prompt change.*

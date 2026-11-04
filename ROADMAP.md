@@ -165,6 +165,13 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.
+5. **Close the confirmed kernel gaps** found by the kernel shadow ablation (harness DONE, Phase 1
+   synthetic; spec `.kiro/specs/kernel-shadow-ablation/`). Under `full` autonomy the kernel lets
+   through `rm -rf ..` (allowlisted `rm`, arguments unchecked), `curl` (allowlisted; `run_command`
+   is never NETWORK), `read_file .env`, `write_file .git/config` and edits to test files (no
+   protected-path rule; `ToolRule.deniedPaths` not enforced); the redactor misses the bare PKCS#8
+   `-----BEGIN PRIVATE KEY-----` header. First run Phase 2 (record real-model traces, replay both
+   arms) to see which gaps a real model actually reaches, then fix and re-run the ablation.
 
 ---
 

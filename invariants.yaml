@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.10
+version: 1.11
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -1501,4 +1501,13 @@ invariants:
     test: "tests/invariants/mission/mi-008.spec.ts"
     phase: 12
     severity: HIGH
+    status: ACTIVE
+  # ── Shadow Ablation (SA) ────────────────────────────────────────
+  - id: SA-001
+    statement: "Kernel shadow-ablation instrument (`@codeforge/testing/shadow-ablation`) chỉ dùng để đo, không bao giờ reachable từ production: không source/package.json nào của agent-core/infrastructure/vscode-extension import/khai báo `@codeforge/testing` hay module `shadow-ablation`; trong `scripts/` chỉ `run-shadow-ablation.mjs` và `run-progressive.mjs` được tham chiếu, và `run-progressive.mjs` chỉ import `RecordingModelGateway` + `writeTraceFile`; bundle `dist-cli/codeforge.cjs` / `dist/extension.cjs` không chứa class name nào của shadow-ablation."
+    enforcement: ["dependency-cruiser no-production-to-testing", "SA-001 static scan"]
+    violation_class: SHADOW_REACHABLE_FROM_PRODUCTION
+    test: "tests/invariants/shadow/sa-001.spec.ts"
+    phase: 12
+    severity: CRITICAL
     status: ACTIVE

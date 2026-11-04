@@ -16,6 +16,20 @@
 //   --interaction assume  mission stage + AssumptionAdvisor (Tier B1/B2: assume and state, never ask)
 //   --interaction ask     + clarification gate and plan options answered by the case's simulatedUser
 //   Run the three arms on the same model and compare the TOTAL lines (before/after evidence).
+//
+// Trace recording for the kernel shadow ablation (measurement-only, Requirement 12):
+//   node scripts/run-progressive.mjs <model> --split train --record-trace .agents/traces/<run>
+//   --record-trace <dir>  wrap each case's model gateway in RecordingModelGateway and write one
+//                         <caseId>.trace.json per case into <dir> (written in the case's finally,
+//                         so failed/crashed cases are recorded too). Every model call of the case
+//                         (planner, executor, mission advisors when --interaction != off) goes
+//                         through the same recorder. Recording forwards requests and responses
+//                         unchanged and does not add, drop or reorder model calls; raw responses
+//                         are redacted and prompts stored only as SHA-256 digests. Keep traces
+//                         under .agents/traces/ (gitignored: they may contain workspace content).
+//                         Traces recorded with --interaction assume|ask are written but REFUSED by
+//                         scripts/run-shadow-ablation.mjs (replay supports interaction off only).
+//                         Without the flag the runner is unchanged and never loads the testing dist.
 import {
   SqliteDatabaseAdapter, SqliteSessionRepository, SqliteTaskRepository, SqliteTaskRunRepository,
   SqliteTaskExecutionRepository, SqliteTaskGraphRepository, SqliteGraphCommitter,
@@ -69,6 +83,17 @@ if (!['off', 'assume', 'ask'].includes(interactionMode)) {
 }
 // Per-case interaction stats (taskId → what the mission stage detected and what the simulated user did).
 const interactionStats = new Map();
+// Trace recording (see header). Absent → recordDir is undefined and nothing below changes.
+const recordDir = flag('record-trace', undefined);
+if (argv.includes('--record-trace') && (recordDir === undefined || recordDir.startsWith('--'))) {
+  console.error('--record-trace requires a directory argument'); process.exit(1);
+}
+// Loaded only when recording, so a normal run has no dependency on the testing dist.
+let RecordingModelGateway;
+let writeTraceFile;
+// (Single-statement `if` on purpose: SA-001 parses this named-import form textually.)
+if (recordDir !== undefined) ({ RecordingModelGateway, writeTraceFile } = await import('../packages/testing/dist/shadow-ablation/index.js'));
+let tracesWritten = 0;
 
 // Serialize model calls so each starts at least `minCallIntervalMs` after the previous one began.
 let _rpmChain = Promise.resolve();
@@ -109,10 +134,26 @@ function makeRealAgentRunner() {
       if (delayMs > 0) await sleep(delayMs);
       const db = new SqliteDatabaseAdapter(':memory:');
       db.open();
+      // --record-trace: one recorder per case; every model consumer below uses gw0 (or the
+      // CF_DEBUG wrapper around it), so the trace covers all model calls of the case.
+      let recorder;
       try {
         runMigrations(db, createMigrationRegistry(), { now: () => '2026-01-01T00:00:00.000Z' });
         const c = counters();
-        const gw0 = rpmThrottle(makeGateway());
+        const gwBase = rpmThrottle(makeGateway());
+        if (recordDir !== undefined) {
+          recorder = new RecordingModelGateway(gwBase, {
+            traceId: task.id,
+            source: {
+              kind: 'recorded', benchmark: benchmarkPath, caseId: task.id,
+              split: task.heldOut === true ? 'holdout' : 'train',
+              model: gwBase.identity, recordedAt: new Date().toISOString(),
+            },
+            // Mirrors the wiring below: buildToolPolicy('full'), maxToolCalls: 12, --lsp.
+            wiring: { autonomy: 'full', maxToolCalls: 12, recovery: ablationLabel, interaction: interactionMode, lsp: argv.includes('--lsp') },
+          });
+        }
+        const gw0 = recorder ?? gwBase;
         // CF_DEBUG: record every raw model response for this case (diagnostic only).
         const rawLog = [];
         const gw = process.env.CF_DEBUG ? {
@@ -239,12 +280,20 @@ function makeRealAgentRunner() {
           });
         }
         return { events: allEvents, traceRef: sid };
-      } finally { db.close(); }
+      } finally {
+        // A trace write failure is reported but never changes the case's verdict.
+        if (recorder !== undefined) {
+          try { writeTraceFile(recordDir, recorder.trace()); tracesWritten++; }
+          catch (err) { console.error(`  [record-trace] ${task.id}: ${err?.message ?? String(err)}`); }
+        }
+        db.close();
+      }
     },
   };
 }
 
-const benchmark = loadBenchmarkFile(flag('benchmark', 'benchmarks/codeforge-progressive/benchmark.json'));
+const benchmarkPath = flag('benchmark', 'benchmarks/codeforge-progressive/benchmark.json');
+const benchmark = loadBenchmarkFile(benchmarkPath);
 // Optional case filter: --only PG-12  (or comma-separated: --only PG-05,PG-12). Lets a focused
 // re-measure of one or a few cases run without burning the whole curve's RPM budget.
 const onlyArg = flag('only', undefined);
@@ -331,6 +380,7 @@ for (const d of diffs) {
 }
 console.log(`\n  TOTAL: ${result.success}/${result.total} success  (failure=${result.failure}, invalid=${result.invalid})`);
 console.log(`  failure classes: ${JSON.stringify(result.failureBreakdown)}`);
+if (recordDir !== undefined) console.log(`  traces written: ${tracesWritten} → ${recordDir}`);
 if (interactionMode !== 'off' && interactionStats.size > 0) {
   // Interaction rollup: how often the detector fired on each kind of case, and pass rate per kind.
   console.log('\n  interaction:');

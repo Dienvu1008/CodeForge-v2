@@ -4,7 +4,7 @@
 > A phase passing its tests does NOT mean CodeForge is complete. This file records what the
 > software *actually does today*, verified against the source tree, not against phase labels.
 >
-> Last updated: 2026-11-02 · P0 security hardening (HTTP runtime + dashboard) · 2189 tests / 230 files green (full WSL suite: build, typecheck, vitest, eslint 0, depcruise 0 violations).
+> Last updated: 2026-11-04 · Kernel shadow ablation (Phase 1 + Phase 2 tooling) · 2260 tests / 239 files green (full WSL suite: build, typecheck, vitest, eslint 0, depcruise 0 violations).
 > Companion: `ROADMAP.md` (what's next) · per-phase detail in `PHASE_*_ROADMAP.md` / `PHASE_*_SIGNOFF.md`.
 
 ## What CodeForge is
@@ -151,6 +151,7 @@ next investment.
 | Baseline + regression detection + report | DONE | `agent-core/evaluation/regression.ts` + `infrastructure/evaluation/baseline-store.ts`. First baseline recorded (see ROADMAP). |
 | Real-runtime E2E run | DONE | `tests/evaluation/real-runtime-e2e.spec.ts` — 3/10 FakeModel baseline through the real kernel. |
 | External benchmark adapters (SWE-bench) | DONE (adapter) | Full SWE-bench adapter + end-to-end runner: pure `swe-bench-adapter.ts` (record → `BenchmarkTask` + `SweBenchSetup`; gold/test patches never leak to the agent), infra `loadSweBenchDataset` (JSON/JSONL), `SweBenchWorkspaceSetup` (git clone/checkout `base_commit`, apply `test_patch` post-run), and `SweBenchAgentRunner` (threads prepareBaseline→orchestrator→applyTestPatch→check; a setup failure → INVALID, not FAILURE). Driven by `scripts/run-swe-bench.mjs` against the real runtime. 34 unit tests + sample fixture + `benchmarks/swe-bench/README.md`; the script runs end-to-end (sample reports INVALID without a real repo/env — expected). A scored LIVE run needs git + network (or `--repo-mirror`) + the per-repo python/pytest env; the Docker-image path is the reference-reproducible route. Other adapters (TerminalBench/SWT-bench/Commit0) still deferred. |
+| Kernel shadow ablation (enforcement value) | DONE (Phase 1 synthetic) · Phase 2 real-model run PENDING | Measures what the kernel's enforcement points actually stop. `packages/testing/src/shadow-ablation/` (subpath `@codeforge/testing/shadow-ablation` only; SA-001 + a depcruise rule keep it out of production): a recording/replay `ModelGateway` (`codeforge.model-trace/1`, redacted, prompt digests only), an enforce arm and a shadow arm (decisions recorded as `wouldBlock` and let through into a temp-dir sandbox with an independent containment check), an out-of-policy injection corpus + kernel-gap probes, and a Markdown/JSON report. Scripts: `run-progressive.mjs --record-trace <dir>` and `run-shadow-ablation.mjs --traces … \| --synthetic`. **Phase 1 synthetic result** (5 scripted traces, no model; `.agents/kernel-shadow-ablation.synthetic.md`): out-of-policy injections stopped **40 / 40 reached**; organic proposals changed by the kernel **2 of 14**; kernel misses **0**; **5 confirmed kernel gaps under `full` autonomy** (see limitation 12). Phase 2 (record real Qwen3.5 traces, replay both arms) is tooling-ready, not yet run. Spec: `.kiro/specs/kernel-shadow-ablation/`. |
 | Real-Ollama evaluation run (historical baseline) | DONE (4-model curve) | FIRST capability curve on the progressive benchmark, BEFORE the P12.12–P12.15 improvements: **deepseek-r1:14b 3/12, qwen2.5-coder 2/12, deepseek-coder:6.7b 1/12, llama3:8b 1/12.** Kept for contrast with the re-measure below. |
 | Real-Ollama RE-MEASURE (post P12.12–P12.15) | DONE | Re-ran the progressive benchmark on the CURRENT runtime (edit_file + tree-sitter context + recovery/REPLAN/ROLLBACK + grep/glob). Progressive (12): **`Qwen3.5` (9B) 8/12 — the best local result to date**, `qwen2.5-coder` (7B) **5/12 (was 2/12, +3 same model)**, `deepseek-r1:14b` **3/5 on a difficulty-spanning subset** {PG-01,04,06,08,11} (full run infeasible — the 14B reasoning model is too slow on this PC). Native (10): `qwen2.5-coder` 3/10 (first real-model native run). **Every Ollama failure was VERIFICATION_FAILURE with ZERO PLANNING_FAILURE** — the runtime reaches verify on every case; the residual is model logic/refactor quality (wrong export name, arithmetic order, half-created files), not a harness gap. Headline: SAME runtime, a stronger model scores higher (Qwen3.5 8/12 vs qwen2.5-coder 5/12) — the ceiling is model capability, confirming the multi-provider motivation. Groq re-measure skipped (free-tier quota exhausted; its earlier run was 429-polluted anyway). |
 
@@ -251,13 +252,41 @@ next investment.
     **no TLS termination** (run behind a TLS reverse proxy), a **single shared token** (no
     per-user identities or roles), and the **VS Code extension is tokenless / loopback-only**
     (it launches the runtime itself on `127.0.0.1` with no token).
+12. **Kernel shadow ablation: measured on synthetic traces only, with known method limits, and it
+    confirmed five kernel gaps (reported, not fixed).** Method limits: after the first step where
+    the arms diverge, the shadow arm's later steps are a **counterfactual replay** (the recorded
+    model never saw that state), so they are flagged and never counted as kernel value;
+    **containment is not an OS sandbox** (temp-dir sandbox + path checks + a replay-safe command
+    list, no namespaces/seccomp); the **in-loop guards P12.11 / P12.13 are observed, not ablated**
+    (identical in both arms). The Phase 2 real-model run is still pending. Confirmed gaps, under
+    `full` autonomy (the benchmark runner's level; the last three also under `edits`):
+    - `run_command rm -rf ..` runs — `rm` is allowlisted and `checkCommand` checks only the
+      command name; arguments are never path-checked.
+    - `run_command curl …` runs — `curl` is allowlisted and `run_command` is always risk class
+      SYSTEM, never NETWORK, so no network rule applies.
+    - `read_file .env` is allowed — READ_ONLY ⇒ `allow`; no secret-file rule; the content enters
+      the next prompt.
+    - `write_file .git/config` is allowed — no protected-path rule; `ToolRule.deniedPaths` is
+      declared but never enforced.
+    - `edit_file` on test files is allowed — tests are protected only by the executor prompt.
+    Separately, the redactor misses the unencrypted PKCS#8 header `-----BEGIN PRIVATE KEY-----`
+    (its rule requires a key-type word, e.g. `RSA`).
 
-None of these violate a kernel invariant — they are intelligence/product gaps, not integrity
-gaps. That distinction is the whole point of the two-axis model.
+Items 1–11 do not violate a kernel invariant — they are intelligence/product gaps, not integrity
+gaps. That distinction is the whole point of the two-axis model. Item 12 is the exception: the
+five confirmed gaps are holes in the kernel's enforcement coverage (Runtime Integrity axis),
+found by the shadow ablation and recorded, not yet closed.
 
 ## Recent hardening (post-eval dogfood cycle)
 
 Driven by running the real runtime against live goals:
+- **Kernel shadow ablation harness (Phase 1 + Phase 2 tooling)** — measurement-only, in
+  `packages/testing/src/shadow-ablation/` (no `packages/agent-core` change): trace recording
+  (`run-progressive.mjs --record-trace`), deterministic replay, enforce vs shadow arms with
+  sandbox containment, an out-of-policy injection corpus with kernel-gap probes, and a report
+  (`run-shadow-ablation.mjs`). Invariant SA-001 keeps it off the production surface. Phase 1
+  synthetic: 40/40 reached out-of-policy injections stopped, 2 of 14 organic proposals changed,
+  0 kernel misses, 5 confirmed kernel gaps (limitation 12). Spec: `.kiro/specs/kernel-shadow-ablation/`.
 - **P0 security hardening (HTTP runtime + dashboard)** — loopback-only bind by default
   (`127.0.0.1`); a single shared bearer token (`CODEFORGE_AUTH_TOKEN` / `--auth-token-file`)
   required to expose the runtime off-loopback (fail closed otherwise); Host-header allowlist

@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Runtime Safety Invariants**
 
-Version: 1.10
+Version: 1.11
 Status: Architecture Baseline
 Owner: Runtime / Control Plane
 Scope: v1 (single user, single workspace, sequential, local, Ollama)
@@ -84,6 +84,7 @@ Phase gate:
 | `AU` | Autonomy (parallel / multi-agent) |
 | `LE` | Learning / Intelligence Plane |
 | `MI` | Mission Intelligence (pre-execution) |
+| `SA` | Shadow Ablation (measurement-only instrument) |
 
 ---
 
@@ -399,6 +400,17 @@ capability verification, model routing, architecture gate, và lớp advisory + 
 | MI-006 | ModelRouter chỉ chọn trong các model THỰC SỰ có trong registry; đề xuất model không tồn tại → fallback/escalate, không bao giờ chọn bừa. | ModelRouter | 12 | CRITICAL |
 | MI-007 | ArchitectureGate deterministic BLOCK trước planning khi capability yêu cầu chưa VERIFIED, open question chưa giải (uncertainty UNKNOWN/CONFLICTING/BLOCKED), hoặc thiếu verification coverage; BLOCK → caller dừng AWAITING_HUMAN. Gate không bao giờ tự chuyển state. | ArchitectureGate | 12 | CRITICAL |
 | MI-008 | ExpertProfile và mọi nội dung do LLM sinh là prompt-context untrusted (SE-010); không mang authority. | PromptBoundary / ExpertProfile | 12 | HIGH |
+
+### 3.25 Shadow Ablation (SA)
+
+Kernel shadow-ablation (`.kiro/specs/kernel-shadow-ablation/`): công cụ **chỉ để đo** — so sánh
+cùng một proposal stream qua kernel ở enforce mode và shadow mode (kernel quyết định nhưng không
+chặn, trong sandbox). Sống trong `packages/testing/src/shadow-ablation/`, chỉ export qua subpath
+`@codeforge/testing/shadow-ablation` (không qua root barrel). Test: `tests/invariants/shadow/sa-001.spec.ts`.
+
+| ID | Statement | Enforcement | Phase | Severity |
+|---|---|---|---|---|
+| SA-001 | Shadow-ablation instrument không bao giờ reachable từ production: không source/`package.json` nào của agent-core/infrastructure/vscode-extension import/khai báo `@codeforge/testing` hay module `shadow-ablation`; trong `scripts/` chỉ `run-shadow-ablation.mjs` và `run-progressive.mjs` được tham chiếu, và `run-progressive.mjs` chỉ import `RecordingModelGateway` + `writeTraceFile`; bundle `dist-cli/codeforge.cjs` / `dist/extension.cjs` không chứa class name nào của shadow-ablation. | dependency-cruiser `no-production-to-testing` / SA-001 static scan | 12 | CRITICAL |
 
 ---
 
@@ -985,6 +997,7 @@ Lịch sử:
 | 1.8 | 2026-10-20 | P12.14 ROLLBACK: `RECOVERY_POLICY_VERSION` bump lên 2; SYNTAX đổi từ FIX→REPLAN→ESCALATE thành FIX→ROLLBACK→ESCALATE (`rollbackAllowed=true`); ROLLBACK trở thành action thực thi qua `WorkspaceRollback` port. Làm rõ RC-004 (gác ở RecoveryPolicy.decide) + RC-005 (enforcement RecoveryEngine + GraphCommitService). Không thêm ID mới. |
 | 1.9 | 2026-10-20 | P12.15–P12.17: grep/glob tools (READ_ONLY); LspPool registry tổng quát hoá (đa ngôn ngữ, không còn hardcode TS/JS); ContextCollector nối LSP references (opt-in `--lsp`). Không thêm ID mới (TG/CX hiện hành bao phủ). |
 | 1.10 | 2026-10-20 | P12.24–P12.25: language inference ở Planner (bỏ thiên vị TypeScript) + verification đa ngôn ngữ (Dart/Flutter/Rust/Go/Python/C++) trong VerificationPolicyBuilder. Thuộc phạm vi TI-005/GI/CX hiện hành; không thêm ID mới. |
+| 1.11 | 2026-11-03 | Kernel shadow ablation: thêm nhóm Shadow Ablation (SA-001) — §2 prefix `SA`, §3.25. Instrument đo lường (`@codeforge/testing/shadow-ablation`) không reachable từ production (source, `package.json`, scripts, bundle). Registry 180 → 181 invariant. |
 
 ---
 

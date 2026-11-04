@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./shadow-ablation": {
+      "types": "./dist/shadow-ablation/index.d.ts",
+      "import": "./dist/shadow-ablation/index.js"
     }
   },
   "main": "./dist/index.js",

@@ -30,6 +30,7 @@
     "state-machine/**/*.ts",
     "graph/**/*.ts",
     "contracts/**/*.ts",
+    "shadow-ablation/**/*.ts",
     "_harness/**/*.ts"
   ],
   "references": [

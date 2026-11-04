@@ -39,6 +39,14 @@ module.exports = {
       to: { path: '^packages/models' },
     },
     {
+      name: 'no-production-to-testing',
+      comment:
+        'SA-001: production packages must never import @codeforge/testing (incl. shadow-ablation).',
+      severity: 'error',
+      from: { path: '^packages/(agent-core|infrastructure|vscode-extension)' },
+      to: { path: '^packages/testing' },
+    },
+    {
       name: 'no-circular',
       comment: 'No circular dependencies between modules.',
       severity: 'error',

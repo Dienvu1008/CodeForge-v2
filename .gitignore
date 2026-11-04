@@ -7,3 +7,5 @@ coverage/
 _mmout.txt
 # VS Code extension packages are build artifacts
 *.vsix
+# Shadow-ablation recorded model traces (may contain workspace content)
+.agents/traces/
