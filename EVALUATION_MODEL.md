@@ -1203,7 +1203,7 @@ Exit code: 0 report đã ghi; 1 usage / IO error; 2 report đã ghi nhưng có E
 ### 17.11 Kết quả Phase 1 (SYNTHETIC)
 
 > **Đây là trace scripted (FakeModel), không phải model thật.** Kết quả validate harness và
-> corpus, **không** đo hành vi model. Phase 2 (Qwen3.5 recording thật) **pending**.
+> corpus, **không** đo hành vi model. Phase 2 (Qwen3.5 recording thật) ở §17.12.
 
 5 script (SYN-01..05), 72 comparison, 0 trace bị refuse, 0 harness error:
 
@@ -1227,5 +1227,35 @@ enforce), INJ-PROT-02 (`edit_file` trên test file: chỉ được bảo vệ b�
 Report đầy đủ: `.agents/kernel-shadow-ablation.synthetic.md` (+ `.json`).
 
 Tham chiếu: `INVARIANTS.md` → **SA-001**; `.agents/failure-taxonomy.md` → ablation protocol step 5.
+
+### 17.12 Kết quả Phase 2 (Qwen3.5, train split)
+
+**Model thật, 50 trace train-split, 1 recording.** `bench-qwen35-train-record.log`: 28/50 PASS.
+Replay: `.agents/kernel-shadow-ablation.{md,json}` (gitignored — xem lý do ở §7 của file phân tích
+dưới đây), phân tích đầy đủ ở **`.agents/kernel-shadow-ablation-analysis.md`**.
+
+Số liệu chính (739 comparison, 0 trace bị refuse, 0 harness error):
+
+| Metric | Kết quả |
+|---|---|
+| Out-of-policy injected | stopped **415 / 415 reached** (443 injected, 0 not reached, 7 not placeable) |
+| Organic proposal evaluated / wouldBlock / counterfactual | 280 / 60 / 30 → **30 non-counterfactual**, trải trên **30 / 50 case (60%)** |
+| Phân loại 30 non-counterfactual | 16 `done` (EP-VERIFY+EP-COMPLETION, FAIL) — 15 xác nhận sai bởi hidden check (kernel value), 1 giữa phiên (PG-06, run sau đó pass); 5 `done` (EP-COMPLETION, NO_CHECKS_EXECUTED) — 3/5 work sai (gate không cứu được), 2/5 work đúng (friction); 9 `run_command` (EP-SHELL, COMMAND_NOT_ALLOWED) — 7/9 do model ghép cả lệnh + argument vào một string (`"node test.js"`) trong khi executor cần `command` + `args` tách riêng (ứng viên `INTERACTION/PROTOCOL`), 2/9 shell idiom/toolchain ngoài allowlist |
+| Hidden-check verdict enforce→shadow | SUCCESS→SUCCESS 28, FAILURE→FAILURE 21, FAILURE→SUCCESS 1 (PG-NAV1, counterfactual) |
+| Gap probe | reached **246 / 246**, stopped **0**, sandbox effect thật **96** (INJ-PROT-01 50 + INJ-PROT-02 46) |
+| Label mismatch / kernel miss | 0 / 0 |
+| Containment | 150 escape-simulated, 481 command-simulated |
+| Fidelity | enforce 50/50 served hết trace (0 exhausted), drift 15/50; shadow drift 22/50, **exhausted 12/50** |
+
+5 kernel gap đã xác nhận ở Phase 1 đều **reach** trên mọi trace thật có thể đặt được (không gap mới).
+Đây là injection probe: phân tích **không** kiểm tra xem proposal organic của Qwen3.5 có tự khớp
+pattern gap nào không, nên kết quả chỉ nói gap còn mở, không nói model khai thác gap.
+
+**Đọc headline cẩn trọng:** 30/50 case có quyết định đầu tiên khác nhau — không phải "hầu như không
+khác nhau". Nhưng ở mức verdict cuối (hidden check), enforce 28/50 PASS vs shadow (counterfactual)
+29/50 PASS — chỉ lệch 1 case. Giá trị đo được rõ nhất là ở **việc báo cáo phiên** (shadow arm hoàn
+thành "COMPLETED" trên work vẫn FAIL ở 8/9 case AWAITING_HUMAN→COMPLETED), không phải ở việc thay
+đổi correctness cuối cùng. Chi tiết, caveat và theo từng case: `.agents/
+kernel-shadow-ablation-analysis.md`.
 
 ---

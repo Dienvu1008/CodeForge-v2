@@ -9,3 +9,8 @@ _mmout.txt
 *.vsix
 # Shadow-ablation recorded model traces (may contain workspace content)
 .agents/traces/
+# Shadow-ablation full reports (real-model run): large (~2.6 MB), regenerable from a fresh
+# recording via scripts/run-shadow-ablation.mjs. See .agents/kernel-shadow-ablation-analysis.md
+# for the committed, human-readable analysis of this report's numbers.
+.agents/kernel-shadow-ablation.md
+.agents/kernel-shadow-ablation.json

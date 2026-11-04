@@ -1,0 +1,68 @@
+
+Capability curve: ollama 'Qwen3.5:latest' @ http://localhost:11434  (50 tasks, split=train, ablation=full, interaction=off)
+
+  id      difficulty  verdict   detail
+  ------------------------------------------------------------------
+  PG-01   TRIVIAL     PASS      
+  PG-02   EASY        PASS      
+  PG-03   EASY        FAIL      renamed function + caller both work
+  PG-04   MEDIUM      PASS      
+  PG-05   MEDIUM      FAIL      discount + checkout integration pass
+  PG-06   HARD        PASS      
+  PG-07   HARD        PASS      
+  PG-08   HARD        FAIL      renamed export + all call sites updated
+  PG-09   HARD        PASS      
+  PG-10   HARD        FAIL      each adder captures its own index
+  PG-11   EXPERT      PASS      
+  PG-12   HARD        FAIL      validator wired through signup; createUser preserved
+  PG-D1   TRIVIAL     FAIL      sumToN sums 1..n inclusive
+  PG-D2   EASY        FAIL      clamp works and isPositive still exported
+  PG-R1   TRIVIAL     PASS      
+  PG-R2   MEDIUM      FAIL      discount added and re-exported; tax preserved
+  PG-G1   TRIVIAL     PASS      
+  PG-G2   MEDIUM      PASS      
+  PG-P1   TRIVIAL     PASS      
+  PG-P2   MEDIUM      FAIL      discount + checkout integration pass
+  PG-C1   EASY        FAIL      compiles with clang++
+  PG-C2   MEDIUM      FAIL      util.cpp created
+  PG-M1   EASY        PASS      
+  PG-Y01  MEDIUM      PASS      
+  PG-Y02  MEDIUM      PASS      
+  PG-Y03  EASY        PASS      
+  PG-Y04  MEDIUM      PASS      
+  PG-Y05  EASY        PASS      
+  PG-Y06  EASY        PASS      
+  PG-Y07  MEDIUM      FAIL      LRU evicts correctly with get-refresh
+  PG-Y08  EASY        PASS      
+  PG-Y09  MEDIUM      PASS      
+  PG-Y10  MEDIUM      FAIL      no exponential backtracking; semantics preserved
+  PG-Y11  EASY        PASS      
+  PG-Y12  MEDIUM      PASS      
+  PG-Y13  EASY        FAIL      200/201/404/405 all correct
+  PG-Y14  EASY        PASS      
+  PG-Y15  EASY        PASS      
+  PG-TS1  MEDIUM      FAIL      type-checks under strict mode
+  PG-TS2  MEDIUM      FAIL      strict type-check + @ts-expect-error honored
+  PG-T1   HARD        PASS      
+  PG-PERF1 MEDIUM      PASS      
+  PG-SEC1 MEDIUM      FAIL      no shell injection; argument passed literally
+  PG-SEC2 MEDIUM      PASS      
+  PG-EH1  HARD        PASS      
+  PG-CONC1 EXPERT      FAIL      no lost updates under concurrency
+  PG-NAV1 HARD        FAIL      existing user found; missing user still 404s
+  PG-DEP1 HARD        FAIL      both modules still work
+  PG-MS1  MEDIUM      FAIL      all three steps wired
+  PG-DOC1 EASY        FAIL      at least 2 exports fully documented
+
+  by difficulty:
+    TRIVIAL  4/5
+    EASY     9/14
+    MEDIUM   9/19
+    HARD     5/10
+    EXPERT   1/2
+
+  TOTAL: 28/50 success  (failure=22, invalid=0)
+  failure classes: {"VERIFICATION_FAILURE":21,"IMPLEMENTATION_FAILURE":1}
+  traces written: 50 → .agents/traces/qwen35-20261104
+
+PROGRESSIVE DONE

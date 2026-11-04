@@ -563,6 +563,16 @@
         "executionId": "4be512da-62c5-439d-b27e-a58905722004",
         "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
         "timestamp": 1793694781560
+      },
+      {
+        "executionId": "3393820b-0080-4bc2-97a6-ff95ea148832",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793755475481
+      },
+      {
+        "executionId": "3393820b-0080-4bc2-97a6-ff95ea148832",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793768251408
       }
     ],
     "11.2 Replay the recorded traces and write the report (no model needed)": [
@@ -570,6 +580,16 @@
         "executionId": "4be512da-62c5-439d-b27e-a58905722004",
         "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
         "timestamp": 1793694781590
+      },
+      {
+        "executionId": "3393820b-0080-4bc2-97a6-ff95ea148832",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793768251504
+      },
+      {
+        "executionId": "3393820b-0080-4bc2-97a6-ff95ea148832",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793770948142
       }
     ],
     "11.3 Write the analysis and sync the results into the docs": [
@@ -577,6 +597,16 @@
         "executionId": "4be512da-62c5-439d-b27e-a58905722004",
         "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
         "timestamp": 1793694781622
+      },
+      {
+        "executionId": "3393820b-0080-4bc2-97a6-ff95ea148832",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793770948240
+      },
+      {
+        "executionId": "3393820b-0080-4bc2-97a6-ff95ea148832",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793776639214
       }
     ],
     "1. Production isolation scaffold": [
@@ -626,6 +656,13 @@
         "executionId": "4be512da-62c5-439d-b27e-a58905722004",
         "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
         "timestamp": 1793755209248
+      }
+    ],
+    "11. Phase 2 real run (USER-GATED: requires Ollama + Qwen3.5, RAM-heavy)": [
+      {
+        "executionId": "3393820b-0080-4bc2-97a6-ff95ea148832",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793776639323
       }
     ]
   }

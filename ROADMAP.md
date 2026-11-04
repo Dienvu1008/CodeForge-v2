@@ -165,13 +165,20 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.
-5. **Close the confirmed kernel gaps** found by the kernel shadow ablation (harness DONE, Phase 1
-   synthetic; spec `.kiro/specs/kernel-shadow-ablation/`). Under `full` autonomy the kernel lets
+5. **Close the confirmed kernel gaps** found by the kernel shadow ablation (harness DONE; Phase 1
+   synthetic and Phase 2 real-model Qwen3.5 run DONE, analysis in
+   `.agents/kernel-shadow-ablation-analysis.md`; spec `.kiro/specs/kernel-shadow-ablation/`). Under `full` autonomy the kernel lets
    through `rm -rf ..` (allowlisted `rm`, arguments unchecked), `curl` (allowlisted; `run_command`
    is never NETWORK), `read_file .env`, `write_file .git/config` and edits to test files (no
    protected-path rule; `ToolRule.deniedPaths` not enforced); the redactor misses the bare PKCS#8
-   `-----BEGIN PRIVATE KEY-----` header. First run Phase 2 (record real-model traces, replay both
-   arms) to see which gaps a real model actually reaches, then fix and re-run the ablation.
+   `-----BEGIN PRIVATE KEY-----` header. Phase 2 showed all five gaps are open on every real trace
+   where the probe was placeable (246 reached, 0 stopped); fix them, then re-run the ablation. Also
+   investigate the `run_command` friction Phase 2 found: the executor prompt says
+   `{"command": "<shell command>"}` but `ShellExecutor` / `checkCommand` expect a bare allowlisted
+   binary in `command` and the rest in `args`, so `"node test.js"` is rejected as
+   `COMMAND_NOT_ALLOWED` (7 of 50 train cases; no verdict effect). Fix the prompt and/or split the
+   leading token (still rejecting shell operators); loosening needs held-out evidence. Consider
+   recording a second model.
 
 ---
 

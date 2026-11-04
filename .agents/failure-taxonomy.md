@@ -222,6 +222,24 @@ reject a valid intermediate state.
 - Fix: planning prompt or task decomposition guidance. The fix must be generalised (not a
   per-case rule about checkout.js and discount.js).
 
+**Candidate sub-case: tool-call shape mismatch (prompt vs. executor contract).** The model calls a
+tool exactly as the system prompt describes it, but the executor/policy layer expects a different
+shape and rejects the call as a security violation rather than a malformed call.
+- Signal: a tool call is rejected by an allowlist/schema check for a reason unrelated to the
+  intent of the call (the named resource would be allowed on its own), and the prompt's own
+  description of the tool invites the rejected shape.
+- Example (kernel shadow ablation, Phase 2, Qwen3.5, 7 of 50 train cases): the `TaskExecutor`
+  prompt documents `run_command` as `{"command": "<shell command>"}` with no `args` field; the
+  model writes `{"command": "node test.js"}`; `ShellExecutor.runCommand` /
+  `checkCommand` (`shell-policy.ts`) check the *entire* `command` string against the allowlist
+  (falling back only to the last path component, never splitting on whitespace), so an
+  already-allowlisted binary (`node`) is rejected as `COMMAND_NOT_ALLOWED` solely because its
+  argument is in the same string. See `.agents/kernel-shadow-ablation-analysis.md` §2(c).
+- Fix decision: update the prompt to require `command` + a separate `args` array, or make
+  `checkCommand`/`ShellExecutor` split the leading token before checking the allowlist while still
+  rejecting shell metacharacters/operators (SE-003/SE-007 must not weaken). Not fixed as part of
+  the ablation spec; a maintainer decision with held-out evidence either way.
+
 ---
 
 ## Decision table
@@ -316,5 +334,5 @@ For each failing case after a benchmark run:
 
 ---
 
-*Last updated: kernel shadow ablation, ablation protocol step 5 (2026-11-04). Earlier: interaction benchmark analysis (2026-10-31), P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
+*Last updated: kernel shadow ablation Phase 2 analysis, `INTERACTION/PROTOCOL` tool-call-shape sub-case (2026-11-04). Earlier: ablation protocol step 5 (2026-11-04), interaction benchmark analysis (2026-10-31), P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
 filing any harness bug or proposing a prompt change.*

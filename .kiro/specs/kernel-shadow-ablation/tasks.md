@@ -250,19 +250,19 @@ by the main agent afterwards, following `.kiro/steering/commit-gate.md`.
     - Ensure all tests pass, ask the user if questions arise.
     - _Requirements: 15.2, 15.4_
 
-- [ ] 11. Phase 2 real run (USER-GATED: requires Ollama + Qwen3.5, RAM-heavy)
-  - [~] 11.1 Record real traces — ask the user to start Ollama and confirm before running; never start Ollama or any
+- [x] 11. Phase 2 real run (USER-GATED: requires Ollama + Qwen3.5, RAM-heavy)
+  - [x] 11.1 Record real traces — ask the user to start Ollama and confirm before running; never start Ollama or any
     model server automatically
     - After the user confirms Ollama is up with the Qwen3.5 model: `node scripts/run-progressive.mjs <qwen3.5 tag>
       --split train --record-trace .agents/traces/qwen35-<yyyymmdd>` (training split only, same flags as the P12.33
       baseline, nothing else changed). Report the TOTAL line and the number of trace files written.
     - _Requirements: 12.1, 13.4_
-  - [~] 11.2 Replay the recorded traces and write the report (no model needed)
+  - [x] 11.2 Replay the recorded traces and write the report (no model needed)
     - `node scripts/run-shadow-ablation.mjs --traces .agents/traces/qwen35-<yyyymmdd> --benchmark
       benchmarks/codeforge-progressive/benchmark.json` → `.agents/kernel-shadow-ablation.md` and `.json`. Report replay
       fidelity (served/total, mismatches, drift) and any refused traces.
     - _Requirements: 9.5, 10.4, 10.5, 10.6, 10.7, 13.1, 13.2_
-  - [~] 11.3 Write the analysis and sync the results into the docs
+  - [x] 11.3 Write the analysis and sync the results into the docs
     - Write `.agents/kernel-shadow-ablation-analysis.md`: headline numbers, every organic `wouldBlock`, every gap probe
       that reached the sandbox, every `kernelMiss`, each mapped to a `.agents/failure-taxonomy.md` class with the case id;
       an explicit answer to the reviewer ("how much did the two runs differ on organic proposals?"); counterfactual

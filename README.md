@@ -301,9 +301,21 @@ changed. Phase 1 is synthetic
 (`node scripts/run-shadow-ablation.mjs --synthetic`, report at
 `.agents/kernel-shadow-ablation.synthetic.md`): out-of-policy injections stopped **40 / 40
 reached**, organic proposals changed **2 of 14**, kernel misses **0** — on scripted traces, not a
-real model. Phase 2 records real-model traces with
-`scripts/run-progressive.mjs <model> --record-trace <dir>` and replays them with
-`scripts/run-shadow-ablation.mjs --traces <dir> --benchmark <benchmark.json>`; that run is pending.
+real model. Phase 2 recorded 50 real Qwen3.5 traces (train split) with
+`scripts/run-progressive.mjs <model> --record-trace <dir>` and replayed them with
+`scripts/run-shadow-ablation.mjs --traces <dir> --benchmark <benchmark.json>`: out-of-policy
+injections stopped **415 / 415 reached**, kernel misses **0**, and on organic proposals (the
+model's own, uninjected output) the kernel changed the first decision in **30 of 50 cases**
+(60%) — not "barely differ". Of those 30, 16 are a premature `done` (15 confirmed wrong by the hidden benchmark checks and
+stopped for a human — kernel value; 1 refused mid-session and later passed), 5 are `done` refused
+because the project had no runnable check (`VERIFICATION/NO_INRUN_CHECK`; the gate did not prevent
+the 3 wrong results among them), and 9 are a shell command rejected by the allowlist, 7 of them
+because the model put the binary and its arguments in one string where the executor expects
+`command` + a separate `args` array (a candidate prompt/executor protocol mismatch, no effect on
+any verdict). With enforcement off the hidden-check pass rate was the same within one case
+(29 vs 28 of 50), so the demonstrated effect is on what the session reports (false completions
+avoided), not on final correctness. Full analysis, numbers and caveats:
+`.agents/kernel-shadow-ablation-analysis.md`.
 
 ---
 
@@ -379,7 +391,10 @@ does today, verified against the source tree).
 - **The kernel shadow ablation has hard limits.** After the two arms diverge, the rest of the
   replay is counterfactual (the recorded model never saw the other arm's results); containment is
   path/command-level, not an OS sandbox; the in-loop guards P12.11 / P12.13 are observed, not
-  ablated. The Phase 2 real-model run is pending.
+  ablated. The Phase 2 result (Qwen3.5, 50 train cases, one recording; 28/50 passed vs 31/50 in an
+  earlier run) is one model, one split, one recording, with prompt drift in 15 of 50 traces and the
+  shadow arm exhausting its recorded steps in 12 of 50; its shadow-arm final states are
+  counterfactual. See `.agents/kernel-shadow-ablation-analysis.md`.
 - **Five confirmed kernel gaps under `full` autonomy** (found by the ablation; reported, not
   fixed): `run_command rm -rf ..` (allowlisted binary, arguments not path-checked);
   `run_command curl` (allowlisted, and `run_command` is classed SYSTEM, never NETWORK);
