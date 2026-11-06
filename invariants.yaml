@@ -7,7 +7,7 @@
 # Nếu file này lệch INVARIANTS.md, INVARIANTS.md là chuẩn.
 # Quy ước test path: tests/invariants/<domain>/<id-lowercased>.spec.ts
 
-version: 1.11
+version: 1.12
 invariants:
 
   # ── Session (SS) ────────────────────────────────────────────────
@@ -473,6 +473,30 @@ invariants:
     phase: 1.5
     severity: CRITICAL
     status: ACTIVE
+  - id: TG-011
+    statement: "Lệnh shell phá huỷ (rm, rmdir, del, ...) được phân loại DESTRUCTIVE và luôn cần human approval ở mọi autonomy level; lệnh verification như `node test.js` vẫn là SYSTEM."
+    enforcement: ["resolveToolRiskClass", "ToolPolicy"]
+    violation_class: DESTRUCTIVE_SHELL_AUTO_APPROVED
+    test: "tests/invariants/tool-gateway/tg-011.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
+  - id: TG-012
+    statement: "Lệnh shell có khả năng truy cập mạng (curl, wget, ssh, ...) được phân loại NETWORK và cần approval ở mọi autonomy level, kể cả `full`; `npm test` vẫn là SYSTEM."
+    enforcement: ["resolveToolRiskClass", "ToolPolicy"]
+    violation_class: NETWORK_SHELL_AUTO_APPROVED
+    test: "tests/invariants/tool-gateway/tg-012.spec.ts"
+    phase: 12
+    severity: HIGH
+    status: ACTIVE
+  - id: TG-013
+    statement: "Sửa/ghi đè/xoá/di chuyển test file đã tồn tại khi goal bắt đầu được phân loại DESTRUCTIVE và cần approval; tạo test file mới vẫn là MODIFY_WORKSPACE."
+    enforcement: ["resolveToolRiskClass", "WorkspaceTestBaseline"]
+    violation_class: EXISTING_TEST_MUTATED_UNAPPROVED
+    test: "tests/invariants/tool-gateway/tg-013.spec.ts"
+    phase: 12
+    severity: HIGH
+    status: ACTIVE
 
   # ── Verification (VR) ───────────────────────────────────────────
   - id: VR-001
@@ -645,6 +669,14 @@ invariants:
     phase: 1
     severity: CRITICAL
     status: ACTIVE
+  - id: WS-011
+    statement: "Metadata version-control (.git, .hg, .svn) bị write-protected, read-open: ghi/xoá/di chuyển trả tool result FAILED (PROTECTED_PATH); .gitignore và .github không bị bảo vệ."
+    enforcement: ["NodeWorkspaceManager", "PathAccessPolicy"]
+    violation_class: PROTECTED_PATH_WRITE
+    test: "tests/invariants/workspace/ws-011.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
 
   # ── Budget (BU) ─────────────────────────────────────────────────
   - id: BU-001
@@ -775,6 +807,22 @@ invariants:
     violation_class: TRUSTED_MODEL_OUTPUT
     test: "tests/invariants/security/se-010.spec.ts"
     phase: 1.5
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-011
+    statement: "Mọi path-like argument của lệnh shell được allowlist phải nằm trong workspace root; nếu thoát ra ngoài thì ShellExecutor trả exit 1 (PATH_ESCAPE) và không spawn process."
+    enforcement: ["ShellExecutor", "WorkspaceManager"]
+    violation_class: SHELL_ARGUMENT_ESCAPE
+    test: "tests/invariants/security/se-011.spec.ts"
+    phase: 12
+    severity: CRITICAL
+    status: ACTIVE
+  - id: SE-012
+    statement: "Agent không được đọc hoặc ghi file nhạy cảm (.env, *.pem, id_rsa, .ssh/*, ...); vi phạm trả tool result FAILED (SENSITIVE_PATH), file mẫu như .env.example vẫn đọc được."
+    enforcement: ["NodeWorkspaceManager", "PathAccessPolicy"]
+    violation_class: SENSITIVE_PATH_ACCESS
+    test: "tests/invariants/security/se-012.spec.ts"
+    phase: 12
     severity: CRITICAL
     status: ACTIVE
 

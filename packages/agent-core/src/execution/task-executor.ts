@@ -67,6 +67,7 @@ import {
 import type { ArtifactCapturePort } from './artifact-capture-port.js';
 import type { IdempotencyEngine }   from './idempotency-engine.js';
 import type { ToolRegistry }        from '../tool/tool-registry.js';
+import { resolveToolRiskClass, type TestBaseline } from '../tool/risk-classification.js';
 import type { VerificationEngine }  from '../verification/verification-engine.js';
 import type { CompletionGate }      from '../verification/completion-gate.js';
 import type { VerificationPolicy }  from '../verification/verification-policy.js';
@@ -262,6 +263,12 @@ export interface TaskExecutorDeps {
   readonly toolGateway:          ToolGateway;
   /** Physical executor routed per toolName (produced by NodeToolExecutor in infra). */
   readonly executor:             ToolExecutor;
+  /**
+   * Optional Test_Baseline (kernel-gap-closure, TG-013): test files that existed when the goal
+   * started. Edits, deletes and moves of a member are classified DESTRUCTIVE (human approval).
+   * When omitted, behaves like an empty baseline.
+   */
+  readonly testBaseline?:        TestBaseline;
   /**
    * Optional artifact capture port (P4-AP1).
    * When provided, stdout/stderr of every tool call is persisted as artifacts (PR-001).
@@ -821,7 +828,7 @@ export class TaskExecutor {
         taskRunId:     runId,
         toolName:      proposal.toolName,
         toolVersion:   '1.0',
-        riskClass:     this.resolveRiskClass(proposal.toolName),
+        riskClass:     this.resolveRiskClass(proposal.toolName, proposal.arguments),
         arguments:     proposal.arguments,
         argumentsHash,
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
@@ -1305,28 +1312,9 @@ export class TaskExecutor {
    * Resolve the RiskClass for a tool name.
    * Mirrors the definitions in FILESYSTEM_TOOL_DEFINITIONS (ToolRegistry).
    */
-  private resolveRiskClass(toolName: string): RiskClass {
-    switch (toolName) {
-      case 'read_file':
-      case 'list_dir':
-      case 'grep':
-      case 'glob':
-      case 'git_status':
-      case 'git_diff':
-      case 'git_log':
-        return 'READ_ONLY';
-      case 'write_file':
-      case 'edit_file':
-      case 'git_add':
-      case 'git_commit':
-        return 'MODIFY_WORKSPACE';
-      case 'delete_file':
-        return 'DESTRUCTIVE';
-      case 'run_command':
-        return 'SYSTEM';
-      default:
-        return 'SYSTEM';
-    }
+  private resolveRiskClass(toolName: string, args: Record<string, unknown>): RiskClass {
+    const baseline = this.deps.testBaseline;
+    return resolveToolRiskClass(toolName, args, baseline === undefined ? {} : { testBaseline: baseline });
   }
 
   /**

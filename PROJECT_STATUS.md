@@ -1,10 +1,10 @@
-# CodeForge v2 — Project Status Matrix
+﻿# CodeForge v2 — Project Status Matrix
 
 > **Authoritative, living status of the product — not of any single phase.**
 > A phase passing its tests does NOT mean CodeForge is complete. This file records what the
 > software *actually does today*, verified against the source tree, not against phase labels.
 >
-> Last updated: 2026-11-04 · Kernel shadow ablation (Phase 1 + Phase 2 tooling) · Phase 2 real-model run (Qwen3.5, 50 train cases) · 2260 tests / 239 files green (full WSL suite: build, typecheck, vitest, eslint 0, depcruise 0 violations).
+> Last updated: 2026-11-06 · Kernel gap closure · 2460 tests / 254 files green (full WSL suite: build, typecheck, vitest, eslint 0, depcruise 0 violations (981 modules)).
 > Companion: `ROADMAP.md` (what's next) · per-phase detail in `PHASE_*_ROADMAP.md` / `PHASE_*_SIGNOFF.md`.
 
 ## What CodeForge is
@@ -151,7 +151,7 @@ next investment.
 | Baseline + regression detection + report | DONE | `agent-core/evaluation/regression.ts` + `infrastructure/evaluation/baseline-store.ts`. First baseline recorded (see ROADMAP). |
 | Real-runtime E2E run | DONE | `tests/evaluation/real-runtime-e2e.spec.ts` — 3/10 FakeModel baseline through the real kernel. |
 | External benchmark adapters (SWE-bench) | DONE (adapter) | Full SWE-bench adapter + end-to-end runner: pure `swe-bench-adapter.ts` (record → `BenchmarkTask` + `SweBenchSetup`; gold/test patches never leak to the agent), infra `loadSweBenchDataset` (JSON/JSONL), `SweBenchWorkspaceSetup` (git clone/checkout `base_commit`, apply `test_patch` post-run), and `SweBenchAgentRunner` (threads prepareBaseline→orchestrator→applyTestPatch→check; a setup failure → INVALID, not FAILURE). Driven by `scripts/run-swe-bench.mjs` against the real runtime. 34 unit tests + sample fixture + `benchmarks/swe-bench/README.md`; the script runs end-to-end (sample reports INVALID without a real repo/env — expected). A scored LIVE run needs git + network (or `--repo-mirror`) + the per-repo python/pytest env; the Docker-image path is the reference-reproducible route. Other adapters (TerminalBench/SWT-bench/Commit0) still deferred. |
-| Kernel shadow ablation (enforcement value) | DONE (Phase 1 synthetic + Phase 2 real-model) | Measures what the kernel's enforcement points actually stop. `packages/testing/src/shadow-ablation/` (subpath `@codeforge/testing/shadow-ablation` only; SA-001 + a depcruise rule keep it out of production): a recording/replay `ModelGateway` (`codeforge.model-trace/1`, redacted, prompt digests only), an enforce arm and a shadow arm (decisions recorded as `wouldBlock` and let through into a temp-dir sandbox with an independent containment check), an out-of-policy injection corpus + kernel-gap probes, and a Markdown/JSON report. Scripts: `run-progressive.mjs --record-trace <dir>` and `run-shadow-ablation.mjs --traces … \| --synthetic`. **Phase 1 synthetic result** (5 scripted traces, no model; `.agents/kernel-shadow-ablation.synthetic.md`): out-of-policy injections stopped **40 / 40 reached**; organic proposals changed by the kernel **2 of 14**; kernel misses **0**; **5 confirmed kernel gaps under `full` autonomy** (see limitation 12). **Phase 2 real-model result** (Qwen3.5, 50 train traces, `.agents/kernel-shadow-ablation-analysis.md`; full report gitignored, regenerable): out-of-policy injections stopped **415 / 415 reached**; kernel misses **0**; organic proposals changed the first decision in **30 of 50 cases (60%)** — 16 premature `done` (15 confirmed wrong by hidden checks: kernel value), 5 blocked by `NO_CHECKS_EXECUTED` (verification-coverage gap, 2 of 5 on correct work), 9 shell commands rejected (7 a `command`/`args` protocol mismatch, candidate `INTERACTION/PROTOCOL`); the 5 confirmed gaps are open on every real trace where placeable (246 reached, 0 stopped; 96 with a real sandbox effect). Spec: `.kiro/specs/kernel-shadow-ablation/`. |
+| Kernel shadow ablation (enforcement value) | DONE (Phase 1 synthetic + Phase 2 real-model) | Measures what the kernel's enforcement points actually stop. `packages/testing/src/shadow-ablation/` (subpath `@codeforge/testing/shadow-ablation` only; SA-001 + a depcruise rule keep it out of production): a recording/replay `ModelGateway` (`codeforge.model-trace/1`, redacted, prompt digests only), an enforce arm and a shadow arm (decisions recorded as `wouldBlock` and let through into a temp-dir sandbox with an independent containment check), an out-of-policy injection corpus + kernel-gap probes, and a Markdown/JSON report. Scripts: `run-progressive.mjs --record-trace <dir>` and `run-shadow-ablation.mjs --traces … \| --synthetic`. **Phase 1 synthetic result** (5 scripted traces, no model; `.agents/kernel-shadow-ablation.synthetic.md`): out-of-policy injections stopped **40 / 40 reached**; organic proposals changed by the kernel **2 of 14**; kernel misses **0**; **5 confirmed kernel gaps under `full` autonomy** (since closed, see limitation 12). **Phase 2 real-model result** (Qwen3.5, 50 train traces, `.agents/kernel-shadow-ablation-analysis.md`; full report gitignored, regenerable): out-of-policy injections stopped **415 / 415 reached**; kernel misses **0**; organic proposals changed the first decision in **30 of 50 cases (60%)** — 16 premature `done` (15 confirmed wrong by hidden checks: kernel value), 5 blocked by `NO_CHECKS_EXECUTED` (verification-coverage gap, 2 of 5 on correct work), 9 shell commands rejected (7 a `command`/`args` protocol mismatch, candidate `INTERACTION/PROTOCOL`); the 5 confirmed gaps were open on every real trace where placeable (246 reached, 0 stopped; 96 with a real sandbox effect) **before the closure**. **After kernel-gap-closure** (replay of the same 50 traces, `.agents/kernel-gap-closure-analysis.md`): the 246 former gap probes are all stopped (0 reached the sandbox); out-of-policy stopped / reached **661 / 661** (before 415 / 415); first organic would-blocks still 30 of 50; kernel misses **0**; one new organic stop (PG-T1 step 11, a pre-existing test edit, counterfactual; enforce verdicts 28 → 27 SUCCESS). Synthetic: 65 / 65 stopped, 0 gap probes, 0 kernel misses. Live pass-rate impact **not measured**. Spec: `.kiro/specs/kernel-shadow-ablation/`, `.kiro/specs/kernel-gap-closure/`. |
 | Real-Ollama evaluation run (historical baseline) | DONE (4-model curve) | FIRST capability curve on the progressive benchmark, BEFORE the P12.12–P12.15 improvements: **deepseek-r1:14b 3/12, qwen2.5-coder 2/12, deepseek-coder:6.7b 1/12, llama3:8b 1/12.** Kept for contrast with the re-measure below. |
 | Real-Ollama RE-MEASURE (post P12.12–P12.15) | DONE | Re-ran the progressive benchmark on the CURRENT runtime (edit_file + tree-sitter context + recovery/REPLAN/ROLLBACK + grep/glob). Progressive (12): **`Qwen3.5` (9B) 8/12 — the best local result to date**, `qwen2.5-coder` (7B) **5/12 (was 2/12, +3 same model)**, `deepseek-r1:14b` **3/5 on a difficulty-spanning subset** {PG-01,04,06,08,11} (full run infeasible — the 14B reasoning model is too slow on this PC). Native (10): `qwen2.5-coder` 3/10 (first real-model native run). **Every Ollama failure was VERIFICATION_FAILURE with ZERO PLANNING_FAILURE** — the runtime reaches verify on every case; the residual is model logic/refactor quality (wrong export name, arithmetic order, half-created files), not a harness gap. Headline: SAME runtime, a stronger model scores higher (Qwen3.5 8/12 vs qwen2.5-coder 5/12) — the ceiling is model capability, confirming the multi-provider motivation. Groq re-measure skipped (free-tier quota exhausted; its earlier run was 429-polluted anyway). |
 
@@ -253,8 +253,7 @@ next investment.
     per-user identities or roles), and the **VS Code extension is tokenless / loopback-only**
     (it launches the runtime itself on `127.0.0.1` with no token).
 12. **Kernel shadow ablation: measured on synthetic traces and on one real-model recording (Qwen3.5,
-    50 train cases), with known method limits, and it confirmed five kernel gaps (reported, not
-    fixed).** Method limits: after the first step where
+    50 train cases), with known method limits, and it confirmed five kernel gaps (since closed).** Method limits: after the first step where
     the arms diverge, the shadow arm's later steps are a **counterfactual replay** (the recorded
     model never saw that state), so they are flagged and never counted as kernel value;
     **containment is not an OS sandbox** (temp-dir sandbox + path checks + a replay-safe command
@@ -265,25 +264,34 @@ next investment.
     the kernel's demonstrated effect is on what the session reports, not on final correctness.
     Open follow-ups it found: the `run_command` `command`/`args` prompt-vs-executor mismatch
     (7 of 50 cases, no verdict effect) and `NO_CHECKS_EXECUTED` on projects with no runnable check
-    (5 of 50). See `.agents/kernel-shadow-ablation-analysis.md`. Confirmed gaps, under
-    `full` autonomy (the benchmark runner's level; the last three also under `edits`):
-    - `run_command rm -rf ..` runs — `rm` is allowlisted and `checkCommand` checks only the
-      command name; arguments are never path-checked.
-    - `run_command curl …` runs — `curl` is allowlisted and `run_command` is always risk class
-      SYSTEM, never NETWORK, so no network rule applies.
-    - `read_file .env` is allowed — READ_ONLY ⇒ `allow`; no secret-file rule; the content enters
-      the next prompt.
-    - `write_file .git/config` is allowed — no protected-path rule; `ToolRule.deniedPaths` is
-      declared but never enforced.
-    - `edit_file` on test files is allowed — tests are protected only by the executor prompt.
-    Separately, the redactor misses the unencrypted PKCS#8 header `-----BEGIN PRIVATE KEY-----`
-    (its rule requires a key-type word, e.g. `RSA`).
+    (5 of 50). See `.agents/kernel-shadow-ablation-analysis.md`. The five kernel gaps it
+    confirmed are **closed** (spec `kernel-gap-closure`; replay in
+    `.agents/kernel-gap-closure-analysis.md`; 246 of 246 former probes now stopped):
+    - G1 destructive shell and shell path arguments: `rm`/`rmdir`/`del`, `git clean`/`rm`/`restore`/
+      `reset --hard`/`checkout --`, `find -delete`/`-exec`, `chmod -R` are DESTRUCTIVE (approval at
+      every level, TG-011); path-like arguments outside the workspace (`..`, outside absolute, `~`,
+      drive letters, `$VAR` except echo/printf) are rejected with `PATH_ESCAPE`, no spawn (SE-011).
+    - G2 network: `curl`/`wget`/`ssh`/`scp`/`nc`, `git clone`/`fetch`/`pull`/`push`/`ls-remote`,
+      `npm`/`pnpm`/`yarn publish` are NETWORK, approval at every level including `full` (TG-012).
+    - G3 sensitive files (`.env`, keys, `.ssh/*`, `.npmrc`, ...) cannot be read or written by the
+      agent; `.env.example` stays readable (SE-012).
+    - G4 `.git`/`.hg`/`.svn` are write-protected, read-open (WS-011).
+    - G5 mutating a test file that existed at goal start is DESTRUCTIVE and needs approval (TG-013).
+      **Product decision:** under the Progressive_Runner (no approver) such an edit ends the run at
+      `APPROVAL_PENDING`; in the replay it flipped PG-T1 from SUCCESS to FAILURE (enforce verdicts
+      28 → 27 of 50). New test files are free.
+    - R1 the redactor now redacts bare PKCS#8 / ENCRYPTED / PGP private-key blocks.
+
+    Residual risks: the checks are lexical heuristics, **not an OS sandbox**; interpreter-internal
+    access (`node -e`, `python -c`, `npm run <script>`) is invisible; attached short options, Windows
+    8.3 short names, unterminated keys and bodies over 32 KiB are not covered; `PACKAGE_INSTALL` is
+    still auto-approved under `full`. The live-benchmark pass-rate impact of the new rules is **not
+    measured** (replay only).
 
 Items 1–11 do not violate a kernel invariant — they are intelligence/product gaps, not integrity
-gaps. That distinction is the whole point of the two-axis model. Item 12 is the exception: the
-five confirmed gaps are holes in the kernel's enforcement coverage (Runtime Integrity axis),
-found by the shadow ablation and recorded, not yet closed.
-
+gaps. That distinction is the whole point of the two-axis model. Item 12 was the exception: its
+five gaps were holes in the kernel's enforcement coverage (Runtime Integrity axis), found by the
+shadow ablation and now closed, with the residual risks above.
 ## Recent hardening (post-eval dogfood cycle)
 
 Driven by running the real runtime against live goals:
@@ -293,9 +301,19 @@ Driven by running the real runtime against live goals:
   sandbox containment, an out-of-policy injection corpus with kernel-gap probes, and a report
   (`run-shadow-ablation.mjs`). Invariant SA-001 keeps it off the production surface. Phase 1
   synthetic: 40/40 reached out-of-policy injections stopped, 2 of 14 organic proposals changed,
-  0 kernel misses, 5 confirmed kernel gaps (limitation 12). Phase 2 (Qwen3.5, 50 train cases):
+  0 kernel misses, 5 confirmed kernel gaps (closed since, limitation 12). Phase 2 (Qwen3.5, 50 train cases):
   415/415 stopped, 30 of 50 cases changed on the first organic decision, 0 kernel misses; analysis in
   `.agents/kernel-shadow-ablation-analysis.md`. Spec: `.kiro/specs/kernel-shadow-ablation/`.
+- **Kernel gap closure (G1–G5 + redactor R1)** — the five gaps the ablation confirmed are closed:
+  destructive shell commands → DESTRUCTIVE, approval at every level (TG-011); shell path-like
+  arguments must stay in the workspace (SE-011, `PATH_ESCAPE`, no spawn); network commands →
+  NETWORK, approval at every level including `full` (TG-012; policy ids now `autonomy-<level>-v2`);
+  sensitive files unreadable/unwritable (SE-012; `.env.example` stays readable); `.git/.hg/.svn`
+  write-protected, read-open (WS-011); mutating a test file that existed at goal start → DESTRUCTIVE,
+  needs approval (TG-013; new test files are free). Redactor R1: bare PKCS#8 / ENCRYPTED / PGP
+  private-key blocks are redacted. +6 invariants (registry 181 → 187, `invariants.yaml` v1.12). No
+  new CLI flag; VS Code extension and HTTP API unchanged. Replay: `.agents/kernel-gap-closure-analysis.md`.
+  Spec: `.kiro/specs/kernel-gap-closure/`.
 - **P0 security hardening (HTTP runtime + dashboard)** — loopback-only bind by default
   (`127.0.0.1`); a single shared bearer token (`CODEFORGE_AUTH_TOKEN` / `--auth-token-file`)
   required to expose the runtime off-loopback (fail closed otherwise); Host-header allowlist

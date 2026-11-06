@@ -124,9 +124,9 @@ Nếu policy phát hiện case collision (hai file chỉ khác case) trên case-
 
 Các path sau **không được** mutate bởi agent ngoài policy tường minh:
 
-- `.git/` (trừ khi tool `git` được approve)
+- `.git/`, `.hg/`, `.svn/` (ghi/xoá/move bị `NodeWorkspaceManager` chặn với `PROTECTED_PATH`, WS-011; đọc vẫn mở; `git_add`/`git_commit` ghi `.git/` như side effect của git)
 - `node_modules/` (trừ khi scratch-zone hoặc package install tool)
-- `.env`, `.env.*` (đọc có thể; ghi cần approval)
+- `.env`, `.env.*` (trừ `.env.example/.sample/.template`), `*.pem`, `*.key`, `id_rsa*`, `.ssh/**`, `credentials`, … (cả đọc lẫn ghi bị chặn với `SENSITIVE_PATH`, SE-012; chi tiết `SECURITY_MODEL.md` §6.6)
 - bất kỳ path trong `excludedScratchPaths`
 
 ---
@@ -773,7 +773,7 @@ Tham chiếu: `INVARIANTS.md` → **CP-004, CP-005, CP-006, EX-006**.
 
 - Environment allowlist: chỉ pass biến môi trường được whitelist cho tool.
 - Redact secret trước khi ghi log/artifact.
-- Không pass `.env` content vào LLM context trừ khi policy cho phép.
+- Không pass `.env` content vào LLM context: agent không đọc được file sensitive qua tool (`SENSITIVE_PATH`, SE-012).
 
 ### 12.4 Secret redaction
 
@@ -876,6 +876,8 @@ interface WorkspaceManager {
 | `WORKSPACE_NOT_FOUND` | Root không tồn tại |
 | `WORKSPACE_LOCKED` | Lock đang giữ |
 | `PATH_ESCAPE` | Path ngoài root |
+| `SENSITIVE_PATH` | File secret (SE-012) |
+| `PROTECTED_PATH` | VCS metadata, chỉ chặn ghi (WS-011) |
 | `SYMLINK_ESCAPE` | Symlink target ngoài root |
 | `SYMLINK_LOOP` | Symlink loop |
 | `SCRATCH_VIOLATION` | Mutation ngoài scratch trong verify |

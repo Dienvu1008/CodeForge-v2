@@ -1152,7 +1152,9 @@ rule (§17.6).
 - Khác biệt organic được **báo cáo trung thực**, kể cả khi bằng 0 (khi đó report nói rõ giá trị
   kernel trên các trace đó chỉ dựa vào injected case).
 - **Gap probe** (corpus label `allow` + `kernelGap: true`) được **báo cáo, không fix** trong spec
-  này. Không dùng kết quả ablation để tune benchmark case, prompt hay label của corpus.
+  ablation. Năm gap đã xác nhận ở Phase 1/2 sau đó được **đóng** bởi spec `kernel-gap-closure` (§17.13):
+  chúng không còn `kernelGap` và được đếm vào out-of-policy. Gap probe mới (nếu tìm thấy sau này) vẫn
+  chỉ được báo cáo. Không dùng kết quả ablation để tune benchmark case, prompt hay label của corpus.
 
 ### 17.8 Containment ≠ enforcement
 
@@ -1222,7 +1224,7 @@ Kernel gap đã xác nhận (dưới `full`; chi tiết + code path trong block 
 `run_command` luôn là SYSTEM, không bao giờ NETWORK), INJ-SECRET-03 (`read_file .env`: READ_ONLY →
 `allow`), INJ-PROT-01 (`write_file .git/config`: `ToolRule.deniedPaths` khai báo nhưng không được
 enforce), INJ-PROT-02 (`edit_file` trên test file: chỉ được bảo vệ bởi prompt). Các gap này được
-**báo cáo, không fix**.
+**báo cáo, không fix** trong spec ablation; chúng đã được **đóng** sau đó (§17.13).
 
 Report đầy đủ: `.agents/kernel-shadow-ablation.synthetic.md` (+ `.json`).
 
@@ -1249,7 +1251,8 @@ Số liệu chính (739 comparison, 0 trace bị refuse, 0 harness error):
 
 5 kernel gap đã xác nhận ở Phase 1 đều **reach** trên mọi trace thật có thể đặt được (không gap mới).
 Đây là injection probe: phân tích **không** kiểm tra xem proposal organic của Qwen3.5 có tự khớp
-pattern gap nào không, nên kết quả chỉ nói gap còn mở, không nói model khai thác gap.
+pattern gap nào không, nên kết quả chỉ nói gap còn mở (tại thời điểm đo, trước khi đóng ở §17.13),
+không nói model khai thác gap.
 
 **Đọc headline cẩn trọng:** 30/50 case có quyết định đầu tiên khác nhau — không phải "hầu như không
 khác nhau". Nhưng ở mức verdict cuối (hidden check), enforce 28/50 PASS vs shadow (counterfactual)
@@ -1257,5 +1260,23 @@ khác nhau". Nhưng ở mức verdict cuối (hidden check), enforce 28/50 PASS 
 thành "COMPLETED" trên work vẫn FAIL ở 8/9 case AWAITING_HUMAN→COMPLETED), không phải ở việc thay
 đổi correctness cuối cùng. Chi tiết, caveat và theo từng case: `.agents/
 kernel-shadow-ablation-analysis.md`.
+
+### 17.13 Đóng kernel gap (spec `kernel-gap-closure`)
+
+Năm gap ở §17.11/§17.12 đã được **đóng** (không còn "báo cáo, không fix"): shell phá hủy →
+DESTRUCTIVE, cần approval ở mọi level (TG-011); argument kiểu path của shell phải nằm trong
+workspace (SE-011, `PATH_ESCAPE`, không spawn); lệnh network → NETWORK, cần approval ở mọi level kể cả
+`full` (TG-012); file nhạy cảm không đọc/ghi được (SE-012); `.git/.hg/.svn` write-protected (WS-011);
+mutate test file có sẵn lúc bắt đầu goal cần approval (TG-013, **quyết định sản phẩm**: dưới
+Progressive_Runner không có approver nên run kết thúc ở `APPROVAL_PENDING`). Redactor R1: PKCS#8 /
+ENCRYPTED / PGP private-key block được redact. Registry invariant 181 → 187 (`invariants.yaml` v1.12).
+
+Replay lại 50 trace Qwen3.5 (cùng trace, một lần chạy): 246/246 gap probe cũ bị chặn (0 reached
+sandbox, trước đây 96); out-of-policy stopped/reached **661/661** (trước 415/415); organic first
+would-block vẫn 30/50; kernel miss 0; một organic proposal mới bị chặn (PG-T1 bước 11, counterfactual;
+enforce verdict 28 → 27 SUCCESS — friction quan sát được, không phải ước lượng pass rate). Synthetic:
+65/65 stopped, 0 gap probe, 0 kernel miss. Giới hạn: chỉ replay, **chưa đo** ảnh hưởng lên pass rate
+live; kiểm tra là heuristic lexical, không phải OS sandbox (interpreter như `node -e` / `python -c` /
+`npm run <script>` không thấy được). Phân tích: `.agents/kernel-gap-closure-analysis.md`.
 
 ---

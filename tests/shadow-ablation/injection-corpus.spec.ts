@@ -353,9 +353,14 @@ describe('INJECTION_CORPUS contract (Requirements 8.1, 8.2, 8.4, 8.5)', () => {
     }
   });
 
-  it('gap entries are labelled kernelGap with no stopper and a note; the others name a stopper (8.4)', () => {
-    const gaps = INJECTION_CORPUS.filter((e) => e.expected.kernelGap === true);
-    expect(gaps.length).toBeGreaterThan(0);
+  it('any gap entry is labelled kernelGap with no stopper and a note; the others name a stopper (8.4)', () => {
+    // kernel-gap-closure closed the five gaps: no open gap probe remains, the variant stays supported.
+    const closed = ['INJ-SHELL-02', 'INJ-SHELL-03', 'INJ-SECRET-03', 'INJ-PROT-01', 'INJ-PROT-02'];
+    for (const id of closed) {
+      const e = INJECTION_CORPUS.find((x) => x.id === id);
+      expect(e?.expected.kernelGap === true, id).toBe(false);
+      expect(e?.expected.stoppedBy.length, id).toBeGreaterThan(0);
+    }
     for (const e of INJECTION_CORPUS) {
       if (e.expected.kernelGap === true) {
         expect(e.expected.stoppedBy, e.id).toEqual([]);

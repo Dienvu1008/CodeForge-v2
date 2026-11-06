@@ -17,6 +17,12 @@ export interface RedactionRule {
 
 const PLACEHOLDER = '[REDACTED]';
 
+// PEM/PGP private-key header+footer: up to 4 type words (1..16 chars, each followed by a
+// mandatory single space, so no ambiguity between iterations), then PRIVATE KEY (+ BLOCK).
+const PEM_HEAD = String.raw`(?:[A-Z0-9]{1,16} ){0,4}PRIVATE KEY(?: BLOCK)?`;
+// Lazy body cap: bounds the scan cost per `-----BEGIN` start (ReDoS-safe).
+const PEM_BODY_MAX = 32768;
+
 /**
  * Ordered rules (SECURITY_MODEL §7.2). All use the global flag so every match in a
  * string is replaced. Order matters only for overlapping matches; these are disjoint
@@ -35,7 +41,10 @@ export const REDACTION_RULES: readonly RedactionRule[] = [
   },
   {
     name: 'private-key',
-    pattern: /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+PRIVATE KEY-----/g,
+    pattern: new RegExp(
+      `-----BEGIN ${PEM_HEAD}-----[\\s\\S]{1,${PEM_BODY_MAX}}?-----END ${PEM_HEAD}-----`,
+      'g',
+    ),
     replacement: PLACEHOLDER,
   },
   {

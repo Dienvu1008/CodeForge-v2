@@ -34,6 +34,7 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  OPEN_PATH_ACCESS_POLICY,
   WorkspaceError,
   type ChangeRecord,
   type DirEntry,
@@ -630,6 +631,51 @@ describe('kernel-shadow-ablation containment (design C5/C6)', () => {
       expect(containment.every((c) => c.kind === 'command-simulated' && c.op === 'spawn' && c.step === 1)).toBe(true);
       expect(containment.map((c) => c.target)).toEqual(simulated.map(([c, a]) => [c, ...a].join(' ')));
       expect(existsSync(sandbox.root)).toBe(true);
+    });
+  });
+
+  describe('kernel-gap-closure: access rejections are not escapes', () => {
+    const SEED = { '.git/config': '[core]\n', '.env': 'SECRET=1\n' } as const;
+
+    function accessWs(mode: AblationMode): { ws: AblationWorkspaceManager; ledger: DecisionLedger; sandbox: Sandbox } {
+      const sandbox = newSandbox(mode, SEED);
+      let n = 0;
+      const inner = new NodeWorkspaceManager({
+        root: sandbox.root,
+        now: () => new Date(0).toISOString(),
+        nextId: () => `kernel-${++n}`,
+        // Same wiring as arm.ts: the shadow arm's inner manager is open.
+        ...(mode === 'shadow' ? { pathAccess: OPEN_PATH_ACCESS_POLICY } : {}),
+      });
+      const ledger = new DecisionLedger();
+      ledger.setStep(0, 'organic');
+      return { ws: new AblationWorkspaceManager(inner, sandbox, mode, ledger), ledger, sandbox };
+    }
+
+    it('shadow: a write to .git/config lands inside the sandbox only, with no escape-simulated event', async () => {
+      const sentinel = createSentinel();
+      const before = hashTree(sentinel);
+      const { ws, ledger, sandbox } = accessWs('shadow');
+
+      const change = await ws.writeFile('.git/config', 'shadow-write\n', 'sess');
+      expect(change.relpath).toBe('.git/config');
+      expect(readFileSync(join(sandbox.root, '.git', 'config'), 'utf8')).toBe('shadow-write\n');
+      expect(strictlyUnder(join(sandbox.root, '.git', 'config'), TMP)).toBe(true);
+
+      const snap = ledger.snapshot();
+      expect(snap.containment.filter((c) => c.kind === 'escape-simulated')).toEqual([]);
+      expect(snap.containment).toEqual([]);
+      expect(snap.entries.filter((e) => e.reason === 'PROTECTED_PATH')).toHaveLength(1);
+      expect(hashTree(sentinel)).toBe(before);
+      expect(strayTmpEntries(basename(sentinel))).toEqual([]);
+    });
+
+    it('enforce: sensitive and protected rejections leave files untouched and record no containment event', async () => {
+      const { ws, ledger, sandbox } = accessWs('enforce');
+      await expect(ws.writeFile('.git/config', 'x', 'sess')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+      await expect(ws.readFile('.env')).rejects.toMatchObject({ code: 'SENSITIVE_PATH' });
+      expect(readFileSync(join(sandbox.root, '.git', 'config'), 'utf8')).toBe('[core]\n');
+      expect(ledger.snapshot().containment).toEqual([]);
     });
   });
 

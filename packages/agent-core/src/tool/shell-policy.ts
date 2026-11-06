@@ -70,19 +70,24 @@ export class ShellPolicyError extends Error {
  *   cat, head, tail, wc, grep, find  — read-only filesystem inspection
  *   ls, dir       — directory listing
  *   pwd, hostname — workspace/identity info (read-only)
- *   mkdir, cp, mv, rm — safe within the workspace boundary (WorkspaceManager
- *                        enforces root; ShellExecutor passes cwd=root)
+ *   mkdir, cp, mv, rm — workspace-bound: ShellExecutor path-checks every
+ *                        path-like argument against the workspace root and
+ *                        applies the sensitive/protected path rules (SE-011,
+ *                        SE-012, WS-011). `rm` and other destructive verbs are
+ *                        classified DESTRUCTIVE by the shell classifier
+ *                        (TG-011) and always need approval.
  *   node, npm, npx, yarn, pnpm  — Node.js toolchain (builds, installs)
  *   tsc, eslint, vitest, jest   — TypeScript/test toolchain
  *   git           — git operations (overlaps with GitExecutor; allowed for
  *                   scripts that call git directly)
  *   python3, pip3 — Python toolchain (common in mixed repos)
- *   curl          — HTTP read (SE-009: network access must be explicit; curl
- *                   is in the allowlist but callers should review policy)
+ *   curl, wget    — HTTP. Allowlisted, but the shell classifier marks them
+ *                   NETWORK (TG-012), so every autonomy level requires approval.
  *
- * This is NOT a security boundary by itself — `WorkspaceManager.checkPath`
- * and `EnvGuard` are the primary controls. The allowlist prevents the model
- * from invoking arbitrary binaries (e.g. `rm -rf /`, `curl | bash`).
+ * This is NOT a security boundary by itself — `WorkspaceManager.checkPath`,
+ * the shell argument checks and `EnvGuard` are the primary controls, and the
+ * argument checks are heuristics, not an OS sandbox. The allowlist prevents the
+ * model from invoking arbitrary binaries (e.g. `curl | bash`).
  */
 export const DEFAULT_SHELL_ALLOWLIST: ReadonlySet<string> = new Set([
   // Output

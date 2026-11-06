@@ -19,6 +19,7 @@
 // string; passed directly to ProcessSupervisor as a string array.
 //
 // NOT called directly — invoked by ToolGateway after approval (TG-001).
+import { isAbsolute } from 'node:path';
 import type {
   WorkspaceManager,
   ToolExecutor,
@@ -36,6 +37,12 @@ import {
   type ShellPolicy,
   DEFAULT_SHELL_POLICY,
   ShellPolicyError,
+  WorkspaceError,
+  normalizeInvocation,
+  extractShellArguments,
+  MUTATING_PATH_COMMANDS,
+  ENV_EXPANSION_EXEMPT_COMMANDS,
+  type PathAccess,
 } from '@codeforge/agent-core';
 
 // ── ShellExecutorDeps ─────────────────────────────────────────────────────────
@@ -124,6 +131,15 @@ export class ShellExecutor implements ToolExecutor {
       throw err;
     }
 
+    // ── 2b. Argument boundary + access checks (SE-011, SE-012, WS-011) ────────
+    // Heuristic layer (not an OS sandbox): path-like arguments must stay inside the
+    // workspace; file-like arguments must not be sensitive (or protected, for mutators).
+
+    const argFailure = await this.checkArguments(command, args);
+    if (argFailure !== null) {
+      return { exitCode: 1, stdout: '', stderr: argFailure, timedOut: false };
+    }
+
     // ── 3. Filter environment (SE-004) ────────────────────────────────────────
 
     const env = safeEnv(
@@ -154,6 +170,50 @@ export class ShellExecutor implements ToolExecutor {
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
+
+  /** Returns a failure message (starting with the error code) or null when all checks pass. */
+  private async checkArguments(command: string, args: readonly string[]): Promise<string | null> {
+    const inv  = normalizeInvocation(command, args);
+    const view = extractShellArguments(inv);
+    const envExempt = ENV_EXPANSION_EXEMPT_COMMANDS.has(inv.name);
+    // extractShellArguments reports the value after `=`; show the original argument.
+    const shown = (v: string): string =>
+      inv.args.find((a) => a === v || a.endsWith(`=${v}`)) ?? v;
+
+    for (const a of view.pathLike) {
+      const label = shown(a);
+      if (view.envExpansions.includes(a)) {
+        if (envExempt) continue;
+        return `PATH_ESCAPE: argument "${label}" contains an environment expansion that cannot be checked; use a literal workspace-relative path`;
+      }
+      // checkPath treats "~" and drive-letter forms as in-root names on some platforms.
+      // A drive-letter path is only a real absolute path on Windows (where checkPath judges it).
+      if (a.startsWith('~') || (/^[A-Za-z]:/.test(a) && !isAbsolute(a))) {
+        return `PATH_ESCAPE: argument "${label}" points outside the workspace; use a workspace-relative path`;
+      }
+      try {
+        await this.deps.workspace.checkPath(a);
+      } catch (err) {
+        if (err instanceof WorkspaceError) {
+          return `PATH_ESCAPE: argument "${label}" is outside the workspace (${err.message}); use a workspace-relative path`;
+        }
+        throw err;
+      }
+    }
+
+    const access: PathAccess = MUTATING_PATH_COMMANDS.has(inv.name) ? 'write' : 'read';
+    for (const a of view.fileCandidates) {
+      try {
+        await this.deps.workspace.checkAccess?.(access, a);
+      } catch (err) {
+        if (err instanceof WorkspaceError) {
+          return `${err.code}: argument "${shown(a)}" is not accessible to the agent (${err.message})`;
+        }
+        throw err;
+      }
+    }
+    return null;
+  }
 
   private toResult(r: SpawnResult): ExecutorResult {
     return {

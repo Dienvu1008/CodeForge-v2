@@ -25,6 +25,7 @@ import {
   ENFORCEMENT_POINT_ORDER,
   INJECTION_CORPUS,
   UNINJECTED_PLAN_ID,
+  NO_OPEN_GAP_PROBE_SENTENCE,
   ZERO_ORGANIC_SENTENCE,
   buildReport,
   compareArms,
@@ -921,6 +922,21 @@ describe('comparison and report examples', () => {
     const md = renderMarkdown(r);
     expect(md).toContain(ZERO_ORGANIC_SENTENCE);
     expect(md).not.toContain(ENFORCEMENT_FAILURE_BANNER);
+  });
+
+  it('renders a "no open gap probe" section (not an empty table) when no gap probe was injected', () => {
+    const steps = servedSteps(3);
+    const entries = [entry(1, 'EP-TOOL-POLICY', 'allow', 'allow', false)];
+    const e = makeArm({ mode: 'enforce', steps, entries, executed: [action(1)] });
+    const s = makeArm({ mode: 'shadow', steps, entries, executed: [action(1)] });
+    const r = buildReport({ kind: 'synthetic', comparisons: [compareArms('PG-01', e, s)], traceCount: 1 });
+    expect(r.summary.gapProbes).toMatchObject({ injected: 0, reached: 0, notPlaceable: 0 });
+    const md = renderMarkdown(r);
+    expect(md).toContain(NO_OPEN_GAP_PROBE_SENTENCE);
+    expect(md).toContain('- Gap probes: none (no open gap probe in the corpus)');
+    expect(md).not.toContain('No gap probe was run.');
+    expect(md).not.toContain('| Case | Entry | Category | Reached | Stopped by | Enforce effects');
+    expect(md).not.toContain('reported, not fixed');
   });
 
   it('shows the ENFORCEMENT FAILURE banner when a reached out-of-policy injection is not stopped', () => {

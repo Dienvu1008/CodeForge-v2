@@ -33,6 +33,12 @@ export interface ToolRule {
   readonly action: PolicyAction;
   /** Optional path constraints (enforcement by caller / WorkspaceManager). */
   readonly allowedPaths?: readonly string[];
+  /**
+   * @deprecated Not enforced by the ToolGateway or `determineAction`. Path protection
+   * (secrets, VCS metadata) is enforced by the Path_Access_Policy
+   * (`evaluatePathAccess`, applied by the WorkspaceManager; SE-012, WS-011).
+   * Kept in the type so external policy authors do not break.
+   */
   readonly deniedPaths?: readonly string[];
 }
 
@@ -103,8 +109,9 @@ export const PERMISSIVE_TEST_POLICY: ToolPolicy = {
 /**
  * Autonomy level for an autonomous session — how much the agent may do without asking.
  * Mirrors the familiar all/edits/none model, mapped onto the risk-class policy:
- *   'full'     — auto-approve everything the runtime permits (DESTRUCTIVE still asks,
- *                PRIVILEGED still denied — TG-007/SE-009 cannot be configured away).
+ *   'full'     — auto-approve everything the runtime permits, with three exceptions:
+ *                NETWORK and DESTRUCTIVE still ask (TG-012, TG-007), PRIVILEGED is still
+ *                denied (SE-009). None can be configured away.
  *   'edits'    — auto-approve reads + workspace edits; ASK before running commands,
  *                network, or package installs; ASK for destructive; deny privileged.
  *                The usable default: the agent writes code freely but a human gates
@@ -119,19 +126,20 @@ export type AutonomyLevel = 'full' | 'edits' | 'readonly';
  * determineAction, so even a mis-specified rule here cannot bypass them.
  */
 export function buildToolPolicy(level: AutonomyLevel): ToolPolicy {
-  // action for the "medium" risk classes (workspace edits, shell, net, pkg install)
+  // action for the "medium" risk classes (workspace edits, shell, pkg install; NETWORK is fixed below)
   const editAction: PolicyAction      = level === 'full' ? 'allow'
     : level === 'edits' ? 'allow' : 'require_approval';
   const commandAction: PolicyAction   = level === 'full' ? 'allow' : 'require_approval';
 
   return {
-    policyId: `autonomy-${level}-v1`,
-    version:  1,
+    // v2 (TG-003): NETWORK now asks at every level, so approvals bound to v1 are not reused.
+    policyId: `autonomy-${level}-v2`,
+    version:  2,
     rules: [
       { toolName: '*', riskClass: 'READ_ONLY',        action: 'allow' },
       { toolName: '*', riskClass: 'LOW_RISK',         action: 'allow' },
       { toolName: '*', riskClass: 'MODIFY_WORKSPACE', action: editAction },
-      { toolName: '*', riskClass: 'NETWORK',          action: commandAction },
+      { toolName: '*', riskClass: 'NETWORK',          action: 'require_approval' }, // TG-012: all levels
       { toolName: '*', riskClass: 'PACKAGE_INSTALL',  action: commandAction },
       { toolName: '*', riskClass: 'SYSTEM',           action: commandAction },
       // TG-007: DESTRUCTIVE always asks a human (determineAction coerces 'allow' → ask).

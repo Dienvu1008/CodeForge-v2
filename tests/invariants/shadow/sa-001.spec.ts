@@ -125,6 +125,31 @@ describe('SA-001 — shadow-ablation is unreachable from production', () => {
     expect(violations).toEqual([]);
   });
 
+  it('no production source references OPEN_PATH_ACCESS_POLICY outside its agent-core definition/re-exports (kernel-gap-closure)', () => {
+    // The open policy switches Path_Access_Policy off: only measurement code (packages/testing,
+    // not part of the Production_Surface) and tests may use it.
+    const allowed = new Set([
+      'packages/agent-core/src/tool/path-access-policy.ts',
+      'packages/agent-core/src/tool/index.ts',
+      'packages/agent-core/src/index.ts',
+    ]);
+    const violations: string[] = [];
+    let scanned = 0;
+    for (const pkg of PRODUCTION_PACKAGES) {
+      for (const file of listFiles(join(rootDir, 'packages', pkg, 'src'), (p) => SOURCE_EXT.test(p))) {
+        scanned++;
+        if (allowed.has(rel(file))) continue;
+        if (readFileSync(file, 'utf8').includes('OPEN_PATH_ACCESS_POLICY')) violations.push(rel(file));
+      }
+    }
+    // scripts/ (CLI runners) must not reference it either.
+    for (const file of listFiles(join(rootDir, 'scripts'), () => true)) {
+      if (readFileSync(file, 'utf8').includes('OPEN_PATH_ACCESS_POLICY')) violations.push(rel(file));
+    }
+    expect(scanned).toBeGreaterThan(0);
+    expect(violations).toEqual([]);
+  });
+
   it('no Production_Surface package.json declares @codeforge/testing', () => {
     const fields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
     const violations: string[] = [];

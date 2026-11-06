@@ -1,4 +1,4 @@
-{
+﻿{
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
@@ -9,6 +9,11 @@
   "include": [
     "invariants/**/*.ts",
     "workspace/**/*.ts",
+    "tool/gap-closure-*.ts",
+    "tool/path-access-*.ts",
+    "tool/legitimate-workflows*.ts",
+    "tool/risk-classification*.ts",
+    "security/**/*.ts",
     "git/**/*.ts",
     "shell/**/*.ts",
     "execution/**/*.ts",

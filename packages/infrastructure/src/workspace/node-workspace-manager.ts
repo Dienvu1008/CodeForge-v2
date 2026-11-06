@@ -10,9 +10,9 @@
 // WS-004: resolveRealpath() rejects symlink escape.
 // WS-010: write/delete/move operations produce a ChangeRecord.
 import { promises as fsp } from 'node:fs';
-import { join } from 'node:path';
-import type { WorkspaceManager, DirEntry, WriteOptions } from '@codeforge/agent-core';
-import { WorkspaceError } from '@codeforge/agent-core';
+import { join, relative, isAbsolute } from 'node:path';
+import type { WorkspaceManager, DirEntry, WriteOptions, PathAccess, PathAccessPolicy } from '@codeforge/agent-core';
+import { WorkspaceError, DEFAULT_PATH_ACCESS_POLICY, evaluatePathAccess } from '@codeforge/agent-core';
 import type { ChangeRecord } from '@codeforge/agent-core';
 import { canonicalizePath, resolveRealpath, PathError } from '../path/index.js';
 
@@ -20,10 +20,13 @@ export interface NodeWorkspaceManagerDeps {
   readonly root:    string;
   readonly now:     () => string;
   readonly nextId:  () => string;
+  /** Sensitive/protected path rules (SE-012, WS-011). Default: DEFAULT_PATH_ACCESS_POLICY. */
+  readonly pathAccess?: PathAccessPolicy;
 }
 
 export class NodeWorkspaceManager implements WorkspaceManager {
   readonly root: string;
+  private realRoot: Promise<string> | undefined;
 
   constructor(private readonly deps: NodeWorkspaceManagerDeps) {
     // Normalise root: forward slashes, no trailing slash.
@@ -72,10 +75,46 @@ export class NodeWorkspaceManager implements WorkspaceManager {
     }
   }
 
+  // ── checkAccess ─────────────────────────────────────────────────────────────
+
+  /**
+   * Throws WorkspaceError(SENSITIVE_PATH | PROTECTED_PATH) when `access` to `relpath` is denied.
+   * Evaluated on the lexical path, then (when the path exists) on the real path relative to the root,
+   * so a symlink inside the workspace cannot reach a sensitive/protected in-workspace file.
+   */
+  async checkAccess(access: PathAccess, relpath: string): Promise<void> {
+    const policy = this.deps.pathAccess ?? DEFAULT_PATH_ACCESS_POLICY;
+    this.enforce(policy, access, relpath, relpath);
+    if (!relpath || relpath === '.') return;
+    let real: string;
+    let realRoot: string;
+    try {
+      real     = await fsp.realpath(join(this.root, relpath));
+      realRoot = await (this.realRoot ??= fsp.realpath(this.root));
+    } catch {
+      return; // path does not exist yet (or is unreadable): lexical verdict stands
+    }
+    const rel = relative(realRoot, real).replace(/\\/g, '/');
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return; // boundary is checkPath's job
+    this.enforce(policy, access, rel, relpath);
+  }
+
+  private enforce(policy: PathAccessPolicy, access: PathAccess, checked: string, reported: string): void {
+    const v = evaluatePathAccess(policy, access, checked);
+    if (v.allowed) return;
+    if (v.code === 'SENSITIVE_PATH') {
+      throw new WorkspaceError('SENSITIVE_PATH', reported,
+        `SENSITIVE_PATH: ${reported} is a secret file and cannot be read or changed by the agent (use .env.example for placeholders)`);
+    }
+    throw new WorkspaceError('PROTECTED_PATH', reported,
+      `PROTECTED_PATH: ${reported} is version-control metadata and cannot be changed by the agent`);
+  }
+
   // ── Read operations ─────────────────────────────────────────────────────────
 
   async readFile(relpath: string): Promise<string> {
     const abs = await this.resolveAbs(relpath);
+    await this.checkAccess('read', relpath);
     try {
       return await fsp.readFile(abs, 'utf8');
     } catch (err) {
@@ -85,6 +124,7 @@ export class NodeWorkspaceManager implements WorkspaceManager {
 
   async readFileBytes(relpath: string): Promise<Buffer> {
     const abs = await this.resolveAbs(relpath);
+    await this.checkAccess('read', relpath);
     try {
       return await fsp.readFile(abs);
     } catch (err) {
@@ -138,6 +178,7 @@ export class NodeWorkspaceManager implements WorkspaceManager {
     opts:      WriteOptions = {},
   ): Promise<ChangeRecord> {
     const abs = await this.resolveAbs(relpath);
+    await this.checkAccess('write', relpath);
     const exists = await this.fileExists(relpath);
 
     if (opts.exclusive === true && exists) {
@@ -174,6 +215,7 @@ export class NodeWorkspaceManager implements WorkspaceManager {
 
   async deleteFile(relpath: string, sessionId: string): Promise<ChangeRecord> {
     const abs = await this.resolveAbs(relpath);
+    await this.checkAccess('write', relpath);
     try {
       await fsp.unlink(abs);
     } catch (err) {
@@ -197,6 +239,8 @@ export class NodeWorkspaceManager implements WorkspaceManager {
   ): Promise<ChangeRecord> {
     const fromAbs = await this.resolveAbs(fromRelpath);
     const toAbs   = await this.resolveAbs(toRelpath);
+    await this.checkAccess('write', fromRelpath);
+    await this.checkAccess('write', toRelpath);
     try {
       await fsp.rename(fromAbs, toAbs);
     } catch (err) {

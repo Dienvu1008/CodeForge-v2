@@ -16,7 +16,8 @@
 //   model gateway     → ReplayModelGateway(trace, injections, { onStep: ledger })
 //                       (`ArmConfig.modelGateway` replaces it ONLY to record synthetic traces)
 //   ToolGateway       → AblationToolGateway (enforced policy = buildToolPolicy(trace.wiring.autonomy))
-//   WorkspaceManager  → AblationWorkspaceManager(NodeWorkspaceManager on sandbox.root)
+//   WorkspaceManager  → AblationWorkspaceManager(NodeWorkspaceManager on sandbox.root; the shadow arm
+//                       passes OPEN_PATH_ACCESS_POLICY to the inner manager, the oracle decides)
 //   ToolExecutor      → AblationToolExecutor(NodeToolExecutor with innerShellPolicyFor(mode))
 //   ProcessSupervisor → caller-provided (`supervisorFactory`): FakeProcessSupervisor in Phase 1,
 //                       ContainedProcessSupervisor in Phase 2. The arm never spawns a process itself.
@@ -51,6 +52,7 @@ import {
   GraphCommitService,
   GraphService,
   NoopProcessReconciler,
+  OPEN_PATH_ACCESS_POLICY,
   Planner,
   RecoveryEngine,
   SessionOrchestrator,
@@ -97,6 +99,7 @@ import {
   SqliteVerificationRepository,
   SqliteWorkspaceLockService,
   WorkspaceSnapshotRollback,
+  WorkspaceTestBaseline,
   computeWorkspaceHash,
   createMigrationRegistry,
   hashFileContent,
@@ -463,9 +466,16 @@ export async function runArm(config: ArmConfig): Promise<ArmResult> {
       const planner = new Planner({ gateway: gw, now: c.now, nextId: c.nextId });
       // Substitution: EP-PATH observer + containment around the Kernel's workspace manager.
       const workspace = new AblationWorkspaceManager(
-        new NodeWorkspaceManager({ root: workspaceRoot, now: c.now, nextId: c.nextId }),
+        // Enforce: the Kernel's default Path_Access_Policy. Shadow: an OPEN inner manager, so the
+        // decision is made only by the AblationWorkspaceManager oracle and the operation runs in the sandbox.
+        new NodeWorkspaceManager({
+          root: workspaceRoot, now: c.now, nextId: c.nextId,
+          ...(mode === 'shadow' ? { pathAccess: OPEN_PATH_ACCESS_POLICY } : {}),
+        }),
         sandbox, mode, ledger, { nextId: c.nextId, now: c.now },
       );
+      // G5 / TG-013: test files present at goal start (captured below, beside captureClean).
+      const testBaseline = new WorkspaceTestBaseline({ root: workspaceRoot });
       // Substitution: caller-provided containment supervisor (never a real spawn from here).
       const supervisor = supervisors.shell;
       const innerExec = new NodeToolExecutor({
@@ -522,7 +532,7 @@ export async function runArm(config: ArmConfig): Promise<ArmResult> {
       const taskExec = new ObservedTaskExecutor({
         taskRunService: taskRunSvc, executionCoordinator: coordinator,
         contextBuilder: new ContextBuilder({ now: c.now, nextId: c.nextId }),
-        gateway: gw, toolGateway: tg, executor: toolExec,
+        gateway: gw, toolGateway: tg, executor: toolExec, testBaseline,
         // Substitution: EP-COMPLETION observer.
         verificationEngine: verEngine,
         completionGate: new AblationCompletionGate({ reports: new SqliteVerificationRepository(db) }, { mode, ledger }),
@@ -556,6 +566,7 @@ export async function runArm(config: ArmConfig): Promise<ArmResult> {
       const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, taskRunRepository: taskRuns, ...recoveryWiring, now: c.now, nextId: c.nextId });
       const goal: Goal = { goalId: 'G', version: 1, description: config.goalDescription, constraints: [], acceptanceCriteria: [{ criterionId: 'a', description: config.acceptance ?? 'done', mandatory: true }], createdAt: c.now(), createdBy: 'user' };
       try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal (as in the Progressive_Runner) */ }
+      try { await testBaseline.capture(); } catch { /* non-fatal: empty baseline = rule inactive */ }
       try {
         orchestratorResult = await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 });
       } catch (err) {

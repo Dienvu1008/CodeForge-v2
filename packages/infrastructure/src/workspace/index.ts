@@ -10,3 +10,8 @@ export {
   WorkspaceSnapshotRollback,
   type WorkspaceSnapshotRollbackDeps,
 } from './workspace-snapshot-rollback.js';
+// Kernel gap closure (G5 / TG-013): test files present at goal start.
+export {
+  WorkspaceTestBaseline,
+  type WorkspaceTestBaselineDeps,
+} from './workspace-test-baseline.js';

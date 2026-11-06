@@ -1,10 +1,10 @@
-# CodeForge v2 — Product Roadmap
+﻿# CodeForge v2 — Product Roadmap
 
 > **Read this first at the start of every work session.** It is the authoritative, project-wide
 > view that survives across conversations. Phase docs (`PHASE_*`) hold detail; this file holds
 > the *product* trajectory. Status detail lives in `PROJECT_STATUS.md`.
 >
-> Last updated: 2026-10-20 · multi-language planning + verification + benchmarks shipped (P12.24–P12.27); docs synced (P12.28).
+> Last updated: 2026-11-06 · Kernel gap closure
 
 ---
 
@@ -165,15 +165,16 @@ Priority order is provisional and will be re-ranked by the first benchmark's fai
 3. **Recovery vocabulary — COMPLETE.** REPLAN (lightweight SUPERSEDE_TASK GraphMutation; RC-005/GI-007/GI-009) and ROLLBACK (P12.14: revert the workspace to the last clean checkpoint via the injected `WorkspaceRollback` port / `WorkspaceSnapshotRollback`, enabled for SYNTAX, policy v2, fail-safe) are both real. No recovery action remains a stub.
 4. **Product surface** — task-graph visualization + richer execution trace in the dashboard;
    commit and polish the VS Code `.vsix`; verify Telegram approve/control end-to-end.
-5. **Close the confirmed kernel gaps** found by the kernel shadow ablation (harness DONE; Phase 1
-   synthetic and Phase 2 real-model Qwen3.5 run DONE, analysis in
-   `.agents/kernel-shadow-ablation-analysis.md`; spec `.kiro/specs/kernel-shadow-ablation/`). Under `full` autonomy the kernel lets
-   through `rm -rf ..` (allowlisted `rm`, arguments unchecked), `curl` (allowlisted; `run_command`
-   is never NETWORK), `read_file .env`, `write_file .git/config` and edits to test files (no
-   protected-path rule; `ToolRule.deniedPaths` not enforced); the redactor misses the bare PKCS#8
-   `-----BEGIN PRIVATE KEY-----` header. Phase 2 showed all five gaps are open on every real trace
-   where the probe was placeable (246 reached, 0 stopped); fix them, then re-run the ablation. Also
-   investigate the `run_command` friction Phase 2 found: the executor prompt says
+5. **Close the confirmed kernel gaps** found by the kernel shadow ablation — **DONE** (spec
+   `.kiro/specs/kernel-gap-closure/`; replay `.agents/kernel-gap-closure-analysis.md`). Destructive
+   shell, network commands, sensitive files, VCS metadata writes and pre-existing test edits are now
+   stopped or need approval (SE-011, SE-012, TG-011, TG-012, TG-013, WS-011; `full` now asks for
+   NETWORK), and the redactor handles bare PKCS#8 / ENCRYPTED / PGP keys. Replay of the 50 Qwen3.5
+   traces: 246 of 246 former probes stopped, kernel misses 0. Still open and not measured: the live
+   Ollama pass-rate impact of the new rules (the test-edit approval already flipped PG-T1 in the
+   replay; whether to keep it is a maintainer decision), and residual heuristic risks (interpreter
+   access, 8.3 names, attached short options, `PACKAGE_INSTALL` auto-approved under `full`). Next, still
+   open: the dashboard P1/P2/P3 items are not started, and the `run_command` friction Phase 2 found: the executor prompt says
    `{"command": "<shell command>"}` but `ShellExecutor` / `checkCommand` expect a bare allowlisted
    binary in `command` and the rest in `args`, so `"node test.js"` is rejected as
    `COMMAND_NOT_ALLOWED` (7 of 50 train cases; no verdict effect). Fix the prompt and/or split the

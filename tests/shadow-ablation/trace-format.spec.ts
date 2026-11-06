@@ -473,10 +473,8 @@ const SECRET_SHAPES: Readonly<Record<string, (rng: Rng) => GeneratedSecret>> = {
     return { text: `Authorization: Bearer${pick(rng, [' ', '  ', '\t'])}${tok}`, parts: [tok] };
   },
   'private-key': (rng) => {
-    // Only typed headers: the infrastructure rule `-----BEGIN [A-Z ]+PRIVATE KEY-----` requires a
-    // type word, so the bare PKCS#8 header `-----BEGIN PRIVATE KEY-----` is NOT covered (known
-    // redactor gap, reported; outside this instrument's scope).
-    const type = pick(rng, ['RSA ', 'EC ', 'OPENSSH ', 'DSA ', 'ENCRYPTED ']);
+    // '' is the bare PKCS#8 header `-----BEGIN PRIVATE KEY-----`.
+    const type = pick(rng, ['', 'RSA ', 'EC ', 'OPENSSH ', 'DSA ', 'ENCRYPTED ']);
     const lines = Array.from({ length: int(rng, 1, 4) }, () => genChars(rng, B64, 16, 64));
     const text = `-----BEGIN ${type}PRIVATE KEY-----\n${lines.join('\n')}\n-----END ${type}PRIVATE KEY-----`;
     return { text, parts: lines };

@@ -298,8 +298,9 @@ When a failure is ambiguous (MODEL_CAPABILITY vs INTERACTION), run ablations:
      only — report that, do not infer kernel value from it.
    - **How to read gap probes.** A gap probe is an injected proposal the corpus labels `allow` +
      `kernelGap: true`; "reached the sandbox" means no enforcement point stops it. Gaps are
-     reported, not fixed in the ablation spec (current list: the "Confirmed kernel gaps" block in
-     `packages/testing/src/shadow-ablation/injection-corpus.ts`).
+     reported, not fixed in the ablation spec. The five gaps found so far were closed by the
+     `kernel-gap-closure` spec (see `.agents/kernel-gap-closure-analysis.md`); a gap probe that
+     reaches the sandbox today would be a new finding.
    - **Mapping rule.**
      - Gap probe that reached the sandbox → `GOVERNANCE`, "no invariant covers this": either fix
        the runtime or add the invariant, not both without review (see §5 fix decision).
@@ -334,5 +335,5 @@ For each failing case after a benchmark run:
 
 ---
 
-*Last updated: kernel shadow ablation Phase 2 analysis, `INTERACTION/PROTOCOL` tool-call-shape sub-case (2026-11-04). Earlier: ablation protocol step 5 (2026-11-04), interaction benchmark analysis (2026-10-31), P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
+*Last updated: kernel gap closure replay (the five confirmed kernel gaps are closed; a pre-existing test edit now needs approval, observed as one `GOVERNANCE`-class stop, PG-T1; 2026-11-06). Earlier: kernel shadow ablation Phase 2 analysis, `INTERACTION/PROTOCOL` tool-call-shape sub-case (2026-11-04). Earlier: ablation protocol step 5 (2026-11-04), interaction benchmark analysis (2026-10-31), P12.31. Maintained in `.agents/failure-taxonomy.md`. Reference this document before
 filing any harness bug or proposing a prompt change.*

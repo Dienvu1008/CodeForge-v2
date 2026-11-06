@@ -48,9 +48,13 @@
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import {
+  DEFAULT_PATH_ACCESS_POLICY,
   WorkspaceError,
+  evaluatePathAccess,
   type ChangeRecord,
   type DirEntry,
+  type PathAccess,
+  type PathAccessPolicy,
   type WorkspaceManager,
   type WriteOptions,
 } from '@codeforge/agent-core';
@@ -70,6 +74,14 @@ export interface AblationWorkspaceOptions {
   readonly nextId?: () => string;
   /** Clock for simulated ChangeRecords (the arm clock). Default: the Unix epoch (deterministic). */
   readonly now?: () => string;
+  /**
+   * kernel-gap-closure: the ORACLE Path_Access_Policy (SE-012, WS-011) this observer evaluates after
+   * the boundary check. Default `DEFAULT_PATH_ACCESS_POLICY` (the Kernel's real policy). A rejection
+   * is an `EP-PATH` block with reason `SENSITIVE_PATH` | `PROTECTED_PATH` (no new enforcement point id).
+   * Enforce: rethrow the same `WorkspaceError` the NodeWorkspaceManager throws. Shadow: record
+   * `wouldBlock` and let the operation proceed against the sandbox (the inner manager is open).
+   */
+  readonly pathAccess?: PathAccessPolicy;
 }
 
 type EscapeCode = 'PATH_ESCAPE' | 'SYMLINK_ESCAPE';
@@ -91,6 +103,7 @@ export class AblationWorkspaceManager implements WorkspaceManager {
   readonly root: string;
   private readonly nextId: () => string;
   private readonly now: () => string;
+  private readonly pathAccess: PathAccessPolicy;
   private simCounter = 0;
   /** Ledger step of the last recorded EP-PATH allow (allows are recorded once per step). */
   private lastAllowStep: number | undefined;
@@ -117,6 +130,18 @@ export class AblationWorkspaceManager implements WorkspaceManager {
     this.root = inner.root;
     this.nextId = opts.nextId ?? (() => `shadow-sim-${String(++this.simCounter).padStart(6, '0')}`);
     this.now = opts.now ?? (() => new Date(0).toISOString());
+    this.pathAccess = opts.pathAccess ?? DEFAULT_PATH_ACCESS_POLICY;
+  }
+
+  // ── Path access (Path_Access_Policy observer) ───────────────────────────────
+
+  /**
+   * Same question as `NodeWorkspaceManager.checkAccess`, observed. Enforce: records the EP-PATH block
+   * and throws; shadow: records `wouldBlock` and returns (the operation proceeds in the sandbox).
+   */
+  async checkAccess(access: PathAccess, relpath: string): Promise<void> {
+    this.observeAccess('checkAccess', access, relpath, { path: relpath });
+    await this.inner.checkAccess?.(access, relpath);
   }
 
   // ── Path validation ─────────────────────────────────────────────────────────
@@ -130,13 +155,13 @@ export class AblationWorkspaceManager implements WorkspaceManager {
   // ── Read operations ─────────────────────────────────────────────────────────
 
   async readFile(relpath: string): Promise<string> {
-    const v = await this.decide('readFile', relpath, { path: relpath });
+    const v = await this.decide('readFile', relpath, { path: relpath }, undefined, 'read');
     if (v.kind === 'simulate') return SHADOW_SIMULATED_READ;
     return this.inner.readFile(relpath);
   }
 
   async readFileBytes(relpath: string): Promise<Buffer> {
-    const v = await this.decide('readFileBytes', relpath, { path: relpath });
+    const v = await this.decide('readFileBytes', relpath, { path: relpath }, undefined, 'read');
     if (v.kind === 'simulate') return Buffer.from(SHADOW_SIMULATED_READ, 'utf8');
     return this.inner.readFileBytes(relpath);
   }
@@ -177,13 +202,13 @@ export class AblationWorkspaceManager implements WorkspaceManager {
     opts?: WriteOptions,
   ): Promise<ChangeRecord> {
     const digest = sha256(content, opts?.encoding ?? 'utf8');
-    const v = await this.decide('writeFile', relpath, { path: relpath }, digest);
+    const v = await this.decide('writeFile', relpath, { path: relpath }, digest, 'write');
     if (v.kind === 'simulate') return this.simulatedChange(sessionId, 'create', relpath);
     return this.inner.writeFile(relpath, content, sessionId, opts);
   }
 
   async deleteFile(relpath: string, sessionId: string): Promise<ChangeRecord> {
-    const v = await this.decide('deleteFile', relpath, { path: relpath });
+    const v = await this.decide('deleteFile', relpath, { path: relpath }, undefined, 'write');
     if (v.kind === 'simulate') return this.simulatedChange(sessionId, 'delete', relpath);
     return this.inner.deleteFile(relpath, sessionId);
   }
@@ -192,8 +217,8 @@ export class AblationWorkspaceManager implements WorkspaceManager {
     // Same order as NodeWorkspaceManager (source first): in enforce mode the first failing path
     // throws before the second is checked, exactly like the plain Kernel.
     const preview = { from: fromRelpath, to: toRelpath };
-    const from = await this.decide('moveFile', fromRelpath, preview);
-    const to = await this.decide('moveFile', toRelpath, preview);
+    const from = await this.decide('moveFile', fromRelpath, preview, undefined, 'write');
+    const to = await this.decide('moveFile', toRelpath, preview, undefined, 'write');
     // Shadow: if either side would escape, the whole move is simulated (no partial effect).
     if (from.kind === 'simulate' || to.kind === 'simulate') {
       return this.simulatedChange(sessionId, 'rename', toRelpath);
@@ -214,6 +239,7 @@ export class AblationWorkspaceManager implements WorkspaceManager {
     relpath: string,
     args: Readonly<Record<string, string>>,
     contentSha256?: string,
+    access?: PathAccess,
   ): Promise<PathVerdict> {
     const tool = `workspace.${op}`;
     let canonical: string | undefined;
@@ -249,7 +275,11 @@ export class AblationWorkspaceManager implements WorkspaceManager {
     // Kernel allowed (checkPath returned a string by contract).
     const kernelPath = canonical ?? '';
     this.recordAllowOncePerStep(tool, args);
-    if (this.isContained(relpath, kernelPath)) return { kind: 'delegate', canonical: kernelPath };
+    if (this.isContained(relpath, kernelPath)) {
+      // Path_Access_Policy oracle (after the boundary check). Shadow: records wouldBlock and proceeds.
+      if (access !== undefined) this.observeAccess(op, access, relpath, args);
+      return { kind: 'delegate', canonical: kernelPath };
+    }
 
     // The Kernel accepted a path the independent check considers outside: highest severity.
     this.ledger.contained({
@@ -266,6 +296,39 @@ export class AblationWorkspaceManager implements WorkspaceManager {
       );
     }
     return { kind: 'simulate' };
+  }
+
+  /**
+   * Evaluate the oracle Path_Access_Policy; on a deny record `EP-PATH` `block` (reason = code).
+   * Enforce throws the same WorkspaceError as NodeWorkspaceManager; shadow only flags `wouldBlock`.
+   * No containment event: the operation stays inside the sandbox.
+   */
+  private observeAccess(
+    op: string,
+    access: PathAccess,
+    relpath: string,
+    args: Readonly<Record<string, string>>,
+  ): void {
+    const verdict = evaluatePathAccess(this.pathAccess, access, relpath);
+    if (verdict.allowed) return;
+    const shadow = this.mode === 'shadow';
+    this.ledger.record({
+      tool: `workspace.${op}`,
+      argsPreview: previewArgs(args),
+      point: 'EP-PATH',
+      decision: 'block',
+      reason: verdict.code,
+      effective: shadow ? 'allow' : 'block',
+      wouldBlock: shadow,
+    });
+    if (shadow) return;
+    throw new WorkspaceError(
+      verdict.code,
+      relpath,
+      verdict.code === 'SENSITIVE_PATH'
+        ? `SENSITIVE_PATH: ${relpath} is a secret file and cannot be read or changed by the agent (use .env.example for placeholders)`
+        : `PROTECTED_PATH: ${relpath} is version-control metadata and cannot be changed by the agent`,
+    );
   }
 
   private isContained(relpath: string, kernelPath: string): boolean {

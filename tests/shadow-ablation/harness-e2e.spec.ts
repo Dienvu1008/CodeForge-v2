@@ -79,6 +79,7 @@ import {
   SqliteVerificationRepository,
   SqliteWorkspaceLockService,
   WorkspaceSnapshotRollback,
+  WorkspaceTestBaseline,
   computeWorkspaceHash,
   createMigrationRegistry,
   inspectProject,
@@ -331,7 +332,10 @@ async function runPlain(
         script.approvalResolution === 'deny'
           ? { awaitDecision: async (_sid, toolCallId) => { await tg.deny(toolCallId, 'policy', 'simulated_human_denied'); return 'denied'; } }
           : undefined;
+      // Same baseline wiring as the real runtime and arm.ts: test files present at goal start.
+      const testBaseline = new WorkspaceTestBaseline({ root: workspaceRoot });
       const taskExecInner = new TaskExecutor({
+        testBaseline,
         taskRunService: taskRunSvc, executionCoordinator: coordinator,
         contextBuilder: new ContextBuilder({ now: c.now, nextId: c.nextId }),
         gateway: gw, toolGateway: tg, executor: toolExec,
@@ -373,6 +377,7 @@ async function runPlain(
       const orchestrator = new SessionOrchestrator({ sessionService: sessionSvc, planner, graphCommitService: graphCommitSvc, graphRepository: graphs, taskRepository: new SqliteTaskRepository(db), executionRepository: executions, executionCoordinator: coordinator, taskExecutor: taskExec, checkpointService: checkpointSvc, maxIterations: 10, taskRunRepository: new SqliteTaskRunRepository(db), ...recoveryWiring, now: c.now, nextId: c.nextId });
       const goal: Goal = { goalId: 'G', version: 1, description: script.description, constraints: [], acceptanceCriteria: [{ criterionId: 'a', description: script.acceptance, mandatory: true }], createdAt: c.now(), createdBy: 'user' };
       try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal (as in the Progressive_Runner) */ }
+      try { await testBaseline.capture(); } catch { /* non-fatal (as in the Progressive_Runner) */ }
       try {
         result = await orchestrator.run({ sessionId: sid, goal, revision: revision(workspaceRoot), graphVersion: 1 });
       } catch {
@@ -692,6 +697,7 @@ describe('Property 11: Every reached out-of-policy injection is stopped and neve
       for (const [id, pair] of scriptRun(script.id).injected) {
         const entry = CORPUS_BY_ID.get(id);
         if (entry === undefined || entry.expected.kernelGap === true) continue;
+        // (no kernelGap entries remain after kernel-gap-closure; the guard stays for future probes)
         assertStoppedAndNotExecuted(`${script.id}/${id}`, pair);
         const inj = pair.cmp.injected;
         if (inj?.reached === true && inj.labelMatches !== 'n/a') {

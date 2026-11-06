@@ -2,7 +2,7 @@
 
 **Ollama Coding Agent — Runtime Safety Invariants**
 
-Version: 1.11
+Version: 1.12
 Status: Architecture Baseline
 Owner: Runtime / Control Plane
 Scope: v1 (single user, single workspace, sequential, local, Ollama)
@@ -185,6 +185,9 @@ Phase gate:
 | TG-008 | ToolCall phải ghi provenance (model, context, reason). | ToolGateway | 1.5 | HIGH |
 | TG-009 | Arguments của ToolCall phải qua schema validation trước execute. | ToolSchema | 1.5 | CRITICAL |
 | TG-010 | ToolCall timeout phải dẫn đến state TIMEOUT, không treo RUNNING. | ProcessSupervisor | 1.5 | CRITICAL |
+| TG-011 | Lệnh shell phá huỷ (rm, rmdir, del, ...) được phân loại DESTRUCTIVE và luôn cần human approval ở mọi autonomy level. | resolveToolRiskClass / ToolPolicy | 12 | CRITICAL |
+| TG-012 | Lệnh shell có khả năng truy cập mạng (curl, wget, ssh, ...) được phân loại NETWORK và cần approval ở mọi autonomy level, kể cả `full`. | resolveToolRiskClass / ToolPolicy | 12 | HIGH |
+| TG-013 | Mutate test file đã tồn tại khi goal bắt đầu → DESTRUCTIVE, cần approval; tạo test file mới vẫn là MODIFY_WORKSPACE. | resolveToolRiskClass / WorkspaceTestBaseline | 12 | HIGH |
 
 ### 3.9 Verification (VR)
 
@@ -216,6 +219,7 @@ Phase gate:
 | WS-008 | Workspace mutation phải được track (agent-owned vs user-existing). | WorkspaceManager | 1 | HIGH |
 | WS-009 | Workspace revision hash không phụ thuộc Git. | WorkspaceHasher | 0 | HIGH |
 | WS-010 | Workspace lock không bị stale sau crash mà không recover. | LockRecovery | 1 | CRITICAL |
+| WS-011 | Metadata VCS (.git, .hg, .svn) write-protected, read-open: ghi/xoá/di chuyển → tool result FAILED (PROTECTED_PATH). | NodeWorkspaceManager / PathAccessPolicy | 12 | CRITICAL |
 
 ### 3.11 Budget (BU)
 
@@ -242,6 +246,8 @@ Phase gate:
 | SE-008 | Process tree phải bị bound và cleanup. | ProcessSupervisor | 1 | CRITICAL |
 | SE-009 | Privileged operations không được auto-execute. | ToolPolicy | 1.5 | CRITICAL |
 | SE-010 | Model output là untrusted input. | ModelGateway | 1.5 | CRITICAL |
+| SE-011 | Mọi path-like argument của lệnh shell được allowlist phải nằm trong workspace root; thoát ra ngoài → exit 1 (PATH_ESCAPE), không spawn. | ShellExecutor / WorkspaceManager | 12 | CRITICAL |
+| SE-012 | Agent không được đọc hoặc ghi file nhạy cảm (.env, *.pem, id_rsa, .ssh/*, ...); vi phạm → tool result FAILED (SENSITIVE_PATH); .env.example vẫn đọc được. | NodeWorkspaceManager / PathAccessPolicy | 12 | CRITICAL |
 
 ### 3.13 Crash / Persistence (CP)
 
@@ -998,6 +1004,7 @@ Lịch sử:
 | 1.9 | 2026-10-20 | P12.15–P12.17: grep/glob tools (READ_ONLY); LspPool registry tổng quát hoá (đa ngôn ngữ, không còn hardcode TS/JS); ContextCollector nối LSP references (opt-in `--lsp`). Không thêm ID mới (TG/CX hiện hành bao phủ). |
 | 1.10 | 2026-10-20 | P12.24–P12.25: language inference ở Planner (bỏ thiên vị TypeScript) + verification đa ngôn ngữ (Dart/Flutter/Rust/Go/Python/C++) trong VerificationPolicyBuilder. Thuộc phạm vi TI-005/GI/CX hiện hành; không thêm ID mới. |
 | 1.11 | 2026-11-03 | Kernel shadow ablation: thêm nhóm Shadow Ablation (SA-001) — §2 prefix `SA`, §3.25. Instrument đo lường (`@codeforge/testing/shadow-ablation`) không reachable từ production (source, `package.json`, scripts, bundle). Registry 180 → 181 invariant. |
+| 1.12 | 2026-11-05 | Kernel gap closure: thêm SE-011 (shell argument boundary), SE-012 (sensitive paths), TG-011 (destructive shell → DESTRUCTIVE), TG-012 (network → NETWORK, approval mọi level), TG-013 (mutate test có sẵn cần approval), WS-011 (VCS metadata write-protected). Registry 181 → 187 invariant. |
 
 ---
 

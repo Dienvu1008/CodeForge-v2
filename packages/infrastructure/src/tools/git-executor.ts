@@ -16,6 +16,7 @@
 //   - Every spawn has a hard timeoutMs (SE-007).
 //
 // NOT called directly — invoked by ToolGateway after approval (TG-001).
+import { WorkspaceError } from '@codeforge/agent-core';
 import type {
   WorkspaceManager,
   ToolExecutor,
@@ -110,7 +111,11 @@ export class GitExecutor implements ToolExecutor {
     const gitArgs: string[] = ['diff', '--no-color'];
     if (args['staged'] === true) gitArgs.push('--cached');
     const path = args['path'] !== undefined ? String(args['path']) : undefined;
-    if (path !== undefined && path !== '') gitArgs.push('--', path);
+    if (path !== undefined && path !== '') {
+      const denied = await this.checkSensitive([path]);
+      if (denied !== undefined) return denied;
+      gitArgs.push('--', path);
+    }
     return this.toResult(await this.spawn(gitArgs));
   }
 
@@ -130,6 +135,8 @@ export class GitExecutor implements ToolExecutor {
         timedOut: false,
       };
     }
+    const denied = await this.checkSensitive(paths);
+    if (denied !== undefined) return denied;
     return this.toResult(await this.spawn(['add', '--', ...paths]));
   }
 
@@ -168,6 +175,29 @@ export class GitExecutor implements ToolExecutor {
   }
 
   // ── private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * SE-012: refuse sensitive paths (.env, keys, ...) before spawning git.
+   * Only 'read' access is checked: git writes .git itself, so PROTECTED_PATH
+   * does not apply. Returns a failed result (exit 1) on rejection, else undefined.
+   * Non-WorkspaceError errors propagate to execute()'s generic catch.
+   */
+  private async checkSensitive(paths: readonly string[]): Promise<ExecutorResult | undefined> {
+    const check = this.deps.workspace.checkAccess;
+    if (check === undefined) return undefined;
+    for (const p of paths) {
+      try {
+        await check.call(this.deps.workspace, 'read', p);
+      } catch (err) {
+        if (err instanceof WorkspaceError) {
+          const msg = err.message.includes(err.code) ? err.message : `${err.code}: ${err.message}`;
+          return { exitCode: 1, stdout: '', stderr: msg, timedOut: false };
+        }
+        throw err;
+      }
+    }
+    return undefined;
+  }
 
   /**
    * Spawn a git command.

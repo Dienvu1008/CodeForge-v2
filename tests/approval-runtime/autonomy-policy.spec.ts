@@ -15,10 +15,10 @@ describe('P10.5 buildToolPolicy — autonomy levels', () => {
     }
   });
 
-  it('full: workspace edits, shell, network, package install all auto-approve', () => {
+  it('full: workspace edits, shell, package install auto-approve; network asks (TG-012)', () => {
     expect(action('full', 'MODIFY_WORKSPACE')).toBe('allow');
     expect(action('full', 'SYSTEM')).toBe('allow');
-    expect(action('full', 'NETWORK')).toBe('allow');
+    expect(action('full', 'NETWORK')).toBe('require_approval');
     expect(action('full', 'PACKAGE_INSTALL')).toBe('allow');
   });
 

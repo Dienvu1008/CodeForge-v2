@@ -1,0 +1,704 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create `tests/tool/gap-closure-generators.ts` and `tests/security/redactor-private-key.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123020
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943132378
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943338046
+      }
+    ],
+    "1.2 Write `tests/shell/shell-classifier.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123087
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943347320
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943599332
+      }
+    ],
+    "1.3 Write `tests/tool/path-access-policy.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123136
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943348533
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943599388
+      }
+    ],
+    "1.4 Write `tests/tool/risk-classification.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123194
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943349738
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943599447
+      }
+    ],
+    "1.5 Write `tests/shell/shell-executor-arguments.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123236
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943607968
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945202298
+      }
+    ],
+    "1.6 Write `tests/workspace/path-access-enforcement.spec.ts` and `tests/workspace/workspace-test-baseline.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123298
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943609305
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945202390
+      }
+    ],
+    "1.7 Write `tests/execution/gap-closure-task-executor.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123339
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943610531
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945202463
+      }
+    ],
+    "1.8 Write `tests/tool/legitimate-workflows.spec.ts` (the \"legitimate workflows still work\" matrix)": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123378
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943611757
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945203148
+      }
+    ],
+    "1.9 Write the six invariant specs": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123418
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943350840
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943600416
+      }
+    ],
+    "2.1 Change the `private-key` pattern in `packages/infrastructure/src/redaction/redactor.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123461
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943346504
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943599253
+      }
+    ],
+    "2.2 Update the `private-key` generator in `tests/shadow-ablation/trace-format.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123498
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945320629
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945443182
+      }
+    ],
+    "3.1 Create `packages/agent-core/src/tool/path-access-policy.ts` and extend `workspace/workspace-manager.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123534
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945321838
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945444041
+      }
+    ],
+    "3.2 Create `packages/agent-core/src/tool/shell-classifier.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123569
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945452576
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946392950
+      }
+    ],
+    "3.3 Create `packages/agent-core/src/tool/risk-classification.ts` and wire `TaskExecutor`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123613
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946403485
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946555783
+      }
+    ],
+    "3.4 Update `tool/tool-policy.ts` and the `tool/shell-policy.ts` comments": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123653
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945323021
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945445253
+      }
+    ],
+    "4.1 Enforce the Path_Access_Policy in `node-workspace-manager.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123688
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945453793
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946393856
+      }
+    ],
+    "4.2 Apply argument checks in `tools/shell-executor.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123727
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946404510
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946556598
+      }
+    ],
+    "4.3 Apply the sensitive-path check in `tools/git-executor.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123765
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945454995
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946395058
+      }
+    ],
+    "4.4 Create `packages/infrastructure/src/workspace/workspace-test-baseline.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123834
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946563265
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946664177
+      }
+    ],
+    "4.5 Wire the baseline in `cli/runtime-cli.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123875
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946670825
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946783039
+      }
+    ],
+    "4.6 Make the new suites green": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123915
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946789734
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946903250
+      }
+    ],
+    "5.1 Add SE-011, SE-012, TG-011, TG-012, TG-013 and WS-011 to `invariants.yaml` and `INVARIANTS.md`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123953
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945323966
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945446683
+      }
+    ],
+    "5.2 Update the invariant count in `tests/_harness/phase0-harness.spec.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943123990
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945455821
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946396122
+      }
+    ],
+    "6. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124026
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953473322
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953693933
+      }
+    ],
+    "7.1 Observe the Path_Access_Policy in `ablation-workspace.ts` and wire `arm.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124061
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946918125
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793947175759
+      }
+    ],
+    "7.2 Add observer and containment tests, extend the SA-001 scan": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124098
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793947182733
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793948555827
+      }
+    ],
+    "7.3 Flip the five corpus labels and rename the gap block": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124134
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793947183621
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793948562864
+      }
+    ],
+    "7.4 Render the zero-gap case in `report.ts` and `comparison.ts`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124173
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793947184778
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793948569623
+      }
+    ],
+    "7.5 Regenerate the synthetic reports": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124207
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793948578288
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793949342603
+      }
+    ],
+    "8.1 Run the whole vitest suite and justify every changed existing test": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124244
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793948579489
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793949342966
+      }
+    ],
+    "9.1 Back up the previous report and run the replay": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124280
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793949352433
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952228850
+      }
+    ],
+    "9.2 Write `.agents/kernel-gap-closure-analysis.md`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124322
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952236327
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952632307
+      }
+    ],
+    "10.1 Update `SECURITY_MODEL.md` and `INFRASTRUCTURE_SPEC.md` (and the agent or tool spec if one describes ToolPolicy or the shell policy)": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124361
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952640296
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952991852
+      }
+    ],
+    "10.2 Update `README.md`, `PROJECT_STATUS.md`, `ROADMAP.md`, `PHASE_12_SIGNOFF.md`, `EVALUATION_MODEL.md` and `.agents/failure-taxonomy.md`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124399
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952641590
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952992650
+      }
+    ],
+    "11.1 Run `npm run build`, `eslint .` (0 problems) and `depcruise` (0 violations)": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124441
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953000650
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953075646
+      }
+    ],
+    "11.2 Run the WSL suite `scripts/_wsl-tmp.sh` in the background (about 200 s), read the output, and compare with the baseline 2260 tests / 239 files": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124479
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953083069
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953284833
+      }
+    ],
+    "11.3 Run `npm run gate`, confirm scope, and set the status line": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793943124514
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953292558
+      },
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953461811
+      }
+    ],
+    "1. Write the failing tests first": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945203190
+      }
+    ],
+    "2. Fix the redactor": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793945443246
+      }
+    ],
+    "5. Invariant registry": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946396160
+      }
+    ],
+    "3. Pure policy and classification in `agent-core`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946555822
+      }
+    ],
+    "4. Executors, workspace and CLI in `infrastructure`": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793946903325
+      }
+    ],
+    "7. Update the shadow-ablation instrument": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793949342775
+      }
+    ],
+    "8. Regression sweep": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793949343034
+      }
+    ],
+    "9. Real-trace replay and analysis": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952632375
+      }
+    ],
+    "10. Documentation sync": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793952992703
+      }
+    ],
+    "11. Final verification": [
+      {
+        "executionId": "4a5ef2f1-def5-4a5e-91dd-79cc321030a4",
+        "chatSessionId": "sess_440d5939-a011-431a-bf51-22e237415ffd",
+        "timestamp": 1793953461859
+      }
+    ]
+  }
+}

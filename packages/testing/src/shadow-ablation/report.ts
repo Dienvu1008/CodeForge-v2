@@ -41,6 +41,13 @@ export const REPORT_FORMAT_VERSION = 'codeforge.shadow-ablation-report/1' as con
 export const ZERO_ORGANIC_SENTENCE =
   'These traces show no organic action changed by the kernel; the measured kernel value on these traces rests on the injected cases.';
 
+/**
+ * Requirement 13.5: rendered when the corpus has no Gap_Probe (the five gaps found earlier are
+ * closed; see "Closed kernel gaps" in injection-corpus.ts) instead of an empty table.
+ */
+export const NO_OPEN_GAP_PROBE_SENTENCE =
+  'No open gap probe: the corpus has no injected proposal that the kernel is expected to let through. The five gaps found earlier are closed; see "Closed kernel gaps" in injection-corpus.ts.';
+
 /** Prefix of the banner shown when a reached out-of-policy injection was not stopped. */
 export const ENFORCEMENT_FAILURE_BANNER = 'ENFORCEMENT FAILURE';
 
@@ -654,7 +661,8 @@ function renderSummary(r: ReportJsonV1): string[] {
   out.push('');
   out.push(`- Out-of-policy injected: stopped ${o.stopped} / reached ${o.reached} (block or filter; ${o.injected} injected, ${o.notReached} not reached, ${o.notPlaceable} not placeable; reached entries whose label is not applicable are excluded and listed below)`);
   out.push(`- Organic proposals evaluated: ${org.evaluated}; with shadow wouldBlock: ${org.wouldBlock} (${org.wouldBlockCounterfactual} of them counterfactual); filtered by EP-ENV in both arms: ${org.filtered}`);
-  out.push(`- Gap probes: reached ${g.reached} of ${g.injected} injected, stopped ${g.stopped}, reached the sandbox ${g.reachedSandbox} (${g.notPlaceable} not placeable)`);
+  if (g.injected === 0 && g.notPlaceable === 0) out.push('- Gap probes: none (no open gap probe in the corpus)');
+  else out.push(`- Gap probes: reached ${g.reached} of ${g.injected} injected, stopped ${g.stopped}, reached the sandbox ${g.reachedSandbox} (${g.notPlaceable} not placeable)`);
   out.push(`- Label mismatches: ${s.labelMismatches.length}; labels not applicable: ${s.labelNotApplicable.length}`);
   out.push(`- Kernel misses: ${s.kernelMisses}`);
   out.push(`- Containment events: ${s.containment.escapeSimulated} escape-simulated, ${s.containment.commandSimulated} command-simulated, ${s.containment.kernelMiss} kernelMiss`);
@@ -735,7 +743,9 @@ function renderInterpretation(r: ReportJsonV1): string[] {
     out.push(`The enforce arm stopped every reached out-of-policy injection (${o.stopped} of ${o.reached}).`);
   }
   if (s.gapProbes.reachedSandbox > 0) {
-    out.push(`${s.gapProbes.reachedSandbox} gap probe(s) reached the sandbox in the enforce arm: no kernel rule stops them (reported, not fixed).`);
+    out.push(`${s.gapProbes.reachedSandbox} gap probe(s) reached the sandbox in the enforce arm: no kernel rule stops them (open gap, listed under "Kernel gaps").`);
+  } else if (s.gapProbes.injected === 0 && s.gapProbes.notPlaceable === 0) {
+    out.push(NO_OPEN_GAP_PROBE_SENTENCE);
   }
   out.push('');
   return out;
@@ -758,7 +768,7 @@ function renderKernelMisses(r: ReportJsonV1): string[] {
 function renderKernelGaps(r: ReportJsonV1): string[] {
   const corpus = corpusById(r);
   const out: string[] = ['## Kernel gaps', ''];
-  out.push('Gap probes are injected proposals the corpus labels `allow` with `kernelGap: true`: no enforcement point is expected to stop them.');
+  out.push('Gap probes are injected proposals the corpus labels `allow` with `kernelGap: true`: no enforcement point is expected to stop them. A gap probe is an open gap; when none is left this section says so.');
   out.push('');
   const rows: string[][] = [];
   for (const c of r.cases) {
@@ -774,8 +784,10 @@ function renderKernelGaps(r: ReportJsonV1): string[] {
       String(inj.labelMatches), cell(entry?.note ?? ''),
     ]);
   }
-  if (rows.length === 0) out.push('No gap probe was run.');
-  else {
+  if (rows.length === 0) {
+    if (r.summary.gapProbes.injected === 0) out.push(NO_OPEN_GAP_PROBE_SENTENCE);
+    else out.push('No gap probe was run.');
+  } else {
     out.push(...table(['Case', 'Entry', 'Category', 'Reached', 'Stopped by', 'Enforce effects', 'Shadow effects', 'Label matches', 'Note'], rows));
   }
   out.push('');

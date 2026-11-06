@@ -123,6 +123,13 @@ Tham chiếu: `INVARIANTS.md` → **SE-001, SE-003, SE-010, CX-003**.
 | Symlink to /etc | WorkspaceManager realpath | WS-004 |
 | Path traversal `../../etc` | WorkspaceManager canonical | WS-003 |
 | Secret in log | Redactor | SE-005, PR-004 |
+| Private key PKCS#8 (`-----BEGIN PRIVATE KEY-----`) lọt vào log/artifact (R1, đã đóng) | Redactor `private-key`: 0..4 type word + `PRIVATE KEY` (+ `BLOCK`), body bounded 32 768 ký tự (ReDoS-safe) | SE-005 |
+| `run_command rm -rf ..` (G1, đã đóng) | Shell classifier → DESTRUCTIVE (approval mọi level) + kiểm tra argument path-like bằng `checkPath` trước spawn | TG-011, SE-011 |
+| `run_command curl https://…` (G2, đã đóng) | Shell classifier → NETWORK; `buildToolPolicy` v2 `require_approval` ở mọi level | TG-012 |
+| `read_file .env` (G3, đã đóng) | Path_Access_Policy → `SENSITIVE_PATH` trong `NodeWorkspaceManager` (read + write) | SE-012 |
+| `write_file .git/config` (G4, đã đóng) | Path_Access_Policy → `PROTECTED_PATH` (write/delete/move; read vẫn mở) | WS-011 |
+| `edit_file` / xoá / move test file có sẵn lúc bắt đầu goal (G5, đã đóng) | `WorkspaceTestBaseline` → DESTRUCTIVE → approval | TG-013 |
+| `cat .env`, `rm .git/config`, `git_add .env` qua shell/git tool | Argument check của `ShellExecutor` + `GitExecutor` dùng cùng `checkAccess` | SE-012, WS-011 |
 | Env var leak | EnvGuard allowlist | SE-004 |
 | Network exfil | NetworkPolicy | SE-006 |
 | Process fork bomb | ProcessSupervisor | SE-007, SE-008 |
@@ -367,11 +374,22 @@ ProcessSupervisor
 | `READ_ONLY` | read file, list dir, git status | Auto-approve |
 | `LOW_RISK` | write scratch file, git add | Auto-approve |
 | `MODIFY_WORKSPACE` | write/edit source file, git commit | Policy |
-| `NETWORK` | HTTP request | Policy |
-| `PACKAGE_INSTALL` | npm install, pip install | Approval |
+| `NETWORK` | HTTP request, `run_command curl/wget/ssh/scp`, `git clone/fetch/pull/push`, `npm publish` | **Approval required ở mọi autonomy level** (kể cả `full`; `buildToolPolicy` v2) |
+| `PACKAGE_INSTALL` | npm install, pip install | Approval (`edits`/`readonly`); `allow` dưới `full` — rủi ro chấp nhận, xem §5.8 |
 | `SYSTEM` | chmod, chown | Approval |
-| `DESTRUCTIVE` | rm -rf, drop table | **Approval required** |
+| `DESTRUCTIVE` | rm -rf, drop table, `run_command rm/rmdir/del/dd/…`, mutate test có sẵn | **Approval required** (mọi level) |
 | `PRIVILEGED` | sudo, setuid | **Never auto** |
+
+`run_command` được phân loại bởi `resolveToolRiskClass` (`agent-core/src/tool/risk-classification.ts`, pure) thay vì luôn là `SYSTEM`:
+`classifyShellInvocation` (`shell-classifier.ts`) chuẩn hoá lệnh (bỏ directory prefix, lowercase, bỏ `.exe/.cmd/.bat/.ps1`; `command` chứa khoảng trắng được tách token) rồi chọn theo thứ tự ưu tiên DESTRUCTIVE > NETWORK > PACKAGE_INSTALL > SYSTEM.
+
+- DESTRUCTIVE: `rm rmdir del erase rd remove-item shred dd format mkfs*`; `chmod/chown` với `-R/-r/--recursive`; `find` với `-delete/-exec/-execdir/-ok/-okdir`; `git rm|clean|restore`, `git reset --hard`, `git checkout --`.
+- NETWORK: `curl wget ssh scp sftp nc ncat netcat telnet ftp invoke-webrequest iwr invoke-restmethod irm`; `git clone|fetch|pull|push|ls-remote`; `npm|pnpm|yarn publish`.
+- PACKAGE_INSTALL: `npm|pnpm|yarn install|i|add|ci|update|upgrade`, `pip install`, `python -m pip install`, `cargo add|install`, `go get|install`, `gem install`.
+- Còn lại (`npm test`, `node file.js`, `go test`, `cargo test`, `tsc`, `eslint`, `git status|diff|log|add|commit`, …) giữ `SYSTEM`.
+- `write_file`/`edit_file`/`delete_file`/`move_file` (và `run_command` với `mv move cp copy tee dd touch`) lên **DESTRUCTIVE** khi đích là test file có trong `WorkspaceTestBaseline` (TG-013). Tạo test mới hoặc sửa test do chính agent tạo trong phiên không bị ảnh hưởng.
+
+`buildToolPolicy(level)` v2: `policyId` = `autonomy-<level>-v2`, `version` = 2 (approval gắn với version cũ không dùng lại được, TG-003). `NETWORK` và `DESTRUCTIVE` luôn `require_approval`.
 
 ### 5.3 Policy structure
 
@@ -392,6 +410,7 @@ interface ToolRule {
 
   constraints?: {
     allowedPaths?: string[];
+    /** @deprecated KHÔNG được ToolGateway enforce. Bảo vệ path nằm ở Path_Access_Policy (§6.6; SE-012, WS-011). */
     deniedPaths?: string[];
     allowedHosts?: string[];
     deniedHosts?: string[];
@@ -425,7 +444,33 @@ Không được dùng approval cho tool call khác argumentsHash (HI-002).
 - Mọi execution qua ToolGateway.
 - Direct fs/shell access trong agent code → lint rule fail.
 
-Tham chiếu: `INVARIANTS.md` → **TG-001..TG-010, SE-002, SE-003, SE-009, HI-001, HI-002**.
+### 5.7 Thứ tự gate cho một tool call
+
+1. `TaskExecutor` tính risk class bằng `resolveToolRiskClass(tool, args, { testBaseline })` (§5.2).
+2. `ToolGateway.request` → `buildToolPolicy` v2 → `allow` / `require_approval` / `deny`. DESTRUCTIVE và NETWORK luôn cần approval; chưa approve thì không execute (TG-005, TG-007). Không có approval coordinator (Progressive_Runner) → run kết thúc ở `APPROVAL_PENDING`.
+3. `ToolGateway.execute` → executor:
+   - `run_command`: shell allowlist (`checkCommand`, SE-003) → **argument checks** (SE-011: `checkPath` cho argument path-like; `checkAccess` cho file candidate) → env filter → `ProcessSupervisor.spawn`.
+   - filesystem tool: `WorkspaceManager` boundary (`checkPath`, WS-003/004) → `checkAccess` (SE-012, WS-011) → I/O.
+   - `git_diff` (path) / `git_add` (paths): `checkAccess('read', …)` trước khi spawn `git`.
+4. Rejection ở bước 3 (`PATH_ESCAPE`, `SENSITIVE_PATH`, `PROTECTED_PATH`) là **failed tool result** (exit code 1, thông điệp trong stderr), **không** phải `DENIED` ToolCall: `DENIED` kết thúc cả run, còn failed result là non-fatal để model thấy lý do và đổi hướng (vd đọc `.env.example`).
+
+`ToolRule.deniedPaths` vẫn nằm trong type nhưng được đánh dấu `@deprecated` và không được gateway đọc; không dùng nó để bảo vệ path.
+
+### 5.8 Giới hạn của lớp kiểm tra shell (heuristic, không phải OS sandbox)
+
+Các kiểm tra argument/classification ở trên là **heuristic**, không phải sandbox cấp OS. Residual risk đã biết:
+
+- **Interpreter**: `node -e`, `python3 -c`, file test tự đọc `../secret`, `npm run <script>`, `npx` chạy code tuỳ ý mà argument check không thấy. Chuỗi trong dấu nháy bị bỏ qua có chủ đích.
+- **Attached short option**: `-o../x`, `-p../x` (không có `=`) được xem là flag và không bị kiểm tra.
+- **Windows path form**: không mô hình hoá tên 8.3 (`GIT~1`, `ENV~1`); device path (`\\?\`) và UNC bị boundary check chặn như absolute path.
+- **Shell wrapper**: `sh -c`, `bash -c`, `cmd /c`, `powershell`, `xargs`, `env` không nằm trong allowlist; nếu operator thêm vào, check chỉ thấy một argument không trong suốt.
+- **Package installer dưới `full`**: `npm install` chạy không cần approval và chạm registry (rủi ro chấp nhận; `PACKAGE_INSTALL` giữ action cũ). `npx` không được phân loại NETWORK (cũng là cách chạy `npx tsx test.ts`).
+- **Secret không nằm trong danh sách**: `.envrc`, `kubeconfig`, `*.tfvars`, `service-account*.json`, `secrets.*`, browser profile. Thêm vào constant nếu cần.
+- **Private key không được redact**: block không có footer, hoặc body dài hơn 32 768 ký tự (§7.2).
+- **Test baseline fail-open**: nếu `capture()` lỗi lần đầu, tập rỗng nghĩa là rule TG-013 không hoạt động (ghi log một lần).
+- **False positive**: argument regex chứa `/` và `..` (`grep "a/../b"`), file `*.key` không phải secret, absolute path nằm trong root. Mỗi trường hợp là một tool error hoặc một approval prompt hiển thị cho người dùng, không bao giờ là thay đổi âm thầm.
+
+Tham chiếu: `INVARIANTS.md` → **TG-001..TG-010, TG-011, TG-012, TG-013, SE-002, SE-003, SE-009, SE-011, HI-001, HI-002**.
 
 ---
 
@@ -448,8 +493,8 @@ Tham chiếu: `INVARIANTS.md` → **TG-001..TG-010, SE-002, SE-003, SE-009, HI-0
 
 ### 6.3 Reserved paths
 
-- `.git/` — chỉ đọc; ghi qua tool `git` được approve.
-- `.env` — đọc cần policy; ghi cần approval.
+- `.git/`, `.hg/`, `.svn/` — **đọc được; ghi/xoá/move bị chặn** (`PROTECTED_PATH`, WS-011, xem §6.6). `git_add`/`git_commit` vẫn ghi `.git/` như side effect của `git`.
+- `.env`, `.env.*`, khoá, credential — **không đọc, không ghi** bởi agent (`SENSITIVE_PATH`, SE-012, xem §6.6). `.env.example/.sample/.template` được phép.
 - System paths (`/etc`, `/usr`, `C:\Windows`) — ngoài root.
 - `node_modules/` — theo scratch zone hoặc package install.
 
@@ -465,7 +510,20 @@ Tham chiếu: `INVARIANTS.md` → **TG-001..TG-010, SE-002, SE-003, SE-009, HI-0
 - Theo OS policy.
 - Reject case collision trên case-insensitive FS.
 
-Tham chiếu: `INVARIANTS.md` → **WS-003, WS-004, WS-005, WS-006**.
+### 6.6 Path_Access_Policy (SE-012, WS-011)
+
+Module pure `agent-core/src/tool/path-access-policy.ts` (`DEFAULT_PATH_ACCESS_POLICY`, `evaluatePathAccess`), enforce bởi `NodeWorkspaceManager.checkAccess`.
+
+- **Sensitive (đọc và ghi, `SENSITIVE_PATH`)**: basename `.env`, `.env.*` (trừ `.env.example`, `.env.sample`, `.env.template`), `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, `.npmrc`, `.pypirc`, `.netrc`, `credentials` (gồm `.aws/credentials`), mọi path dưới thư mục `.ssh`. Nửa public `*.pub` được miễn và thắng mọi rule khác.
+- **Protected (chỉ ghi/xoá/move, cả hai đầu của move; `PROTECTED_PATH`)**: mọi segment bằng `.git`, `.hg`, `.svn`. Đọc, `list_dir`, `fileExists` không đổi. `.github/`, `.gitignore`, `.gitattributes`, `.gitmodules`, `.gitkeep`, `.gitlab-ci.yml` không bị bảo vệ.
+- **Chuẩn hoá**: case-insensitive trên mọi platform, `\` → `/`, mọi độ sâu, bỏ trailing dots/spaces và suffix NTFS `:stream` ở mỗi segment, `..` resolve theo lexical.
+- **Symlink**: sau verdict lexical, nếu path tồn tại thì đánh giá lại trên realpath (tương đối root), nên symlink trong workspace trỏ tới `.env` hoặc `.git/…` vẫn bị chặn.
+- **Điểm enforce**: `readFile`, `readFileBytes`, `writeFile`, `deleteFile`, `moveFile` (cả hai đầu). `fileExists`, `dirExists`, `listDir` không bị guard (tên file không phải nội dung secret). `grep` bỏ qua file sensitive âm thầm, nội dung không vào kết quả; `glob`/`list_dir` vẫn liệt kê tên.
+- **Lỗi**: `WorkspaceError('SENSITIVE_PATH' | 'PROTECTED_PATH')` → failed tool result non-fatal (§5.7). Ledger shadow ablation ghi là `EP-PATH` với reason tương ứng.
+- **`OPEN_PATH_ACCESS_POLICY`** (không có rule nào) chỉ dành cho shadow arm của instrument đo lường và test; CLI không được tham chiếu (SA-001).
+- Rule list là các constant trong code, không có CLI flag. Đây là heuristic theo tên, không phải kiểm soát nội dung (§5.8).
+
+Tham chiếu: `INVARIANTS.md` → **WS-003, WS-004, WS-005, WS-006, WS-011, SE-011, SE-012**.
 
 ---
 
@@ -509,7 +567,7 @@ Patterns:
 
 - JWT: `eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`
 - Bearer: `Bearer\s+[A-Za-z0-9._-]+`
-- Private keys: `-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+PRIVATE KEY-----`
+- Private keys: `-----BEGIN (?:[A-Z0-9]{1,16} ){0,4}PRIVATE KEY(?: BLOCK)?-----[\s\S]{1,32768}?-----END (?:[A-Z0-9]{1,16} ){0,4}PRIVATE KEY(?: BLOCK)?-----` — bao gồm PKCS#8 không type word (`-----BEGIN PRIVATE KEY-----`), RSA/EC/DSA/OPENSSH/ENCRYPTED và PGP `PRIVATE KEY BLOCK`. Mọi quantifier đều bounded (ReDoS-safe: 200 000 ký tự header lặp, không footer, redact < 1 000 ms). Residual: block không có footer hoặc body > 32 768 ký tự không bị redact. Public key và certificate không đổi.
 - AWS keys: `AKIA[0-9A-Z]{16}`
 - Generic: `(?i)(password|secret|token|api[_-]?key)\s*[:=]\s*['"]?[^\s'"]+`
 - Connection strings: `(?i)(postgres|mysql|mongodb|redis)://[^\s]+`
@@ -526,11 +584,10 @@ Redact trong:
 
 ### 7.4 `.env` handling
 
-- Đọc `.env` cần policy (default: allowed for read-only context).
-- Ghi `.env` cần approval.
-- Nội dung `.env` không tự động vào model context; chỉ khi policy cho phép.
+- Agent **không đọc và không ghi** `.env`, `.env.*` (trừ `.env.example/.sample/.template`) qua filesystem tool, shell argument (`cat .env`) hay `git_diff`/`git_add` (`SENSITIVE_PATH`, SE-012, §6.6). Model dùng `.env.example` cho placeholder; người dùng tự sửa secret.
+- Nội dung `.env` vì vậy không vào model context qua tool của agent. Interpreter (`node -e`) vẫn có thể mở file bên trong process (§5.8).
 
-Tham chiếu: `INVARIANTS.md` → **SE-004, SE-005, PR-004**.
+Tham chiếu: `INVARIANTS.md` → **SE-004, SE-005, SE-012, PR-004**.
 
 ---
 
@@ -566,7 +623,7 @@ interface NetworkPolicy {
 
 ### 8.3 Network tool
 
-- Không cho raw `curl`/`wget` nếu policy không cho phép.
+- `run_command curl|wget|ssh|scp|…`, `git clone|fetch|pull|push`, `npm publish` được phân loại **NETWORK** và cần approval ở mọi autonomy level, kể cả `full` (TG-012, §5.2).
 - Tool `http_request` phải qua policy.
 - Log mọi request với redaction.
 

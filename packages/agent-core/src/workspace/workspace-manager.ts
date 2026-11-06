@@ -16,6 +16,7 @@
 // This is a CONTRACT (interface). Concrete implementation in infrastructure
 // uses the existing path canonicalizer (C3) and Node fs APIs (DC-002).
 import type { ChangeRecord } from '../domain/change-record.js';
+import type { PathAccess } from '../tool/path-access-policy.js';
 
 // ── WorkspaceError ────────────────────────────────────────────────────────────
 
@@ -25,7 +26,9 @@ export type WorkspaceErrorCode =
   | 'NOT_FOUND'        // file/dir does not exist
   | 'ALREADY_EXISTS'   // write with exclusive mode failed
   | 'IS_DIRECTORY'     // expected file, got directory
-  | 'PERMISSION_DENIED';
+  | 'PERMISSION_DENIED'
+  | 'SENSITIVE_PATH'   // SE-012: secret file (path access policy)
+  | 'PROTECTED_PATH';  // WS-011: VCS metadata is write-protected
 
 export class WorkspaceError extends Error {
   public readonly code: WorkspaceErrorCode;
@@ -128,4 +131,11 @@ export interface WorkspaceManager {
    * Throws WorkspaceError(PATH_ESCAPE | SYMLINK_ESCAPE) on violation.
    */
   checkPath(relpath: string): Promise<string>;
+
+  /**
+   * Optional (additive): throws WorkspaceError(SENSITIVE_PATH | PROTECTED_PATH) when `access`
+   * to `relpath` is not allowed by the path access policy. Production NodeWorkspaceManager
+   * always implements it; fakes may omit it.
+   */
+  checkAccess?(access: PathAccess, relpath: string): Promise<void>;
 }

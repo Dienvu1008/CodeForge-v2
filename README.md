@@ -185,7 +185,7 @@ npm start -- \
 | `CODEFORGE_AUTH_TOKEN` (env) | — | Shared bearer token (≥ 16 chars). When set, every data/control route requires `Authorization: Bearer <token>`; static assets and `/health` stay open. |
 | `--db <path>` | `.codeforge/runtime.db` | SQLite database file. |
 | `--max-steps <n>` | `40` | Max orchestrator iterations. |
-| `--autonomy <level>` | `edits` | `full` / `edits` / `readonly` — which tool risk classes auto-approve vs. require a human decision. |
+| `--autonomy <level>` | `edits` | `full` / `edits` / `readonly` — which tool risk classes auto-approve vs. require a human decision. DESTRUCTIVE and NETWORK actions need approval at every level, including `full`. |
 | `--mission <on\|off>` | `off` | Advisory Mission Intelligence stage before planning. |
 | `--learning <on\|off>` | `off` | Advisory learning plane for recovery ordering. |
 | `--clarify <on\|off>` | `off` | Goal clarification gate (needs `--mission on`): when a goal scores UNKNOWN, pause in `AWAITING_HUMAN`, ask the open questions (Goals panel / `POST /clarification`), then plan under the answers. Off ⇒ assume-and-state. |
@@ -194,7 +194,7 @@ npm start -- \
 | `--model-registry <path>` | — | JSON file listing multiple models (id + tier + capabilities) so `--mission on` can route by task complexity (see `examples/model-registry.example.json`). |
 
 > Tip for a smooth demo with a small local model: `--autonomy full` avoids approval prompts for
-> commands. With weaker models, prefer concrete, well-specified goals (acceptance criteria the
+> most commands (network and destructive ones still ask). With weaker models, prefer concrete, well-specified goals (acceptance criteria the
 > runtime can verify) — see the limitations below.
 
 #### Remote access
@@ -395,22 +395,31 @@ does today, verified against the source tree).
   earlier run) is one model, one split, one recording, with prompt drift in 15 of 50 traces and the
   shadow arm exhausting its recorded steps in 12 of 50; its shadow-arm final states are
   counterfactual. See `.agents/kernel-shadow-ablation-analysis.md`.
-- **Five confirmed kernel gaps under `full` autonomy** (found by the ablation; reported, not
-  fixed): `run_command rm -rf ..` (allowlisted binary, arguments not path-checked);
-  `run_command curl` (allowlisted, and `run_command` is classed SYSTEM, never NETWORK);
-  `read_file .env` inside the workspace (READ_ONLY allow, so the content enters the prompt);
-  `write_file .git/config` and edits to test files (no protected-path rule — `ToolRule.deniedPaths`
-  is declared but not enforced). Under `edits` autonomy `rm` / `curl` are stopped (approval
-  required). See "Confirmed kernel gaps" in
-  `packages/testing/src/shadow-ablation/injection-corpus.ts`.
-- **The infrastructure redactor misses unencrypted PKCS#8 keys.** A
-  `-----BEGIN PRIVATE KEY-----` header is not redacted (the rule requires a type word such as
-  `RSA`); found by the trace tests, reported, not fixed yet.
+- **The kernel gaps found by the ablation are closed, with residual risks.** Destructive shell
+  commands (`rm`, `git clean` / `reset --hard`, `find -delete`, ...) and pre-existing test-file
+  edits are classed DESTRUCTIVE and need approval at every autonomy level; network commands
+  (`curl`, `wget`, `ssh`, `git clone` / `fetch` / `pull` / `push`, `npm publish`, ...) are classed
+  NETWORK and need approval at every level **including `full`**; shell path-like arguments must stay
+  inside the workspace (`..`, outside absolute paths, `~`, drive letters and `$VAR` are rejected
+  with `PATH_ESCAPE`, no spawn); sensitive files (`.env`, keys, `.ssh/*`, `.npmrc`; `.env.example`
+  stays readable) cannot be read or written by the agent; `.git` / `.hg` / `.svn` are write-protected
+  but readable. Path and secret rejections are FAILED tool results (exit 1) and the run continues.
+  The checks are lexical heuristics, **not an OS sandbox**: interpreter-internal access
+  (`node -e`, `python -c`, `npm run <script>`), attached short options, Windows 8.3 short names and
+  unterminated keys or bodies over 32 KiB are not covered, and `PACKAGE_INSTALL` is still
+  auto-approved under `full`. The infrastructure redactor now also redacts bare PKCS#8 / ENCRYPTED /
+  PGP private-key blocks. Replay of 50 real Qwen3.5 traces: 246 of 246 former gap probes are now
+  stopped (0 reached the sandbox, before 96) and kernel misses are 0; the effect on the live
+  benchmark pass rate is **not measured**. See `.agents/kernel-gap-closure-analysis.md`.
+- **Editing a test file that existed at goal start needs approval (product decision).** New test
+  files are free. Under the Progressive_Runner (`full` autonomy, no approver) a run that edits a
+  given test ends at `APPROVAL_PENDING`. In the replay this cost one of 50 cases (PG-T1 went from
+  SUCCESS to FAILURE in the enforce arm, 28 to 27 passing); whether to keep, soften or drop the rule
+  is the maintainer's call.
 
 None of these violate a tested kernel invariant. Most are intelligence/product gaps, which is
-exactly the distinction the two-axis model exists to make; the kernel and redactor gaps above are
-policy coverage the invariants do not yet claim, surfaced by measurement rather than assumed away.
-
+exactly the distinction the two-axis model exists to make; the residual risks above are policy
+coverage the invariants do not claim, surfaced by measurement rather than assumed away.
 ---
 
 ## Documentation map

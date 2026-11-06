@@ -95,7 +95,7 @@ import { Blake3GraphHasher }              from '../graph-hash/index.js';
 import { SwitchableModelGateway, RoutingModelGateway, SwitchableRuntimeModelSelector, loadModelRoutes, loadModelRegistry, OllamaModelAdmin } from '../model/index.js';
 import type { ModelGateway, RuntimeModelSelector } from '@codeforge/agent-core';
 import type { ProviderSpec, LoadedModelRegistry } from '../model/index.js';
-import { NodeWorkspaceManager, WorkspaceSnapshotRollback } from '../workspace/index.js';
+import { NodeWorkspaceManager, WorkspaceSnapshotRollback, WorkspaceTestBaseline } from '../workspace/index.js';
 import { NodeProcessSupervisor }          from '../process/index.js';
 import { NodeToolExecutor }               from '../tools/index.js';
 import { ObservabilityService }           from '../observability-server/observability-service.js';
@@ -391,6 +391,10 @@ async function main(): Promise<void> {
   // P12.14: ROLLBACK port — a content snapshot of the clean baseline so an authorised ROLLBACK
   // (SYNTAX class) can revert the agent's broken edit before the retry. Captured per goal below.
   const workspaceRollback = new WorkspaceSnapshotRollback({ root: workspaceRoot });
+  // G5: names of test-like files present when the goal starts (directory listing only, no reads).
+  // Captured per goal beside workspaceRollback.captureClean below.
+  const testBaseline = new WorkspaceTestBaseline({ root: workspaceRoot });
+  let testBaselineWarned = false;
   const supervisor = new NodeProcessSupervisor();
   const toolExec = new NodeToolExecutor({
     filesystem: { workspace },
@@ -423,7 +427,7 @@ async function main(): Promise<void> {
   const checkNames = verificationPolicy.checks.map((c) => c.name);
   console.log(`  Verification: ${checkNames.length > 0 ? checkNames.join(', ') : '(no checks — tasks cannot be verified-PASSED)'}`);
 
-  // P10.5: real risk policy by autonomy level. DESTRUCTIVE always asks; PRIVILEGED denied.
+  // P10.5: real risk policy by autonomy level. NETWORK and DESTRUCTIVE always ask; PRIVILEGED denied.
   const toolPolicy = buildToolPolicy(autonomy);
   const askClasses = toolPolicy.rules
     .filter((r) => r.action === 'require_approval')
@@ -467,6 +471,8 @@ async function main(): Promise<void> {
     taskRunService: runSvc, executionCoordinator: coordinator,
     contextBuilder: ctxBuilder, gateway: model,
     toolGateway: tg, executor: toolExec,
+    // G5: tests present at goal start; mutating one escalates to DESTRUCTIVE (needs approval).
+    testBaseline,
     verificationEngine: verEngine, completionGate,
     verificationPolicy,
     contextProvider: contextCollector,
@@ -724,6 +730,14 @@ async function main(): Promise<void> {
     // P12.14: snapshot the pre-edit workspace as this session's clean rollback baseline. If a
     // SYNTAX recovery later chooses ROLLBACK, the port reverts the agent's broken edit to here.
     try { await workspaceRollback.captureClean(sid); } catch { /* non-fatal — ROLLBACK degrades to re-arm */ }
+    // G5: same "present at goal start" moment. Non-fatal; a failed capture keeps the previous set
+    // (empty on first failure = rule inactive, fail-open), logged once.
+    try { await testBaseline.capture(); } catch {
+      if (!testBaselineWarned) {
+        testBaselineWarned = true;
+        console.warn('  Test baseline capture failed — existing-test approval rule inactive for this goal');
+      }
+    }
 
     // P12.24: infer the target language/framework (deterministic) from the goal + existing
     // workspace files, so the Planner targets the right ecosystem instead of defaulting to

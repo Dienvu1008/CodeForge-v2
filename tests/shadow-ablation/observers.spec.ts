@@ -13,10 +13,12 @@
 // Real Kernel objects only: SQLite `:memory:`, real NodeWorkspaceManager / NodeToolExecutor on a
 // temp sandbox, FakeProcessSupervisor (no real process is spawned).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   CompletionGate,
+  OPEN_PATH_ACCESS_POLICY,
   DEFAULT_SHELL_POLICY,
   DEFAULT_VERIFICATION_POLICY,
   ShellPolicyError,
@@ -510,5 +512,75 @@ describe('kernel-shadow-ablation observers — examples', () => {
     const long = previewArgs({ content: 'x'.repeat(1000) });
     expect(long.length).toBe(201);
     expect(long.endsWith('…')).toBe(true);
+  });
+});
+
+// ── kernel-gap-closure: EP-PATH rows for the Path_Access_Policy (SE-012, WS-011) ─────────────
+
+describe('kernel-gap-closure observers — EP-PATH SENSITIVE_PATH / PROTECTED_PATH', () => {
+  const SEED = { '.env': 'SECRET=1\n', '.git/config': '[core]\n', 'src/a.ts': 'export {};\n' } as const;
+
+  function pathSetup(mode: ArmMode): { ws: AblationWorkspaceManager; ledger: DecisionLedger; sandbox: Sandbox } {
+    const sandbox = createSandbox(SEED, mode);
+    sandboxes.push(sandbox);
+    const c = counters();
+    // Mirrors arm.ts: the shadow arm's inner manager is open, the observer holds the real policy.
+    const inner = new NodeWorkspaceManager({
+      root: sandbox.root, now: c.now, nextId: c.nextId,
+      ...(mode === 'shadow' ? { pathAccess: OPEN_PATH_ACCESS_POLICY } : {}),
+    });
+    const ledger = new DecisionLedger();
+    ledger.setStep(0, 'organic');
+    return { ws: new AblationWorkspaceManager(inner, sandbox, mode, ledger), ledger, sandbox };
+  }
+
+  const blocks = (ledger: DecisionLedger): LedgerEntry[] =>
+    at(ledger.snapshot().entries, 'EP-PATH').filter((e) => e.decision === 'block');
+
+  it('enforce: sensitive read and protected write are blocked, recorded and rethrown', async () => {
+    const { ws, ledger, sandbox } = pathSetup('enforce');
+
+    await expect(ws.readFile('.env')).rejects.toMatchObject({ code: 'SENSITIVE_PATH' });
+    await expect(ws.writeFile('.git/config', 'x', 'S')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(ws.deleteFile('.git/config', 'S')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(ws.checkAccess('read', 'server.pem')).rejects.toBeInstanceOf(WorkspaceError);
+
+    const rows = blocks(ledger);
+    expect(rows.map((e) => e.reason)).toEqual(['SENSITIVE_PATH', 'PROTECTED_PATH', 'PROTECTED_PATH', 'SENSITIVE_PATH']);
+    for (const e of rows) expect(e).toMatchObject({ decision: 'block', effective: 'block', wouldBlock: false });
+    expect(readFileSync(join(sandbox.root, '.git', 'config'), 'utf8')).toBe('[core]\n');
+    expect(ledger.snapshot().containment).toEqual([]);
+
+    // Not over-blocking: reading VCS metadata and ordinary files stays allowed.
+    await expect(ws.readFile('.git/config')).resolves.toBe('[core]\n');
+    await expect(ws.readFile('src/a.ts')).resolves.toBe('export {};\n');
+    expect(blocks(ledger)).toHaveLength(4);
+  });
+
+  it('shadow: the same calls record wouldBlock and are performed inside the sandbox', async () => {
+    const { ws, ledger, sandbox } = pathSetup('shadow');
+
+    await expect(ws.readFile('.env')).resolves.toBe('SECRET=1\n');
+    await ws.writeFile('.git/config', 'changed\n', 'S');
+    await expect(ws.checkAccess('read', 'server.pem')).resolves.toBeUndefined();
+
+    const rows = blocks(ledger);
+    expect(rows.map((e) => e.reason)).toEqual(['SENSITIVE_PATH', 'PROTECTED_PATH', 'SENSITIVE_PATH']);
+    for (const e of rows) expect(e).toMatchObject({ decision: 'block', effective: 'allow', wouldBlock: true });
+    // The operation really happened, but only in the temp sandbox.
+    expect(readFileSync(join(sandbox.root, '.git', 'config'), 'utf8')).toBe('changed\n');
+    expect(ledger.snapshot().containment).toEqual([]);
+  });
+
+  it('enforce and shadow record identical EP-PATH block rows for the same calls', async () => {
+    const rowsByMode: Record<ArmMode, Array<[string, string | undefined]>> = { enforce: [], shadow: [] };
+    for (const mode of MODES) {
+      const { ws, ledger } = pathSetup(mode);
+      for (const p of ['.env', '.env.local', 'id_rsa']) await ws.readFile(p).catch(() => undefined);
+      await ws.writeFile('.git/HEAD', 'x', 'S').catch(() => undefined);
+      rowsByMode[mode] = blocks(ledger).map((e) => [e.tool, e.reason]);
+    }
+    expect(rowsByMode.shadow).toEqual(rowsByMode.enforce);
+    expect(rowsByMode.enforce.length).toBeGreaterThanOrEqual(3);
   });
 });

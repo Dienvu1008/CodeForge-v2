@@ -692,7 +692,41 @@ interface WriteOptions {
 | `EEXIST` | `FS_EXISTS` |
 | `EISDIR` | `FS_IS_DIR` |
 
-Tham chiếu: `INVARIANTS.md` → **WS-003, WS-004, WS-005**.
+### 7.7 NodeWorkspaceManager: access rules (SE-012, WS-011)
+
+`NodeWorkspaceManager` thực thi `Path_Access_Policy` (pure, `agent-core/src/tool/path-access-policy.ts`) ngoài boundary check. Deps có `pathAccess?: PathAccessPolicy` (mặc định `DEFAULT_PATH_ACCESS_POLICY`).
+
+- `checkAccess(access: 'read' | 'write', relpath)`: đánh giá path lexical, rồi (nếu path tồn tại) đánh giá lại trên realpath tương đối root để symlink nội bộ không vượt qua rule. Deny → `WorkspaceError('SENSITIVE_PATH' | 'PROTECTED_PATH')`.
+- Được guard: `readFile`, `readFileBytes` (`read`); `writeFile`, `deleteFile`, `moveFile` — cả hai đầu, nguồn trước (`write`). Không guard: `fileExists`, `dirExists`, `listDir`.
+- `grep` đọc qua `readFileBytes` trong `try/catch` nên bỏ qua file sensitive, nội dung không vào kết quả; `glob` vẫn liệt kê tên.
+- `FilesystemExecutor` chuyển `WorkspaceError` thành `ExecutorResult` exit code 1 + stderr bắt đầu bằng mã lỗi. Run tiếp tục (non-fatal); đây không phải `DENIED` ToolCall.
+- `checkAccess` là method optional trên interface `WorkspaceManager` (additive); implementation production luôn có, fake có thể bỏ.
+- Rule list (sensitive, protected) xem `SECURITY_MODEL.md` §6.6.
+
+### 7.8 ShellExecutor: argument checks (SE-011)
+
+Sau `checkCommand` (allowlist, `DEFAULT_SHELL_ALLOWLIST`: `rm`, `mv`, `cp`… vẫn nằm trong allowlist, việc chặn nằm ở phân loại rủi ro và argument check) và trước env filter + spawn:
+
+1. `normalizeInvocation(command, args)` + `extractShellArguments` (pure, `agent-core/src/tool/shell-classifier.ts`) → `pathLike`, `envExpansions`, `fileCandidates`.
+2. Mỗi argument `pathLike`: env expansion (`$NAME`, `${`, `$(`, `%NAME%`) bị từ chối `PATH_ESCAPE` trừ khi lệnh là `echo`/`printf`; `~…` và drive-letter không absolute theo platform bị từ chối `PATH_ESCAPE`; còn lại `WorkspaceManager.checkPath` (ngoài root → `PATH_ESCAPE`). Absolute path nằm trong root do `checkPath` quyết định.
+3. Mỗi `fileCandidate`: `workspace.checkAccess?.(access, arg)` với `access = 'write'` nếu lệnh thuộc `MUTATING_PATH_COMMANDS` (`rm rmdir del erase rd mv move cp copy shred dd tee touch mkdir chmod chown`), ngược lại `'read'`. `git` không bao giờ bị rule protected (git tự ghi `.git/`), nhưng rule sensitive vẫn áp dụng.
+4. Rejection → `ExecutorResult` exit 1, stdout rỗng, stderr `PATH_ESCAPE|SENSITIVE_PATH|PROTECTED_PATH: argument "<a>" …`, **không spawn**. Đủ điều kiện → spawn với command, args, cwd, env, timeout như trước.
+
+Argument là URL (`scheme://`), có khoảng trắng hoặc shell metacharacter, hoặc flag không có `=` không được xem là path-like; với `name=value` giá trị sau `=` được kiểm tra. Đây là heuristic, không phải OS sandbox; giới hạn xem `SECURITY_MODEL.md` §5.8.
+
+### 7.9 WorkspaceTestBaseline (TG-013)
+
+`infrastructure/src/workspace/workspace-test-baseline.ts` implements port `TestBaseline` (`isBaselineTest(relpath)`, sync) của `agent-core`.
+
+- `capture()`: duyệt thư mục (chỉ listing, **không đọc nội dung file**), lưu các Test_Like_Path đã chuẩn hoá (`isTestLikePath`: `test.*`, `*.test.*`, `*.spec.*`, `test_*`, `*_test.*` hoặc thư mục `test`/`tests`/`__tests__`/`spec`). Bỏ qua `node_modules`, `.git`, `dist`, `build`, `coverage`, `.cache`, `.codeforge`, `.cf2`; thư mục không đọc được bị bỏ qua.
+- `runtime-cli.ts` tạo một instance, truyền cho `TaskExecutor` (`deps.testBaseline`) và gọi `capture()` cạnh `workspaceRollback.captureClean(sid)` ở mỗi goal. Lỗi capture là non-fatal: giữ tập cũ; lần đầu lỗi thì tập rỗng = rule không hoạt động (fail-open, log một lần).
+- `resolveToolRiskClass` dùng baseline để nâng mutate (`write_file`, `edit_file`, `delete_file`, `move_file`, `run_command mv|move|cp|copy|tee|dd|touch`) lên DESTRUCTIVE. Test do agent tạo trong goal hiện tại không thuộc baseline; sang goal sau của cùng process thì thuộc baseline.
+
+### 7.10 Redactor: private-key rule
+
+`redaction/redactor.ts`, rule `private-key` (tên và vị trí trong `REDACTION_RULES` không đổi) khớp header 0..4 type word (mỗi từ 1..16 ký tự) + `PRIVATE KEY` (+ `BLOCK`), body lazy tối đa 32 768 ký tự. Phủ PKCS#8 không type word, RSA/EC/DSA/OPENSSH/ENCRYPTED, PGP. Block không footer hoặc body vượt cap không được redact (residual risk).
+
+Tham chiếu: `INVARIANTS.md` → **WS-003, WS-004, WS-005, WS-011, SE-005, SE-011, SE-012, TG-013**.
 
 ---
 
@@ -747,6 +781,7 @@ interface GitStatus {
 
 - Không expose `.git/config` với remote URL chứa token.
 - Redact secret trong Git output.
+- `GitExecutor` (tool `git_*`): `git_diff` (`path`) và `git_add` (`paths[]`) gọi `workspace.checkAccess('read', p)` cho từng path **trước khi spawn `git`**; path sensitive (`.env`, `*.pem`, …) → exit 1, stderr `SENSITIVE_PATH: …`, không spawn (SE-012). Chỉ kiểm tra `read` vì chính `git` ghi `.git/` (`git_add`, `git_commit` không bị rule `PROTECTED_PATH`). `git_status`/`git_log`/`git_commit` không đổi.
 
 ### 8.6 Error mapping
 
